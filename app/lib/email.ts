@@ -85,7 +85,7 @@ function generateICalContent(data: TicketEmailData): string {
   if (!data.eventStartTime) return "";
 
   const baseUrl =
-    process.env.NEXT_PUBLIC_BASE_URL || "https://stanfordspeakersbureau.com";
+    process.env.NEXT_PUBLIC_ROOT_URL || "https://stanfordspeakersbureau.com";
   const eventUrl = data.eventRoute
     ? `${baseUrl}/events/${data.eventRoute}`
     : null;
@@ -182,7 +182,7 @@ function generateGoogleCalendarUrl(data: TicketEmailData): string {
   if (!data.eventStartTime) return "";
 
   const baseUrl =
-    process.env.NEXT_PUBLIC_BASE_URL || "https://stanfordspeakersbureau.com";
+    process.env.NEXT_PUBLIC_ROOT_URL || "https://stanfordspeakersbureau.com";
   const eventUrl = data.eventRoute
     ? `${baseUrl}/events/${data.eventRoute}`
     : baseUrl;
@@ -245,7 +245,7 @@ async function generateTicketEmailHTML(data: TicketEmailData): Promise<string> {
     : "TBA";
 
   const baseUrl =
-    process.env.NEXT_PUBLIC_BASE_URL || "https://stanfordspeakersbureau.com";
+    process.env.NEXT_PUBLIC_ROOT_URL || "https://stanfordspeakersbureau.com";
   const eventUrl = eventRoute ? `${baseUrl}/events/${eventRoute}` : null;
   const logoUrl = `${baseUrl}/logo.png`;
   const googleCalendarUrl = generateGoogleCalendarUrl(data);
@@ -509,7 +509,7 @@ function generateTicketEmailText(data: TicketEmailData): string {
     : "TBA";
 
   const eventUrl = eventRoute
-    ? `${process.env.NEXT_PUBLIC_BASE_URL || "https://stanfordspeakersbureau.com"}/events/${eventRoute}`
+    ? `${process.env.NEXT_PUBLIC_ROOT_URL || "https://stanfordspeakersbureau.com"}/events/${eventRoute}`
     : null;
 
   return `

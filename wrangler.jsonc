@@ -54,7 +54,8 @@
   },
   "vars": {
     "SUPABASE_URL": "https://qxevtucghgjbewpwntry.supabase.co",
-    "NEXT_PUBLIC_BASE_URL": "https://stanfordspeakersbureau.com",
+    "NEXT_PUBLIC_BASE_URL": "https://admin.stanfordspeakersbureau.com",
+    "NEXT_PUBLIC_ROOT_URL": "https://stanfordspeakersbureau.com",
     "SES_FROM_EMAIL": "tickets@stanfordspeakersbureau.com",
     "AWS_REGION": "us-east-2"
   }
