@@ -1,43 +1,6 @@
 import { redirect } from "next/navigation";
-import AdminLayoutClient from "./AdminLayoutClient";
+import AdminLayoutClient from "../AdminLayoutClient";
 import { verifyAdminRequest } from "@/app/lib/supabase";
-import "./globals.css";
-import {Hedvig_Letters_Serif, Inter} from "next/font/google";
-import {Metadata} from "next";
-
-const baseURL = process.env.BASE_URL || "http://localhost:3000";
-
-export const metadata: Metadata = {
-  metadataBase: new URL("https://ssb.stanford.edu"),
-  title: "Stanford Speakers Bureau",
-  description:
-    "Stanford's largest student organization sponsor of speaking events since 1935. We meet weekly to discuss upcoming speakers and determine who is of interest to the Stanford community.",
-  openGraph: {
-    title: "Stanford Speakers Bureau",
-    description:
-      "Stanford's largest student organization sponsor of speaking events since 1935. We meet weekly to discuss upcoming speakers and determine who is of interest to the Stanford community.",
-    images: [
-      {
-        url: `/speakers/jojo-siwa.jpg`,
-        width: 1200,
-        height: 630,
-      },
-    ],
-    url: `${baseURL}`,
-  },
-};
-
-
-const inter = Inter({
-  variable: "--font-inter",
-  subsets: ["latin"],
-});
-
-const hedvigLettersSerif = Hedvig_Letters_Serif({
-  variable: "--font-hedvig-letters-serif",
-  subsets: ["latin"],
-  weight: ["400"],
-});
 
 type AdminLayoutProps = {
   children: React.ReactNode;
@@ -90,18 +53,13 @@ export default async function AdminLayout({ children }: AdminLayoutProps) {
     if (auth.error === "Not authenticated") {
       redirect(`/api/auth/google?redirect_to=${encodeURIComponent("/")}`);
     }
-
     // User is authenticated but not an admin - redirect to main site
     redirect(`https://stanfordspeakersbureau.com`);
   }
 
   return (
-    <html>
-      <body className={`${inter.variable} ${hedvigLettersSerif.variable} antialiased`}>
-        <AdminLayoutClient userEmail={auth.email} navItems={navItems}>
-          {children}
-        </AdminLayoutClient>
-      </body>
-    </html>
+    <AdminLayoutClient userEmail={auth.email} navItems={navItems}>
+      {children}
+    </AdminLayoutClient>
   );
 }
