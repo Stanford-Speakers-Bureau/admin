@@ -1,6 +1,8 @@
-import { SendEmailCommand, SESv2Client } from "@aws-sdk/client-sesv2";
+import {SendEmailCommand, SESv2Client} from "@aws-sdk/client-sesv2";
 import QRCode from "qrcode";
-import { PACIFIC_TIMEZONE } from "./constants";
+import type { QRCodeToBufferOptions } from "qrcode";
+import {PACIFIC_TIMEZONE} from "./constants";
+import {generateGoogleCalendarUrl, generateReferralCode} from "./utils";
 
 // Initialize SES client
 const sesClient = new SESv2Client({
@@ -27,6 +29,15 @@ type TicketEmailData = {
   eventVenueLink?: string | null;
   eventDescription?: string | null;
 };
+
+// Wrap base64 (or any long) strings to 76-character lines for MIME compatibility
+function wrapToMimeLines(input: string, lineLength: number = 76): string {
+  const chunks: string[] = [];
+  for (let i = 0; i < input.length; i += lineLength) {
+    chunks.push(input.slice(i, i + lineLength));
+  }
+  return chunks.join("\r\n");
+}
 
 /**
  * Escape text for iCalendar format
@@ -85,7 +96,7 @@ function generateICalContent(data: TicketEmailData): string {
   if (!data.eventStartTime) return "";
 
   const baseUrl =
-    process.env.NEXT_PUBLIC_ROOT_URL || "https://stanfordspeakersbureau.com";
+    process.env.NEXT_PUBLIC_BASE_URL || "https://stanfordspeakersbureau.com";
   const eventUrl = data.eventRoute
     ? `${baseUrl}/events/${data.eventRoute}`
     : null;
@@ -154,73 +165,36 @@ function generateICalContent(data: TicketEmailData): string {
 }
 
 /**
- * Generate QR code as data URI for embedding in email
+ * Generate QR code PNG as a Buffer for attaching to an email
  */
-async function generateQRCodeDataURI(ticketId: string): Promise<string> {
+async function generateQRCodePngBuffer(ticketId: string): Promise<Buffer | null> {
   try {
-    return await QRCode.toDataURL(ticketId, {
+    const options: QRCodeToBufferOptions = {
       errorCorrectionLevel: "H",
-      type: "image/png",
+      type: "png",
       width: 400,
       margin: 2,
       color: {
         dark: "#000000",
         light: "#FFFFFF",
       },
-    });
+    };
+    const buffer = await QRCode.toBuffer(ticketId, options);
+    return buffer;
   } catch (error) {
-    console.error("Error generating QR code:", error);
-    // Return empty string if QR code generation fails
-    return "";
+    console.error("Error generating QR code buffer:", error);
+    return null;
   }
-}
-
-/**
- * Generate Google Calendar URL for ticket email
- */
-function generateGoogleCalendarUrl(data: TicketEmailData): string {
-  if (!data.eventStartTime) return "";
-
-  const baseUrl =
-    process.env.NEXT_PUBLIC_ROOT_URL || "https://stanfordspeakersbureau.com";
-  const eventUrl = data.eventRoute
-    ? `${baseUrl}/events/${data.eventRoute}`
-    : baseUrl;
-
-  const startDate = new Date(data.eventStartTime);
-  const endDate = new Date(startDate.getTime() + 90 * 60 * 1000); // 90 minutes default
-
-  // Format dates for Google Calendar (YYYYMMDDTHHMMSSZ)
-  const formatGoogleDate = (date: Date) => {
-    return date
-      .toISOString()
-      .replace(/[-:]/g, "")
-      .replace(/\.\d{3}/, "");
-  };
-
-  const title = encodeURIComponent(
-    `Stanford Speakers Bureau: ${data.eventName || "Speaker Event"}`,
-  );
-  let details = data.eventDescription || "Stanford Speakers Bureau event";
-  if (eventUrl) {
-    details += `\n\nView Event: ${eventUrl}`;
-  }
-  details += `\n\nTicket ID: ${data.ticketId}`;
-  if (data.ticketType === "VIP") {
-    details += "\nTicket Type: VIP";
-  }
-  const encodedDetails = encodeURIComponent(details);
-  const location = encodeURIComponent(data.eventVenue || "");
-  const start = formatGoogleDate(startDate);
-  const end = formatGoogleDate(endDate);
-
-  return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${start}/${end}&details=${encodedDetails}&location=${location}`;
 }
 
 /**
  * Generate HTML email content for ticket confirmation
+ * If qrCid is provided, the QR image will be referenced via cid:qrCid
  */
-async function generateTicketEmailHTML(data: TicketEmailData): Promise<string> {
+async function generateTicketEmailHTML(
+  data: TicketEmailData,
+  options?: { qrCid?: string },
+): Promise<string> {
   const {
     eventName,
     ticketType,
@@ -245,13 +219,28 @@ async function generateTicketEmailHTML(data: TicketEmailData): Promise<string> {
     : "TBA";
 
   const baseUrl =
-    process.env.NEXT_PUBLIC_ROOT_URL || "https://stanfordspeakersbureau.com";
+    process.env.NEXT_PUBLIC_BASE_URL || "https://stanfordspeakersbureau.com";
   const eventUrl = eventRoute ? `${baseUrl}/events/${eventRoute}` : null;
   const logoUrl = `${baseUrl}/logo.png`;
-  const googleCalendarUrl = generateGoogleCalendarUrl(data);
+  const googleCalendarUrl = generateGoogleCalendarUrl({
+    eventName: data.eventName,
+    eventStartTime: data.eventStartTime,
+    eventRoute: data.eventRoute,
+    eventVenue: data.eventVenue,
+    eventDescription: data.eventDescription,
+    ticketId: data.ticketId,
+    ticketType: data.ticketType,
+  });
 
-  // Generate QR code
-  const qrCodeDataURI = await generateQRCodeDataURI(ticketId);
+  // Generate referral code from email
+  const referralCode = generateReferralCode(data.email);
+  const referralUrl =
+    referralCode && data.eventRoute
+      ? `${baseUrl}/events/${data.eventRoute}?referral_code=${referralCode}`
+      : null;
+
+  // If sending as CID, build the src accordingly; otherwise leave empty to hide section
+  const qrImageSrc = options?.qrCid ? `cid:${options.qrCid}` : "";
   const isVIP = ticketType?.toUpperCase() === "VIP";
 
   return `
@@ -402,6 +391,28 @@ async function generateTicketEmailHTML(data: TicketEmailData): Promise<string> {
                 <td class="details-label" style="padding: 8px 0; color: #a1a1aa; font-size: 14px; vertical-align: top;">Ticket ID:</td>
                 <td class="details-value" style="padding: 8px 0; color: #f4f4f5; font-size: 14px; font-family: monospace; word-break: break-all;">${ticketId}</td>
               </tr>
+              ${
+    referralCode && !(ticketType.toUpperCase() == "VIP")
+      ? `
+              <tr>
+                <td class="details-label" style="padding: 8px 0; color: #a1a1aa; font-size: 14px; vertical-align: top;">Your Referral Code:</td>
+                <td class="details-value" style="padding: 8px 0; color: #f4f4f5; font-size: 14px; font-weight: 500; font-family: monospace;">${referralCode}</td>
+              </tr>
+              ${
+        referralUrl && !(ticketType.toUpperCase() == "VIP")
+          ? `
+              <tr>
+                <td class="details-label" style="padding: 8px 0; color: #a1a1aa; font-size: 14px; vertical-align: top;">Your Referral Link:</td>
+                <td class="details-value" style="padding: 8px 0;">
+                  <a href="${referralUrl}" target="_blank" rel="noopener noreferrer" style="color: #A80D0C; text-decoration: none; border-bottom: 1px solid #A80D0C;">${referralUrl}</a>
+                </td>
+              </tr>
+              `
+          : ""
+      }
+              `
+      : ""
+  }
             </table>
             ${
     eventUrl
@@ -420,13 +431,13 @@ async function generateTicketEmailHTML(data: TicketEmailData): Promise<string> {
           </div>
           
           ${
-    qrCodeDataURI
+    qrImageSrc
       ? `
           <!-- QR Code Section -->
           <div class="qr-section" style="background-color: #18181b; padding: 24px; margin-bottom: 24px; text-align: center;">
             <h2 class="qr-title" style="margin: 0 0 16px 0; color: #ffffff; font-size: 20px; font-weight: 600;">Your Ticket QR Code</h2>
             <div class="qr-code-wrapper" style="display: inline-block; background-color: #ffffff; padding: ${isVIP ? "20px" : "16px"}; border-radius: 8px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3); ${isVIP ? "border: 4px solid #A80D0C;" : ""}">
-              <img src="${qrCodeDataURI}" alt="Ticket QR Code" class="qr-code-img" style="display: block; width: 350px; height: 350px; max-width: 100%; height: auto;" />
+              <img src="${qrImageSrc}" alt="Ticket QR Code" class="qr-code-img" style="display: block; width: 350px; max-width: 100%; height: auto;" />
             </div>
             ${
         isVIP
@@ -458,7 +469,7 @@ async function generateTicketEmailHTML(data: TicketEmailData): Promise<string> {
           <table role="presentation" style="width: 100%; border-collapse: collapse; margin-bottom: 24px;">
             <tr>
               <td align="center" class="button-wrapper" style="padding: 0;">
-                <a href="${googleCalendarUrl}" target="_blank" rel="noopener noreferrer" class="button" style="display: inline-flex; align-items: center; gap: 10px; padding: 14px 28px; background-color: #4285F4; color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 16px;">
+                <a href="${googleCalendarUrl}" target="_blank" rel="noopener noreferrer" class="button" style="display: inline-flex; align-items: center; gap: 10px; padding: 14px 28px; background-color: #175dcd; color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 16px;">
                   <img src="${baseUrl}/g.png" alt="Google" style="width: 20px; height: 20px; display: inline-block; vertical-align: middle; margin-right: 8px;" />
                   Add to Google Calendar
                 </a>
@@ -509,8 +520,15 @@ function generateTicketEmailText(data: TicketEmailData): string {
     : "TBA";
 
   const eventUrl = eventRoute
-    ? `${process.env.NEXT_PUBLIC_ROOT_URL || "https://stanfordspeakersbureau.com"}/events/${eventRoute}`
+    ? `${process.env.NEXT_PUBLIC_BASE_URL || "https://stanfordspeakersbureau.com"}/events/${eventRoute}`
     : null;
+
+  // Generate referral code from email
+  const referralCode = generateReferralCode(data.email);
+  const referralUrl =
+    referralCode && data.eventRoute
+      ? `${process.env.NEXT_PUBLIC_BASE_URL || "https://stanfordspeakersbureau.com"}/events/${data.eventRoute}?referral_code=${referralCode}`
+      : null;
 
   return `
 Ticket Confirmed!
@@ -522,6 +540,8 @@ Event Details:
 - Date & Time: ${formattedDate}
 - Ticket Type: ${ticketType || "STANDARD"}
 - Ticket ID: ${ticketId}
+${referralCode && !(ticketType.toUpperCase() == "VIP") ? `- Your Referral Code: ${referralCode}` : ""}
+${referralUrl && !(ticketType.toUpperCase() == "VIP") ? `- Your Referral Link: ${referralUrl}` : ""}
 ${eventUrl ? `- Event URL: ${eventUrl}` : ""}
 
 Please bring a valid ID and this confirmation email to the event. We look forward to seeing you there!
@@ -538,26 +558,106 @@ If you have any questions, please contact us at ${FROM_EMAIL}
 export async function sendTicketEmail(data: TicketEmailData): Promise<void> {
   // Check if email sending is disabled
   if (process.env.DISABLE_EMAIL?.toLowerCase().trim() == "true") {
-    console.log(`Email sending is disabled (DISABLE_EMAIL=true). Skipping email to ${data.email}`);
+    console.log(
+      `Email sending is disabled (DISABLE_EMAIL=true). Skipping email to ${data.email}`,
+    );
     return;
   }
 
-  const htmlContent = await generateTicketEmailHTML(data);
+  const subject = `Your Ticket Confirmation - ${data.eventName || "Event"}`;
   const textContent = generateTicketEmailText(data);
 
-  // Generate ICS file content for calendar invite
-  const icsContent = generateICalContent(data);
+  // Generate QR and prepare cid
+  const qrCid = `ticket-qr-${data.ticketId}@stanfordspeakersbureau`;
+  const qrBuffer = await generateQRCodePngBuffer(data.ticketId);
+  const htmlContent = await generateTicketEmailHTML(data, {
+    qrCid: qrBuffer ? qrCid : undefined,
+  });
 
-  // Build attachments array
-  const attachments = [];
-  if (icsContent) {
-    const icsBuffer = Buffer.from(icsContent, "utf-8");
-    attachments.push({
-      FileName: `stanford-speakers-bureau-event.ics`,
-      RawContent: new Uint8Array(icsBuffer),
-      ContentType: "text/calendar; charset=utf-8",
-    });
+  // Optional ICS content
+  const icsContent = generateICalContent(data);
+  const icsBuffer = icsContent ? Buffer.from(icsContent, "utf-8") : null;
+
+  // Build MIME message with CID image inside multipart/related for HTML part
+  const mixBoundary = `mix_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+  const altBoundary = `alt_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+  const relBoundary = `rel_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+
+  const lines: string[] = [];
+  lines.push(
+    `From: ${FROM_EMAIL}`,
+    `To: ${data.email}`,
+    `Subject: ${subject}`,
+    `MIME-Version: 1.0`,
+    `Content-Type: multipart/mixed; boundary="${mixBoundary}"`,
+    "",
+    `--${mixBoundary}`,
+    `Content-Type: multipart/alternative; boundary="${altBoundary}"`,
+    "",
+    `--${altBoundary}`,
+    `Content-Type: text/plain; charset=UTF-8`,
+    `Content-Transfer-Encoding: 7bit`,
+    "",
+    textContent,
+    ""
+  );
+
+  if (qrBuffer) {
+    // multipart/related containing HTML and inline image
+    const qrBase64 = wrapToMimeLines(qrBuffer.toString("base64"));
+    lines.push(
+      `--${altBoundary}`,
+      `Content-Type: multipart/related; boundary="${relBoundary}"`,
+      "",
+      `--${relBoundary}`,
+      `Content-Type: text/html; charset=UTF-8`,
+      `Content-Transfer-Encoding: 7bit`,
+      "",
+      htmlContent,
+      "",
+      `--${relBoundary}`,
+      `Content-Type: image/png; name="ticket-qr.png"`,
+      `Content-Transfer-Encoding: base64`,
+      `Content-Disposition: inline; filename="ticket-qr.png"`,
+      `Content-ID: <${qrCid}>`,
+      "",
+      qrBase64,
+      "",
+      `--${relBoundary}--`,
+      ""
+    );
+  } else {
+    // No QR image; include HTML directly
+    lines.push(
+      `--${altBoundary}`,
+      `Content-Type: text/html; charset=UTF-8`,
+      `Content-Transfer-Encoding: 7bit`,
+      "",
+      htmlContent,
+      ""
+    );
   }
+
+  // Close alternative part
+  lines.push(`--${altBoundary}--`);
+
+  // Attach ICS file (optional)
+  if (icsBuffer) {
+    const icsBase64 = wrapToMimeLines(icsBuffer.toString("base64"));
+    lines.push(
+      `--${mixBoundary}`,
+      `Content-Type: text/calendar; charset="utf-8"; name="stanford-speakers-bureau-event.ics"`,
+      `Content-Transfer-Encoding: base64`,
+      `Content-Disposition: attachment; filename="stanford-speakers-bureau-event.ics"`,
+      "",
+      icsBase64,
+      ""
+    );
+  }
+
+  lines.push(`--${mixBoundary}--`, "");
+
+  const rawMessage = lines.join("\r\n");
 
   const command = new SendEmailCommand({
     FromEmailAddress: FROM_EMAIL,
@@ -565,24 +665,8 @@ export async function sendTicketEmail(data: TicketEmailData): Promise<void> {
       ToAddresses: [data.email],
     },
     Content: {
-      Simple: {
-        Subject: {
-          Data: `Your Ticket Confirmation - ${data.eventName || "Event"}`,
-          Charset: "UTF-8",
-        },
-        Body: {
-          Html: {
-            Data: htmlContent,
-            Charset: "UTF-8",
-          },
-          Text: {
-            Data: textContent,
-            Charset: "UTF-8",
-          },
-        },
-        ...(attachments.length > 0 && {
-          Attachments: attachments,
-        }),
+      Raw: {
+        Data: new Uint8Array(Buffer.from(rawMessage, "utf-8")),
       },
     },
   });
