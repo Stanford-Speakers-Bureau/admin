@@ -8,7 +8,7 @@ import {Metadata} from "next";
 const baseURL = process.env.BASE_URL || "http://localhost:3000";
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://ssb.stanford.edu"),
+  metadataBase: new URL(baseURL),
   title: "Stanford Speakers Bureau",
   description:
     "Stanford's largest student organization sponsor of speaking events since 1935. We meet weekly to discuss upcoming speakers and determine who is of interest to the Stanford community.",
@@ -16,13 +16,6 @@ export const metadata: Metadata = {
     title: "Stanford Speakers Bureau",
     description:
       "Stanford's largest student organization sponsor of speaking events since 1935. We meet weekly to discuss upcoming speakers and determine who is of interest to the Stanford community.",
-    images: [
-      {
-        url: `/speakers/jojo-siwa.jpg`,
-        width: 1200,
-        height: 630,
-      },
-    ],
     url: `${baseURL}`,
   },
 };
