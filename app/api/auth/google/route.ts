@@ -16,7 +16,7 @@ export async function GET(req: Request) {
   const protocol = process.env.NODE_ENV === "production" ? "https" : "http";
   const origin = new URL(req.url).origin;
   const baseUrl =
-    process.env.NEXT_PUBLIC_BASE_URL ||
+    process.env.NEXT_PUBLIC_ROOT_URL ||
     origin ||
     `${protocol}://${req.headers.get("host") || "localhost:3000"}`;
 

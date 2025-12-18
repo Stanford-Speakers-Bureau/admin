@@ -85,7 +85,7 @@ export default async function AdminLayout({ children }: AdminLayoutProps) {
     }
 
     // User is authenticated but not an admin - redirect to main site
-    redirect(process.env.NEXT_PUBLIC_ROOT_URL || `https://stanfordspeakersbureau.com`);
+    redirect(process.env.NEXT_PUBLIC_BASE_URL || `https://stanfordspeakersbureau.com`);
   }
 
   return (
