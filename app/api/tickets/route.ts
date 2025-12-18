@@ -98,16 +98,40 @@ export async function DELETE(req: Request) {
 
     const adminClient = auth.adminClient!;
 
+    // Call the sync_votes RPC function
     // Delete the ticket
-    const { error } = await adminClient.from("tickets").delete().eq("id", id);
+    const { error: deleteError } = await adminClient.from("tickets").delete().eq("id", id);
 
-    if (error) {
-      console.error("Ticket delete error:", error);
+    if (deleteError) {
+      console.error("Ticket delete error:", deleteError);
       return NextResponse.json(
         { error: "Failed to delete ticket" },
         { status: 500 },
       );
     }
+
+    // Call the sync_referral_counts RPC function
+    const { error: rpcReferralError } = (await adminClient.rpc("sync_referral_counts")) as { error?: { code?: string } | null };
+
+    if (rpcReferralError) {
+      console.error("Sync referral RPC error:", rpcReferralError);
+
+      return NextResponse.json(
+        { error: "Failed to sync referrals" },
+        { status: 500 },
+      );
+    }
+
+
+    const { error: rpcScannedError } = (await adminClient.rpc("sync_event_scanned_counts")) as { error?: { code?: string } | null };
+    if (rpcScannedError) {
+      console.error("Sync scanned RPC error:", rpcScannedError);
+      return NextResponse.json(
+        { error: "Failed to sync scanned" },
+        { status: 500 },
+      );
+    }
+
 
     return NextResponse.json({ success: true });
   } catch (error) {
@@ -174,6 +198,15 @@ export async function PATCH(req: Request) {
         console.error("Ticket unscan error:", updateError);
         return NextResponse.json(
           { error: "Failed to unscan ticket" },
+          { status: 500 },
+        );
+      }
+
+      const { error: rpcScannedError } = (await adminClient.rpc("sync_event_scanned_counts")) as { error?: { code?: string } | null };
+      if (rpcScannedError) {
+        console.error("Sync scanned RPC error:", rpcScannedError);
+        return NextResponse.json(
+          { error: "Failed to sync scanned" },
           { status: 500 },
         );
       }
@@ -270,6 +303,15 @@ export async function PATCH(req: Request) {
         console.error("Ticket scanned status update error:", updateError);
         return NextResponse.json(
           { error: "Failed to update scanned status" },
+          { status: 500 },
+        );
+      }
+
+      const { error: rpcScannedError } = (await adminClient.rpc("sync_event_scanned_counts")) as { error?: { code?: string } | null };
+      if (rpcScannedError) {
+        console.error("Sync scanned RPC error:", rpcScannedError);
+        return NextResponse.json(
+          { error: "Failed to sync scanned" },
           { status: 500 },
         );
       }

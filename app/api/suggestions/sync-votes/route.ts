@@ -17,16 +17,6 @@ export async function POST() {
 
     if (error) {
       console.error("Sync votes RPC error:", error);
-      // Check if function doesn't exist
-      if (error.code === "42883") {
-        return NextResponse.json(
-          {
-            error:
-              "Sync votes RPC function is not installed. Please run sync_votes_function.sql in your database.",
-          },
-          { status: 500 },
-        );
-      }
       return NextResponse.json(
         { error: "Failed to sync votes" },
         { status: 500 },
