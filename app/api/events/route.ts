@@ -11,6 +11,8 @@ import {
   isValidImageExtension,
   isValidImageSize,
   isValidDateString,
+  isValidLatitude,
+  isValidLongitude,
 } from "@/app/lib/validation";
 
 export async function POST(req: Request) {
@@ -35,6 +37,8 @@ export async function POST(req: Request) {
     const doors_open = formData.get("doors_open") as string;
     const route = formData.get("route") as string;
     const banner = formData.get("banner") === "true";
+    const latitude = formData.get("latitude") as string;
+    const longitude = formData.get("longitude") as string;
     const imageFile = formData.get("image") as File | null;
 
     // Validate ID if provided
@@ -88,6 +92,22 @@ export async function POST(req: Request) {
     if (doors_open && !isValidDateString(doors_open)) {
       return NextResponse.json(
         { error: "Invalid doors open date format" },
+        { status: 400 },
+      );
+    }
+
+    // Validate latitude (required)
+    if (!latitude || !isValidLatitude(latitude)) {
+      return NextResponse.json(
+        { error: "Valid latitude is required (-90 to 90)" },
+        { status: 400 },
+      );
+    }
+
+    // Validate longitude (required)
+    if (!longitude || !isValidLongitude(longitude)) {
+      return NextResponse.json(
+        { error: "Valid longitude is required (-180 to 180)" },
         { status: 400 },
       );
     }
@@ -162,6 +182,8 @@ export async function POST(req: Request) {
         : null,
       route: route || null,
       banner: banner,
+      latitude: parseFloat(latitude),
+      longitude: parseFloat(longitude),
     };
 
     if (imgName) {

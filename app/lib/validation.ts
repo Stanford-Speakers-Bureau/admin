@@ -80,6 +80,24 @@ export function isValidDateString(dateString: string | null): boolean {
 }
 
 /**
+ * Validate latitude coordinate (-90 to 90)
+ */
+export function isValidLatitude(lat: string | null): boolean {
+  if (!lat) return true; // null is allowed
+  const num = parseFloat(lat);
+  return !isNaN(num) && num >= -90 && num <= 90;
+}
+
+/**
+ * Validate longitude coordinate (-180 to 180)
+ */
+export function isValidLongitude(lng: string | null): boolean {
+  if (!lng) return true; // null is allowed
+  const num = parseFloat(lng);
+  return !isNaN(num) && num >= -180 && num <= 180;
+}
+
+/**
  * Sanitize string input (remove control characters, limit length)
  */
 export function sanitizeString(

@@ -61,6 +61,8 @@ export type Event = {
   start_time_date: string | null;
   doors_open: string | null;
   route: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
   image_url?: string | null;
   live?: boolean | null;
 };
@@ -79,6 +81,8 @@ type FormData = {
   doors_open: string;
   route: string;
   banner: boolean;
+  latitude: string;
+  longitude: string;
 };
 
 const emptyForm: FormData = {
@@ -95,6 +99,8 @@ const emptyForm: FormData = {
   doors_open: "",
   route: "",
   banner: false,
+  latitude: "",
+  longitude: "",
 };
 
 type AdminEventsClientProps = {
@@ -194,6 +200,8 @@ export default function AdminEventsClient({
       doors_open: formatDateTimeForInput(event.doors_open),
       route: event.route || "",
       banner: event.banner || false,
+      latitude: event.latitude?.toString() || "",
+      longitude: event.longitude?.toString() || "",
     });
     setImagePreview(event.image_url || null);
     setImageFile(null);
@@ -249,6 +257,8 @@ export default function AdminEventsClient({
       submitData.append("doors_open", formData.doors_open);
       submitData.append("route", formData.route);
       submitData.append("banner", formData.banner.toString());
+      submitData.append("latitude", formData.latitude);
+      submitData.append("longitude", formData.longitude);
 
       if (imageFile) {
         submitData.append("image", imageFile);
@@ -610,6 +620,42 @@ export default function AdminEventsClient({
                   }
                   placeholder="https://maps.google.com/..."
                   className="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50"
+                />
+              </div>
+
+              {/* Latitude */}
+              <div>
+                <label className="block text-sm font-medium text-zinc-300 mb-2">
+                  Latitude <span className="text-rose-400">*</span>
+                </label>
+                <input
+                  type="number"
+                  step="any"
+                  value={formData.latitude}
+                  onChange={(e) =>
+                    setFormData({ ...formData, latitude: e.target.value })
+                  }
+                  placeholder="e.g., 37.7749"
+                  className="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50"
+                  required
+                />
+              </div>
+
+              {/* Longitude */}
+              <div>
+                <label className="block text-sm font-medium text-zinc-300 mb-2">
+                  Longitude <span className="text-rose-400">*</span>
+                </label>
+                <input
+                  type="number"
+                  step="any"
+                  value={formData.longitude}
+                  onChange={(e) =>
+                    setFormData({ ...formData, longitude: e.target.value })
+                  }
+                  placeholder="e.g., -122.4194"
+                  className="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50"
+                  required
                 />
               </div>
 
