@@ -1,17 +1,17 @@
-import {SendEmailCommand, SESv2Client} from "@aws-sdk/client-sesv2";
+import { SendEmailCommand, SESv2Client } from "@aws-sdk/client-sesv2";
 import QRCode from "qrcode";
 import type { QRCodeToBufferOptions } from "qrcode";
-import {PACIFIC_TIMEZONE} from "./constants";
-import {generateGoogleCalendarUrl, generateReferralCode} from "./utils";
+import {PACIFIC_TIMEZONE, REFERRAL_MESSAGE} from "./constants";
+import { generateGoogleCalendarUrl, generateReferralCode } from "./utils";
 
 // Initialize SES client
 const sesClient = new SESv2Client({
   region: process.env.AWS_REGION || "us-east-1",
   credentials: process.env.AWS_ACCESS_KEY_ID
     ? {
-      accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
-    }
+        accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
+      }
     : undefined,
 });
 
@@ -167,7 +167,9 @@ function generateICalContent(data: TicketEmailData): string {
 /**
  * Generate QR code PNG as a Buffer for attaching to an email
  */
-async function generateQRCodePngBuffer(ticketId: string): Promise<Buffer | null> {
+async function generateQRCodePngBuffer(
+  ticketId: string,
+): Promise<Buffer | null> {
   try {
     const options: QRCodeToBufferOptions = {
       errorCorrectionLevel: "H",
@@ -207,15 +209,15 @@ async function generateTicketEmailHTML(
 
   const formattedDate = eventStartTime
     ? new Intl.DateTimeFormat("en-US", {
-      weekday: "long",
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
-      hour12: true,
-      timeZone: PACIFIC_TIMEZONE,
-    }).format(new Date(eventStartTime))
+        weekday: "long",
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+        hour12: true,
+        timeZone: PACIFIC_TIMEZONE,
+      }).format(new Date(eventStartTime))
     : "TBA";
 
   const baseUrl =
@@ -342,7 +344,7 @@ async function generateTicketEmailHTML(
           <img src="${logoUrl}" alt="Stanford Speakers Bureau Logo" class="logo" style="width: 60px; height: 60px; margin: 0 auto; display: block;" />
         </div>
         <h2 class="header-subtitle" style="margin: 0 0 12px 0; color: #ffffff; font-size: 24px; font-weight: 600; letter-spacing: 0.5px;">Stanford Speakers Bureau</h2>
-        <h1 class="header-title" style="margin: 0; color: #ffffff; font-size: 28px; font-weight: 700;">Ticket Confirmed!</h1>
+        <h1 class="header-title" style="margin: 0; color: #ffffff; font-size: 28px; font-weight: 700;">Your seat is reserved!</h1>
       </td>
     </tr>
     
@@ -351,7 +353,7 @@ async function generateTicketEmailHTML(
       <td align="center" class="email-container" style="padding: 40px 20px; max-width: 900px; width: 100%;">
         <div class="email-content" style="padding: 0; max-width: 600px; margin: 0 auto;">
           <p style="margin: 0 0 24px 0; color: #f4f4f5; font-size: 16px; line-height: 1.6;">
-            Thank you for your ticket purchase. Your ticket has been confirmed!
+            Your ticket is enclosed below. We can't wait to see you!
           </p>
           
           <!-- Ticket Details Card -->
@@ -368,8 +370,8 @@ async function generateTicketEmailHTML(
                 <td class="details-value" style="padding: 8px 0; color: #f4f4f5; font-size: 14px; font-weight: 500;">${formattedDate}</td>
               </tr>
               ${
-    eventVenue
-      ? `
+                eventVenue
+                  ? `
               <tr>
                 <td class="details-label" style="padding: 8px 0; color: #a1a1aa; font-size: 14px; vertical-align: top;">Location:</td>
                 <td class="details-value" style="padding: 8px 0; color: #f4f4f5; font-size: 14px; font-weight: 500;">
@@ -377,8 +379,8 @@ async function generateTicketEmailHTML(
                 </td>
               </tr>
               `
-      : ""
-  }
+                  : ""
+              }
               <tr>
                 <td class="details-label" style="padding: 8px 0; color: #a1a1aa; font-size: 14px; vertical-align: top;">Ticket Type:</td>
                 <td class="details-value" style="padding: 8px 0;">
@@ -392,93 +394,110 @@ async function generateTicketEmailHTML(
                 <td class="details-value" style="padding: 8px 0; color: #f4f4f5; font-size: 14px; font-family: monospace; word-break: break-all;">${ticketId}</td>
               </tr>
               ${
-    referralCode && !(ticketType.toUpperCase() == "VIP")
-      ? `
+                referralCode && !(ticketType.toUpperCase() == "VIP")
+                  ? `
               <tr>
                 <td class="details-label" style="padding: 8px 0; color: #a1a1aa; font-size: 14px; vertical-align: top;">Your Referral Code:</td>
                 <td class="details-value" style="padding: 8px 0; color: #f4f4f5; font-size: 14px; font-weight: 500; font-family: monospace;">${referralCode}</td>
               </tr>
-              ${
-        referralUrl && !(ticketType.toUpperCase() == "VIP")
-          ? `
               <tr>
                 <td class="details-label" style="padding: 8px 0; color: #a1a1aa; font-size: 14px; vertical-align: top;">Your Referral Link:</td>
                 <td class="details-value" style="padding: 8px 0;">
-                  <a href="${referralUrl}" target="_blank" rel="noopener noreferrer" style="color: #A80D0C; text-decoration: none; border-bottom: 1px solid #A80D0C;">${referralUrl}</a>
+                  <a href="${referralUrl}" target="_blank" rel="noopener noreferrer" style="font-size: 14px; color: #A80D0C; text-decoration: none; border-bottom: 1px solid #A80D0C;">${referralUrl}</a>
                 </td>
               </tr>
               `
-          : ""
-      }
-              `
-      : ""
-  }
+                  : ""
+              }
             </table>
             ${
-    eventUrl
-      ? `
-            <!-- View Event Button -->
-            <table role="presentation" style="width: 100%; border-collapse: collapse; margin-top: 20px;">
-              <tr>
-                <td align="center" class="button-wrapper" style="padding: 0;">
-                  <a href="${eventUrl}" class="button" style="display: inline-block; padding: 14px 28px; background-color: #A80D0C; color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 16px;">View Event Details</a>
-                </td>
-              </tr>
-            </table>
+              referralCode && !(ticketType.toUpperCase() == "VIP")
+                ? `
+            <div style="margin-top: 20px; padding: 16px 0; text-align: center; border-top: 1px solid #3f3f46;">
+              <p style="margin: 0; color: #ffffff; font-size: 15px; font-weight: 700; line-height: 1.6;">
+                ${REFERRAL_MESSAGE}
+              </p>
+            </div>
             `
-      : ""
-  }
+                : ""
+            }
+              
+              ${
+                eventUrl
+                  ? `
+              <!-- View Event Button -->
+              <table role="presentation" style="width: 100%; border-collapse: collapse; margin-top: 20px;">
+                <tr>
+                  <td align="center" class="button-wrapper" style="padding: 0;">
+                    <a href="${eventUrl}" class="button" style="display: inline-block; padding: 14px 28px; background-color: #A80D0C; color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 16px;">View Event Details</a>
+                  </td>
+                </tr>
+              </table>
+              `
+                  : ""
+              }
           </div>
           
           ${
-    qrImageSrc
-      ? `
+            qrImageSrc
+              ? `
           <!-- QR Code Section -->
           <div class="qr-section" style="background-color: #18181b; padding: 24px; margin-bottom: 24px; text-align: center;">
             <h2 class="qr-title" style="margin: 0 0 16px 0; color: #ffffff; font-size: 20px; font-weight: 600;">Your Ticket QR Code</h2>
-            <div class="qr-code-wrapper" style="display: inline-block; background-color: #ffffff; padding: ${isVIP ? "20px" : "16px"}; border-radius: 8px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3); ${isVIP ? "border: 4px solid #A80D0C;" : ""}">
+            <div class="qr-code-wrapper" style="display: inline-block; background-color: #ffffff; padding: 16px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3); ${isVIP ? "border: 4px solid #A80D0C;" : ""}">
               <img src="${qrImageSrc}" alt="Ticket QR Code" class="qr-code-img" style="display: block; width: 350px; max-width: 100%; height: auto;" />
             </div>
             ${
-        isVIP
-          ? `
+              isVIP
+                ? `
             <div style="margin-top: 12px;">
               <span style="display: inline-block; padding: 6px 16px; background-color: #A80D0C; color: #ffffff; border-radius: 20px; font-size: 12px; font-weight: 700; text-transform: uppercase;">
                 VIP
               </span>
             </div>
             `
-          : ""
-      }
+                : ""
+            }
             <p style="margin: 16px 0 0 0; color: #a1a1aa; font-size: 14px; line-height: 1.6;">
               Show this QR code at the event entrance for quick check-in.
             </p>
           </div>
           `
-      : ""
-  }
+              : ""
+          }
 
           <p style="margin: 0 0 24px 0; color: #a1a1aa; font-size: 14px; line-height: 1.6;">
             Please bring a valid ID and this confirmation email to the event. We look forward to seeing you there!
           </p>
           
           ${
-    googleCalendarUrl
-      ? `
-          <!-- Add to Google Calendar Button -->
+            googleCalendarUrl
+              ? `
+          <!-- Calendar Buttons -->
           <table role="presentation" style="width: 100%; border-collapse: collapse; margin-bottom: 24px;">
             <tr>
-              <td align="center" class="button-wrapper" style="padding: 0;">
-                <a href="${googleCalendarUrl}" target="_blank" rel="noopener noreferrer" class="button" style="display: inline-flex; align-items: center; gap: 10px; padding: 14px 28px; background-color: #175dcd; color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 16px;">
-                  <img src="${baseUrl}/g.png" alt="Google" style="width: 20px; height: 20px; display: inline-block; vertical-align: middle; margin-right: 8px;" />
-                  Add to Google Calendar
-                </a>
+              <td align="center" class="calendar-buttons" style="padding: 0;">
+                <table role="presentation" style="width: 100%; border-collapse: collapse;">
+                  <tr>
+                    <td align="center" style="padding: 0 5px;">
+                      <a href="${googleCalendarUrl}" target="_blank" rel="noopener noreferrer" class="button" style="display: inline-flex; align-items: center; gap: 10px; padding: 14px 28px; background-color: #175dcd; color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 16px;">
+                        <img src="${baseUrl}/g.png" alt="Google" style="width: 20px; height: 20px; display: inline-block; vertical-align: middle; margin-right: 8px;" />
+                        Add to Google Calendar
+                      </a>
+                    </td>
+                    <td align="center" style="padding: 0 5px;">
+                      <a href="${baseUrl}/api/tickets/apple-wallet?event_id=${data.eventRoute}" target="_blank" rel="noopener noreferrer" class="button" style="display: inline-block;">
+                        <img src="${baseUrl}/images/add-to-apple-wallet.svg" alt="Add to Apple Wallet" style="height: 48px; width: auto;" />
+                      </a>
+                    </td>
+                  </tr>
+                </table>
               </td>
             </tr>
           </table>
           `
-      : ""
-  }
+              : ""
+          }
         </div>
       </td>
     </tr>
@@ -508,15 +527,15 @@ function generateTicketEmailText(data: TicketEmailData): string {
 
   const formattedDate = eventStartTime
     ? new Intl.DateTimeFormat("en-US", {
-      weekday: "long",
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
-      hour12: true,
-      timeZone: PACIFIC_TIMEZONE,
-    }).format(new Date(eventStartTime))
+        weekday: "long",
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+        hour12: true,
+        timeZone: PACIFIC_TIMEZONE,
+      }).format(new Date(eventStartTime))
     : "TBA";
 
   const eventUrl = eventRoute
@@ -540,9 +559,11 @@ Event Details:
 - Date & Time: ${formattedDate}
 - Ticket Type: ${ticketType || "STANDARD"}
 - Ticket ID: ${ticketId}
+${eventUrl ? `- Event URL: ${eventUrl}` : ""}
+
 ${referralCode && !(ticketType.toUpperCase() == "VIP") ? `- Your Referral Code: ${referralCode}` : ""}
 ${referralUrl && !(ticketType.toUpperCase() == "VIP") ? `- Your Referral Link: ${referralUrl}` : ""}
-${eventUrl ? `- Event URL: ${eventUrl}` : ""}
+${REFERRAL_MESSAGE}
 
 Please bring a valid ID and this confirmation email to the event. We look forward to seeing you there!
 
@@ -564,7 +585,7 @@ export async function sendTicketEmail(data: TicketEmailData): Promise<void> {
     return;
   }
 
-  const subject = `Your Ticket Confirmation - ${data.eventName || "Event"}`;
+  const subject = data.eventName ? `Your Ticket for ${data.eventName} is enclosed!` : "Your Ticket is enclosed!";
   const textContent = generateTicketEmailText(data);
 
   // Generate QR and prepare cid
@@ -599,7 +620,7 @@ export async function sendTicketEmail(data: TicketEmailData): Promise<void> {
     `Content-Transfer-Encoding: 7bit`,
     "",
     textContent,
-    ""
+    "",
   );
 
   if (qrBuffer) {
@@ -624,7 +645,7 @@ export async function sendTicketEmail(data: TicketEmailData): Promise<void> {
       qrBase64,
       "",
       `--${relBoundary}--`,
-      ""
+      "",
     );
   } else {
     // No QR image; include HTML directly
@@ -634,7 +655,7 @@ export async function sendTicketEmail(data: TicketEmailData): Promise<void> {
       `Content-Transfer-Encoding: 7bit`,
       "",
       htmlContent,
-      ""
+      "",
     );
   }
 
@@ -651,7 +672,7 @@ export async function sendTicketEmail(data: TicketEmailData): Promise<void> {
       `Content-Disposition: attachment; filename="stanford-speakers-bureau-event.ics"`,
       "",
       icsBase64,
-      ""
+      "",
     );
   }
 
