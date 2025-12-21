@@ -486,7 +486,7 @@ async function generateTicketEmailHTML(
                       </a>
                     </td>
                     <td align="center" style="padding: 0 5px;">
-                      <a href="${baseUrl}/api/tickets/apple-wallet?event_id=${data.eventRoute}" target="_blank" rel="noopener noreferrer" class="button" style="display: inline-block;">
+                      <a href="${baseUrl}/api/tickets/apple-wallet?ticket_id=${ticketId}" target="_blank" rel="noopener noreferrer" class="button" style="display: inline-block;">
                         <img src="${baseUrl}/images/add-to-apple-wallet.svg" alt="Add to Apple Wallet" style="height: 48px; width: auto;" />
                       </a>
                     </td>
