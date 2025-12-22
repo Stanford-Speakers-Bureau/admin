@@ -98,6 +98,14 @@ export function isValidLongitude(lng: string | null): boolean {
 }
 
 /**
+ * Validate address (reasonable length limit)
+ */
+export function isValidAddress(address: string | null): boolean {
+  if (!address) return true; // null is allowed
+  return address.length <= 500; // Reasonable max length for addresses
+}
+
+/**
  * Sanitize string input (remove control characters, limit length)
  */
 export function sanitizeString(

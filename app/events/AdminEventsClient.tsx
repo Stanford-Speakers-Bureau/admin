@@ -63,6 +63,7 @@ export type Event = {
   route: string | null;
   latitude?: number | null;
   longitude?: number | null;
+  address?: string | null;
   image_url?: string | null;
   live?: boolean | null;
 };
@@ -83,6 +84,7 @@ type FormData = {
   banner: boolean;
   latitude: string;
   longitude: string;
+  address: string;
 };
 
 const emptyForm: FormData = {
@@ -101,6 +103,7 @@ const emptyForm: FormData = {
   banner: false,
   latitude: "",
   longitude: "",
+  address: "",
 };
 
 type AdminEventsClientProps = {
@@ -202,6 +205,7 @@ export default function AdminEventsClient({
       banner: event.banner || false,
       latitude: event.latitude?.toString() || "",
       longitude: event.longitude?.toString() || "",
+      address: event.address || "",
     });
     setImagePreview(event.image_url || null);
     setImageFile(null);
@@ -259,6 +263,7 @@ export default function AdminEventsClient({
       submitData.append("banner", formData.banner.toString());
       submitData.append("latitude", formData.latitude);
       submitData.append("longitude", formData.longitude);
+      submitData.append("address", formData.address);
 
       if (imageFile) {
         submitData.append("image", imageFile);
@@ -619,6 +624,22 @@ export default function AdminEventsClient({
                     setFormData({ ...formData, venue_link: e.target.value })
                   }
                   placeholder="https://maps.google.com/..."
+                  className="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50"
+                />
+              </div>
+
+              {/* Address */}
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-zinc-300 mb-2">
+                  Address
+                </label>
+                <input
+                  type="text"
+                  value={formData.address}
+                  onChange={(e) =>
+                    setFormData({ ...formData, address: e.target.value })
+                  }
+                  placeholder="123 Main St, City, State 12345"
                   className="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50"
                 />
               </div>
@@ -1143,6 +1164,14 @@ export default function AdminEventsClient({
                     <span className="text-zinc-400">Venue:</span>
                     <span className="text-white ml-2 font-medium">
                       {viewingEvent.venue}
+                    </span>
+                  </div>
+                )}
+                {viewingEvent.address && (
+                  <div className="col-span-2">
+                    <span className="text-zinc-400">Address:</span>
+                    <span className="text-white ml-2 font-medium">
+                      {viewingEvent.address}
                     </span>
                   </div>
                 )}

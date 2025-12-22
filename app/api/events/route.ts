@@ -13,6 +13,7 @@ import {
   isValidDateString,
   isValidLatitude,
   isValidLongitude,
+  isValidAddress,
 } from "@/app/lib/validation";
 
 export async function POST(req: Request) {
@@ -39,6 +40,7 @@ export async function POST(req: Request) {
     const banner = formData.get("banner") === "true";
     const latitude = formData.get("latitude") as string;
     const longitude = formData.get("longitude") as string;
+    const address = formData.get("address") as string;
     const imageFile = formData.get("image") as File | null;
 
     // Validate ID if provided
@@ -108,6 +110,14 @@ export async function POST(req: Request) {
     if (!longitude || !isValidLongitude(longitude)) {
       return NextResponse.json(
         { error: "Valid longitude is required (-180 to 180)" },
+        { status: 400 },
+      );
+    }
+
+    // Validate address
+    if (address && !isValidAddress(address)) {
+      return NextResponse.json(
+        { error: "Address must be 500 characters or less" },
         { status: 400 },
       );
     }
@@ -184,6 +194,7 @@ export async function POST(req: Request) {
       banner: banner,
       latitude: parseFloat(latitude),
       longitude: parseFloat(longitude),
+      address: address || null,
     };
 
     if (imgName) {
