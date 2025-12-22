@@ -1,5 +1,4 @@
-export const ALLOWED_REDIRECTS = [
-];
+export const ALLOWED_REDIRECTS = [];
 
 export function isValidRedirect(path: string): boolean {
   // Must be a relative path starting with /

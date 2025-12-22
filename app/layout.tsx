@@ -2,8 +2,8 @@ import { redirect } from "next/navigation";
 import AdminLayoutClient from "./AdminLayoutClient";
 import { verifyAdminRequest } from "@/app/lib/supabase";
 import "./globals.css";
-import {Hedvig_Letters_Serif, Inter} from "next/font/google";
-import {Metadata} from "next";
+import { Hedvig_Letters_Serif, Inter } from "next/font/google";
+import { Metadata } from "next";
 
 const baseURL = process.env.BASE_URL || "http://localhost:3000";
 
@@ -19,7 +19,6 @@ export const metadata: Metadata = {
     url: `${baseURL}`,
   },
 };
-
 
 const inter = Inter({
   variable: "--font-inter",
@@ -85,12 +84,16 @@ export default async function AdminLayout({ children }: AdminLayoutProps) {
     }
 
     // User is authenticated but not an admin - redirect to main site
-    redirect(process.env.NEXT_PUBLIC_BASE_URL || `https://stanfordspeakersbureau.com`);
+    redirect(
+      process.env.NEXT_PUBLIC_BASE_URL || `https://stanfordspeakersbureau.com`,
+    );
   }
 
   return (
     <html>
-      <body className={`${inter.variable} ${hedvigLettersSerif.variable} antialiased`}>
+      <body
+        className={`${inter.variable} ${hedvigLettersSerif.variable} antialiased`}
+      >
         <AdminLayoutClient userEmail={auth.email} navItems={navItems}>
           {children}
         </AdminLayoutClient>

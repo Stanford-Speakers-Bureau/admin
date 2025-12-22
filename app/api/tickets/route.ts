@@ -100,7 +100,10 @@ export async function DELETE(req: Request) {
 
     // Call the sync_votes RPC function
     // Delete the ticket
-    const { error: deleteError } = await adminClient.from("tickets").delete().eq("id", id);
+    const { error: deleteError } = await adminClient
+      .from("tickets")
+      .delete()
+      .eq("id", id);
 
     if (deleteError) {
       console.error("Ticket delete error:", deleteError);
@@ -111,7 +114,9 @@ export async function DELETE(req: Request) {
     }
 
     // Call the sync_referral_counts RPC function
-    const { error: rpcReferralError } = (await adminClient.rpc("sync_referral_counts")) as { error?: { code?: string } | null };
+    const { error: rpcReferralError } = (await adminClient.rpc(
+      "sync_referral_counts",
+    )) as { error?: { code?: string } | null };
 
     if (rpcReferralError) {
       console.error("Sync referral RPC error:", rpcReferralError);
@@ -122,8 +127,9 @@ export async function DELETE(req: Request) {
       );
     }
 
-
-    const { error: rpcScannedError } = (await adminClient.rpc("sync_event_scanned_counts")) as { error?: { code?: string } | null };
+    const { error: rpcScannedError } = (await adminClient.rpc(
+      "sync_event_scanned_counts",
+    )) as { error?: { code?: string } | null };
     if (rpcScannedError) {
       console.error("Sync scanned RPC error:", rpcScannedError);
       return NextResponse.json(
@@ -131,7 +137,6 @@ export async function DELETE(req: Request) {
         { status: 500 },
       );
     }
-
 
     return NextResponse.json({ success: true });
   } catch (error) {
@@ -202,7 +207,9 @@ export async function PATCH(req: Request) {
         );
       }
 
-      const { error: rpcScannedError } = (await adminClient.rpc("sync_event_scanned_counts")) as { error?: { code?: string } | null };
+      const { error: rpcScannedError } = (await adminClient.rpc(
+        "sync_event_scanned_counts",
+      )) as { error?: { code?: string } | null };
       if (rpcScannedError) {
         console.error("Sync scanned RPC error:", rpcScannedError);
         return NextResponse.json(
@@ -307,7 +314,9 @@ export async function PATCH(req: Request) {
         );
       }
 
-      const { error: rpcScannedError } = (await adminClient.rpc("sync_event_scanned_counts")) as { error?: { code?: string } | null };
+      const { error: rpcScannedError } = (await adminClient.rpc(
+        "sync_event_scanned_counts",
+      )) as { error?: { code?: string } | null };
       if (rpcScannedError) {
         console.error("Sync scanned RPC error:", rpcScannedError);
         return NextResponse.json(
