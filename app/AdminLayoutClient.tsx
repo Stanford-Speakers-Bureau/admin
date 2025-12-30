@@ -13,12 +13,14 @@ type AdminLayoutClientProps = {
   children: React.ReactNode;
   userEmail: string | null;
   navItems: NavItem[];
+  emailDisabled: boolean;
 };
 
 export default function AdminLayoutClient({
   children,
   userEmail,
   navItems,
+  emailDisabled,
 }: AdminLayoutClientProps) {
   const pathname = usePathname();
 
@@ -142,8 +144,30 @@ export default function AdminLayoutClient({
         </div>
       </nav>
 
+      {/* Global Email Disabled Banner */}
+      {emailDisabled && (
+        <div className="fixed top-16 left-0 right-0 z-40 bg-amber-500/10 border-b border-amber-500/30 backdrop-blur-sm">
+          <div className="max-w-7xl mx-auto px-6 py-3 flex items-center gap-3">
+            <svg
+              className="w-5 h-5 text-amber-400 shrink-0"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.732-.833-2.5 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"
+              />
+            </svg>
+            <p className="text-amber-400 text-sm font-medium">EMAIL SENDING DISABLED</p>
+          </div>
+        </div>
+      )}
+
       {/* Main Content */}
-      <main className="pt-16 pb-20 md:pb-8 min-h-screen">{children}</main>
+      <main className={`pb-20 md:pb-8 min-h-screen ${emailDisabled ? 'pt-28' : 'pt-16'}`}>{children}</main>
     </div>
   );
 }

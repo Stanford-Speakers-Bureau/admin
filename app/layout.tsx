@@ -89,12 +89,14 @@ export default async function AdminLayout({ children }: AdminLayoutProps) {
     );
   }
 
+  const emailDisabled = process.env.DISABLE_EMAIL === "true";
+
   return (
     <html>
       <body
         className={`${inter.variable} ${hedvigLettersSerif.variable} antialiased`}
       >
-        <AdminLayoutClient userEmail={auth.email} navItems={navItems}>
+        <AdminLayoutClient userEmail={auth.email} navItems={navItems} emailDisabled={emailDisabled}>
           {children}
         </AdminLayoutClient>
       </body>
