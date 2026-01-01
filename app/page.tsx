@@ -126,9 +126,9 @@ export default async function AdminDashboard() {
   ];
 
   return (
-    <div className="max-w-7xl mx-auto px-6 py-8">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-white font-serif mb-2">
+        <h1 className="text-2xl sm:text-3xl font-bold text-white font-serif mb-2">
           Dashboard
         </h1>
         <p className="text-zinc-400">

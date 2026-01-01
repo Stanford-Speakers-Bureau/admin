@@ -157,9 +157,9 @@ export default function AdminUsersClient({
   }
 
   return (
-    <div className="max-w-5xl mx-auto px-6 py-8">
+    <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8">
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-white font-serif mb-2">
+        <h1 className="text-2xl sm:text-3xl font-bold text-white font-serif mb-2">
           User Management
         </h1>
         <p className="text-zinc-400">
@@ -168,7 +168,7 @@ export default function AdminUsersClient({
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-2 mb-6">
+      <div className="flex flex-wrap gap-2 mb-6">
         <button
           onClick={() => setActiveTab("admins")}
           className={`flex items-center gap-2 px-4 py-2 rounded text-sm font-medium transition-all ${
@@ -418,7 +418,7 @@ export default function AdminUsersClient({
             admins.map((admin) => (
               <div
                 key={admin.id}
-                className="bg-zinc-900 rounded-xl border border-zinc-800 p-4 flex items-center justify-between hover:border-zinc-700 transition-colors"
+                className="bg-zinc-900 rounded-xl border border-zinc-800 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:border-zinc-700 transition-colors"
               >
                 <div className="flex items-center gap-4">
                   <div className="w-10 h-10 bg-purple-500/20 rounded-full flex items-center justify-center">
@@ -474,7 +474,7 @@ export default function AdminUsersClient({
             scanners.map((scanner) => (
               <div
                 key={scanner.id}
-                className="bg-zinc-900 rounded-xl border border-zinc-800 p-4 flex items-center justify-between hover:border-zinc-700 transition-colors"
+                className="bg-zinc-900 rounded-xl border border-zinc-800 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:border-zinc-700 transition-colors"
               >
                 <div className="flex items-center gap-4">
                   <div className="w-10 h-10 bg-blue-500/20 rounded-full flex items-center justify-center">
@@ -529,7 +529,7 @@ export default function AdminUsersClient({
           bans.map((ban) => (
             <div
               key={ban.id}
-              className="bg-zinc-900 rounded-xl border border-zinc-800 p-4 flex items-center justify-between hover:border-zinc-700 transition-colors"
+              className="bg-zinc-900 rounded-xl border border-zinc-800 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:border-zinc-700 transition-colors"
             >
               <div className="flex items-center gap-4">
                 <div className="w-10 h-10 bg-rose-500/20 rounded-full flex items-center justify-center">

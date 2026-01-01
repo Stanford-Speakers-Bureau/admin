@@ -94,9 +94,9 @@ export default function ReferralLeaderboardClient({
   if (isGrouped && Array.isArray(leaderboard) && leaderboard.length > 0) {
     const eventGroups = leaderboard as EventGroup[];
     return (
-      <div className="max-w-7xl mx-auto px-6 py-8">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-white font-serif mb-2">
+          <h1 className="text-2xl sm:text-3xl font-bold text-white font-serif mb-2">
             Referral Leaderboard
           </h1>
           <p className="text-zinc-400">Top referrers across all events</p>
@@ -189,9 +189,9 @@ export default function ReferralLeaderboardClient({
   const entries = leaderboard as ReferralEntry[];
 
   return (
-    <div className="max-w-7xl mx-auto px-6 py-8">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-white font-serif mb-2">
+        <h1 className="text-2xl sm:text-3xl font-bold text-white font-serif mb-2">
           Referral Leaderboard
         </h1>
         <p className="text-zinc-400">Top referrers for this event</p>

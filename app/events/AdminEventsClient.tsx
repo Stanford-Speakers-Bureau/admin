@@ -379,10 +379,10 @@ export default function AdminEventsClient({
   }
 
   return (
-    <div className="max-w-6xl mx-auto px-6 py-8">
-      <div className="flex items-center justify-between mb-8">
+    <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
         <div>
-          <h1 className="text-3xl font-bold text-white font-serif mb-2">
+          <h1 className="text-2xl sm:text-3xl font-bold text-white font-serif mb-2">
             Event Management
           </h1>
           <p className="text-zinc-400">Create and manage speaker events.</p>
@@ -1150,7 +1150,7 @@ export default function AdminEventsClient({
 
             <div className="p-6 space-y-6">
               {/* Event Details */}
-              <div className="grid grid-cols-2 gap-4 text-sm">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
                 <div>
                   <span className="text-zinc-400">Capacity:</span>
                   <span className="text-white ml-2 font-medium">

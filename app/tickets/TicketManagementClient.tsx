@@ -361,13 +361,13 @@ export default function TicketManagementClient({
   });
 
   return (
-    <div className="max-w-7xl mx-auto px-6 py-8">
-      <div className="flex items-center justify-between mb-8">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
         <div>
-          <h1 className="text-3xl font-bold text-white font-serif mb-2">
+          <h1 className="text-2xl sm:text-3xl font-bold text-white font-serif mb-2">
             Ticket Management
           </h1>
-          <div className="flex items-center gap-6 mt-2">
+          <div className="flex flex-wrap items-center gap-3 sm:gap-6 mt-2">
             <div className="flex items-center gap-2">
               <span className="text-zinc-400">Total Tickets Sold:</span>
               <span className="text-white font-bold text-lg">
@@ -658,22 +658,22 @@ export default function TicketManagementClient({
             <table className="w-full">
               <thead className="bg-zinc-800/50 border-b border-zinc-800">
                 <tr>
-                  <th className="px-6 py-4 text-left text-xs font-medium text-zinc-400 uppercase tracking-wider">
+                  <th className="px-3 sm:px-6 py-3 sm:py-4 text-left text-xs font-medium text-zinc-400 uppercase tracking-wider">
                     Event
                   </th>
-                  <th className="px-6 py-4 text-left text-xs font-medium text-zinc-400 uppercase tracking-wider">
+                  <th className="px-3 sm:px-6 py-3 sm:py-4 text-left text-xs font-medium text-zinc-400 uppercase tracking-wider">
                     Email
                   </th>
-                  <th className="px-6 py-4 text-left text-xs font-medium text-zinc-400 uppercase tracking-wider">
+                  <th className="px-3 sm:px-6 py-3 sm:py-4 text-left text-xs font-medium text-zinc-400 uppercase tracking-wider">
                     Type
                   </th>
-                  <th className="px-6 py-4 text-left text-xs font-medium text-zinc-400 uppercase tracking-wider">
+                  <th className="hidden md:table-cell px-3 sm:px-6 py-3 sm:py-4 text-left text-xs font-medium text-zinc-400 uppercase tracking-wider">
                     Created
                   </th>
-                  <th className="px-6 py-4 text-left text-xs font-medium text-zinc-400 uppercase tracking-wider">
+                  <th className="px-3 sm:px-6 py-3 sm:py-4 text-left text-xs font-medium text-zinc-400 uppercase tracking-wider">
                     Status
                   </th>
-                  <th className="px-6 py-4 text-left text-xs font-medium text-zinc-400 uppercase tracking-wider">
+                  <th className="px-3 sm:px-6 py-3 sm:py-4 text-left text-xs font-medium text-zinc-400 uppercase tracking-wider">
                     Actions
                   </th>
                 </tr>
@@ -684,17 +684,17 @@ export default function TicketManagementClient({
                     key={ticket.id}
                     className="hover:bg-zinc-800/30 transition-colors"
                   >
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm font-medium text-white">
+                    <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap">
+                      <div className="text-sm font-medium text-white truncate max-w-[120px] sm:max-w-none">
                         {ticket.events?.name || "Unknown Event"}
                       </div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-zinc-300">
+                    <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap">
+                      <div className="text-sm text-zinc-300 truncate max-w-[120px] sm:max-w-none">
                         {ticket.email}
                       </div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
+                    <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap">
                       <select
                         value={ticket.type || "STANDARD"}
                         onChange={(e) => {
@@ -713,12 +713,12 @@ export default function TicketManagementClient({
                         <option value="STANDARD">STANDARD</option>
                       </select>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
+                    <td className="hidden md:table-cell px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap">
                       <div className="text-sm text-zinc-400">
                         {formatDate(ticket.created_at)}
                       </div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
+                    <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap">
                       <select
                         value={ticket.scanned ? "scanned" : "not-scanned"}
                         onChange={(e) => {
@@ -738,7 +738,7 @@ export default function TicketManagementClient({
                         <option value="not-scanned">Not Scanned</option>
                       </select>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
+                    <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap">
                       <div className="flex items-center gap-2">
                         <button
                           onClick={() => handleResendEmail(ticket.id)}

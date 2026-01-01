@@ -314,11 +314,11 @@ export default function AdminSuggestClient({
     });
 
   return (
-    <div className="max-w-5xl mx-auto px-6 py-8">
+    <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8">
       <div className="mb-8">
-        <div className="flex items-start justify-between gap-4">
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-bold text-white font-serif mb-2">
+            <h1 className="text-2xl sm:text-3xl font-bold text-white font-serif mb-2">
               Speaker Suggestions
             </h1>
             <p className="text-zinc-400">

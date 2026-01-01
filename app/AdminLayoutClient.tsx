@@ -30,8 +30,8 @@ export default function AdminLayoutClient({
     <div className="min-h-screen bg-zinc-950">
       {/* Top Navigation Bar */}
       <nav className="fixed top-0 left-0 right-0 h-16 bg-zinc-900/80 backdrop-blur-xl border-b border-zinc-800 z-50">
-        <div className="h-full max-w-7xl mx-auto px-6 flex items-center justify-between">
-          <div className="flex items-center gap-8">
+        <div className="h-full max-w-7xl mx-auto px-4 sm:px-6 flex items-center justify-between">
+          <div className="flex items-center gap-4 md:gap-8">
             <Link href="/" prefetch={false} className="flex items-center gap-3">
               <div className="w-8 h-8 bg-gradient-to-br from-rose-500 to-orange-500 rounded flex items-center justify-center">
                 <svg
@@ -114,7 +114,7 @@ export default function AdminLayoutClient({
 
       {/* Mobile Bottom Navigation */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 h-16 bg-zinc-900/95 backdrop-blur-xl border-t border-zinc-800 z-50">
-        <div className="h-full flex items-center justify-around px-2">
+        <div className="h-full flex items-center gap-1 px-2 overflow-x-auto scrollbar-hide">
           {navItems.map((item) => {
             const isActive = pathname === item.href;
             return (
@@ -122,7 +122,7 @@ export default function AdminLayoutClient({
                 key={item.href}
                 href={item.href}
                 prefetch={false}
-                className={`flex flex-col items-center gap-1 px-3 py-2 rounded transition-all ${
+                className={`flex flex-col items-center gap-1 px-3 py-2 rounded transition-all shrink-0 ${
                   isActive ? "text-rose-400" : "text-zinc-500 hover:text-white"
                 }`}
               >
@@ -177,7 +177,7 @@ export default function AdminLayoutClient({
       {/* Global Email Disabled Banner */}
       {emailDisabled && (
         <div className="fixed top-16 left-0 right-0 z-40 bg-amber-500/10 border-b border-amber-500/30 backdrop-blur-sm">
-          <div className="max-w-7xl mx-auto px-6 py-3 flex items-center gap-3">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex items-center gap-3">
             <svg
               className="w-5 h-5 text-amber-400 shrink-0"
               fill="none"
