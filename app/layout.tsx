@@ -75,6 +75,28 @@ const navItems = [
 
 export const dynamic = "force-dynamic";
 
+async function checkLiveEvent(auth: any): Promise<boolean> {
+  try {
+    const client = auth.adminClient!;
+
+    const { data: liveEvent, error } = await client
+      .from("events")
+      .select("live")
+      .eq("live", true)
+      .limit(1);
+
+    if (error) {
+      console.error("Live event check error:", error);
+      return false;
+    }
+
+    return liveEvent && liveEvent.length > 0;
+  } catch (error) {
+    console.error("Failed to check live event:", error);
+    return false;
+  }
+}
+
 export default async function AdminLayout({ children }: AdminLayoutProps) {
   const auth = await verifyAdminRequest();
 
@@ -89,14 +111,22 @@ export default async function AdminLayout({ children }: AdminLayoutProps) {
     );
   }
 
-  const emailDisabled = process.env.DISABLE_EMAIL === "true";
+  const [emailDisabled, hasLiveEvent] = await Promise.all([
+    Promise.resolve(process.env.DISABLE_EMAIL === "true"),
+    checkLiveEvent(auth),
+  ]);
 
   return (
     <html>
       <body
         className={`${inter.variable} ${hedvigLettersSerif.variable} antialiased`}
       >
-        <AdminLayoutClient userEmail={auth.email} navItems={navItems} emailDisabled={emailDisabled}>
+        <AdminLayoutClient
+          userEmail={auth.email}
+          navItems={navItems}
+          emailDisabled={emailDisabled}
+          hasLiveEvent={hasLiveEvent}
+        >
           {children}
         </AdminLayoutClient>
       </body>

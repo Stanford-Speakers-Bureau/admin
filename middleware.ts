@@ -22,7 +22,10 @@ function getAllowedOrigins(request: NextRequest): string[] {
 
   // Only allow localhost in development
   if (!isProduction) {
-    origins.push(process.env.NEXT_PUBLIC_ROOT_URL ?? "http://localhost:3000");
+    origins.push(
+      process.env.NEXT_PUBLIC_ROOT_URL ?? "http://localhost:3000",
+      "http://localhost:3000",
+    );
   }
 
   return origins;

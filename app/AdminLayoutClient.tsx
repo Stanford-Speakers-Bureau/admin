@@ -14,6 +14,7 @@ type AdminLayoutClientProps = {
   userEmail: string | null;
   navItems: NavItem[];
   emailDisabled: boolean;
+  hasLiveEvent: boolean;
 };
 
 export default function AdminLayoutClient({
@@ -21,6 +22,7 @@ export default function AdminLayoutClient({
   userEmail,
   navItems,
   emailDisabled,
+  hasLiveEvent,
 }: AdminLayoutClientProps) {
   const pathname = usePathname();
 
@@ -144,9 +146,33 @@ export default function AdminLayoutClient({
         </div>
       </nav>
 
+      {/* Global Live Event Banner */}
+      {hasLiveEvent && (
+        <div className="fixed top-16 left-0 right-0 z-40 bg-red-500/10 border-b border-red-500/30 backdrop-blur-sm">
+          <div className="max-w-7xl mx-auto px-6 py-3 flex items-center gap-3">
+            <svg
+              className="w-5 h-5 text-red-400 shrink-0"
+              fill="currentColor"
+              viewBox="0 0 20 20"
+            >
+              <path
+                fillRule="evenodd"
+                d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z"
+                clipRule="evenodd"
+              />
+            </svg>
+            <p className="text-red-400 text-sm font-medium">EVENT LIVE</p>
+          </div>
+        </div>
+      )}
+
       {/* Global Email Disabled Banner */}
       {emailDisabled && (
-        <div className="fixed top-16 left-0 right-0 z-40 bg-amber-500/10 border-b border-amber-500/30 backdrop-blur-sm">
+        <div
+          className={`fixed left-0 right-0 z-40 bg-amber-500/10 border-b border-amber-500/30 backdrop-blur-sm ${
+            hasLiveEvent ? "top-[104px]" : "top-16"
+          }`}
+        >
           <div className="max-w-7xl mx-auto px-6 py-3 flex items-center gap-3">
             <svg
               className="w-5 h-5 text-amber-400 shrink-0"
@@ -161,13 +187,25 @@ export default function AdminLayoutClient({
                 d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.732-.833-2.5 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"
               />
             </svg>
-            <p className="text-amber-400 text-sm font-medium">EMAIL SENDING DISABLED</p>
+            <p className="text-amber-400 text-sm font-medium">
+              EMAIL SENDING DISABLED
+            </p>
           </div>
         </div>
       )}
 
       {/* Main Content */}
-      <main className={`pb-20 md:pb-8 min-h-screen ${emailDisabled ? 'pt-28' : 'pt-16'}`}>{children}</main>
+      <main
+        className={`pb-20 md:pb-8 min-h-screen ${
+          emailDisabled && hasLiveEvent
+            ? "pt-[152px]"
+            : emailDisabled || hasLiveEvent
+              ? "pt-[104px]"
+              : "pt-16"
+        }`}
+      >
+        {children}
+      </main>
     </div>
   );
 }
