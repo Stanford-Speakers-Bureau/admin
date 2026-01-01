@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { PACIFIC_TIMEZONE } from "@/app/lib/constants";
 import TicketSalesGraph from "./TicketSalesGraph";
@@ -175,6 +176,7 @@ function EventCardImage({ event }: EventCardImageProps) {
 export default function AdminEventsClient({
   initialEvents,
 }: AdminEventsClientProps) {
+  const router = useRouter();
   const [events, setEvents] = useState<Event[]>(initialEvents);
   const [showForm, setShowForm] = useState(false);
   const [editingEvent, setEditingEvent] = useState<Event | null>(null);
@@ -342,6 +344,8 @@ export default function AdminEventsClient({
             ? "Event set to live successfully!"
             : "Event set to not live successfully!",
         );
+        // Refresh the page to update the live border in the layout
+        router.refresh();
       } else {
         setError(data.error || "Failed to update live status");
       }

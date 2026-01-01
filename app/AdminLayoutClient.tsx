@@ -146,33 +146,37 @@ export default function AdminLayoutClient({
         </div>
       </nav>
 
-      {/* Global Live Event Banner */}
+      {/* Global Live Event Border & Banner */}
       {hasLiveEvent && (
-        <div className="fixed top-16 left-0 right-0 z-40 bg-red-500/10 border-b border-red-500/30 backdrop-blur-sm">
-          <div className="max-w-7xl mx-auto px-6 py-3 flex items-center gap-3">
-            <svg
-              className="w-5 h-5 text-red-400 shrink-0"
-              fill="currentColor"
-              viewBox="0 0 20 20"
-            >
-              <path
-                fillRule="evenodd"
-                d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z"
-                clipRule="evenodd"
-              />
-            </svg>
-            <p className="text-red-400 text-sm font-medium">EVENT LIVE</p>
+        <>
+          {/* Red border around entire screen - split into 4 edges to avoid blocking nav */}
+          <div className="fixed top-0 left-0 right-0 h-1 bg-red-500 z-[100] pointer-events-none" />
+          <div className="fixed bottom-0 left-0 right-0 h-1 bg-red-500 z-[100] pointer-events-none" />
+          <div className="fixed top-0 bottom-0 left-0 w-1 bg-red-500 z-[100] pointer-events-none" />
+          <div className="fixed top-0 bottom-0 right-0 w-1 bg-red-500 z-[100] pointer-events-none" />
+          {/* Text at very top */}
+          <div className="fixed top-0 left-0 right-0 z-[100] flex justify-center pointer-events-none">
+            <div className="bg-red-500 px-4 py-1 rounded-b-md flex items-center gap-2">
+              <svg
+                className="w-4 h-4 text-white shrink-0"
+                fill="currentColor"
+                viewBox="0 0 20 20"
+              >
+                <path
+                  fillRule="evenodd"
+                  d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z"
+                  clipRule="evenodd"
+                />
+              </svg>
+              <p className="text-white text-sm font-bold">EVENT LIVE</p>
+            </div>
           </div>
-        </div>
+        </>
       )}
 
       {/* Global Email Disabled Banner */}
       {emailDisabled && (
-        <div
-          className={`fixed left-0 right-0 z-40 bg-amber-500/10 border-b border-amber-500/30 backdrop-blur-sm ${
-            hasLiveEvent ? "top-[104px]" : "top-16"
-          }`}
-        >
+        <div className="fixed top-16 left-0 right-0 z-40 bg-amber-500/10 border-b border-amber-500/30 backdrop-blur-sm">
           <div className="max-w-7xl mx-auto px-6 py-3 flex items-center gap-3">
             <svg
               className="w-5 h-5 text-amber-400 shrink-0"
@@ -197,11 +201,7 @@ export default function AdminLayoutClient({
       {/* Main Content */}
       <main
         className={`pb-20 md:pb-8 min-h-screen ${
-          emailDisabled && hasLiveEvent
-            ? "pt-[152px]"
-            : emailDisabled || hasLiveEvent
-              ? "pt-[104px]"
-              : "pt-16"
+          emailDisabled ? "pt-[104px]" : "pt-16"
         }`}
       >
         {children}
