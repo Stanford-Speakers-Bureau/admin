@@ -55,18 +55,36 @@ export async function GET(req: Request) {
       );
     }
 
-    // Get total count for pagination
+    // Get total count and scanned/unscanned counts for pagination and stats
     let countQuery = adminClient
       .from("tickets")
       .select("id", { count: "exact", head: true });
+    let scannedCountQuery = adminClient
+      .from("tickets")
+      .select("id", { count: "exact", head: true })
+      .eq("scanned", true);
+    let unscannedCountQuery = adminClient
+      .from("tickets")
+      .select("id", { count: "exact", head: true })
+      .eq("scanned", false);
+
     if (eventId) {
       countQuery = countQuery.eq("event_id", eventId);
+      scannedCountQuery = scannedCountQuery.eq("event_id", eventId);
+      unscannedCountQuery = unscannedCountQuery.eq("event_id", eventId);
     }
-    const { count } = await countQuery;
+
+    const [totalResult, scannedResult, unscannedResult] = await Promise.all([
+      countQuery,
+      scannedCountQuery,
+      unscannedCountQuery,
+    ]);
 
     return NextResponse.json({
       tickets: tickets || [],
-      total: count || 0,
+      total: totalResult.count || 0,
+      scannedCount: scannedResult.count || 0,
+      unscannedCount: unscannedResult.count || 0,
       limit,
       offset,
     });

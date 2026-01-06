@@ -22,6 +22,8 @@ export type Ticket = {
 type TicketManagementClientProps = {
   initialTickets: Ticket[];
   initialTotal: number;
+  initialScannedCount: number;
+  initialUnscannedCount: number;
   initialEvents: { id: string; name: string | null }[];
 };
 
@@ -43,14 +45,14 @@ function formatDate(dateString: string | null): string {
 export default function TicketManagementClient({
   initialTickets,
   initialTotal,
+  initialScannedCount,
+  initialUnscannedCount,
   initialEvents,
 }: TicketManagementClientProps) {
   const [tickets, setTickets] = useState<Ticket[]>(initialTickets);
   const [total, setTotal] = useState(initialTotal);
-
-  // Calculate statistics
-  const scannedCount = tickets.filter((t) => t.scanned).length;
-  const unscannedCount = tickets.filter((t) => !t.scanned).length;
+  const [scannedCount, setScannedCount] = useState(initialScannedCount);
+  const [unscannedCount, setUnscannedCount] = useState(initialUnscannedCount);
   const [selectedEventId, setSelectedEventId] = useState<string>("");
   const [searchEmail, setSearchEmail] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -104,6 +106,8 @@ export default function TicketManagementClient({
       const data = await response.json();
       setTickets(data.tickets || []);
       setTotal(data.total || 0);
+      setScannedCount(data.scannedCount || 0);
+      setUnscannedCount(data.unscannedCount || 0);
     } catch (err) {
       console.error("Error fetching tickets:", err);
       setError(err instanceof Error ? err.message : "Failed to load tickets");
@@ -119,6 +123,9 @@ export default function TicketManagementClient({
   async function handleDelete(id: string) {
     if (!confirm("Are you sure you want to delete this ticket?")) return;
 
+    // Find the ticket to check if it was scanned
+    const ticketToDelete = tickets.find((t) => t.id === id);
+
     try {
       const response = await fetch("/api/tickets", {
         method: "DELETE",
@@ -133,6 +140,12 @@ export default function TicketManagementClient({
 
       setTickets((prev) => prev.filter((t) => t.id !== id));
       setTotal((prev) => prev - 1);
+      // Update scanned/unscanned counts
+      if (ticketToDelete?.scanned) {
+        setScannedCount((prev) => prev - 1);
+      } else {
+        setUnscannedCount((prev) => prev - 1);
+      }
       setSuccess("Ticket deleted successfully!");
     } catch (err) {
       console.error("Error deleting ticket:", err);
@@ -159,6 +172,9 @@ export default function TicketManagementClient({
       setTickets((prev) =>
         prev.map((t) => (t.id === id ? (data.ticket as Ticket) : t)),
       );
+      // Update counts: ticket was scanned, now unscanned
+      setScannedCount((prev) => prev - 1);
+      setUnscannedCount((prev) => prev + 1);
       setSuccess("Ticket unscanned successfully!");
     } catch (err) {
       console.error("Error unscaning ticket:", err);
@@ -196,6 +212,10 @@ export default function TicketManagementClient({
   }
 
   async function handleUpdateScanned(id: string, newScanned: boolean) {
+    // Find the ticket to check its current scanned status
+    const ticket = tickets.find((t) => t.id === id);
+    const wasScanned = ticket?.scanned;
+
     setUpdatingTicketId(id);
     try {
       const response = await fetch("/api/tickets", {
@@ -217,6 +237,16 @@ export default function TicketManagementClient({
       setTickets((prev) =>
         prev.map((t) => (t.id === id ? (data.ticket as Ticket) : t)),
       );
+      // Update counts based on the change
+      if (wasScanned && !newScanned) {
+        // Was scanned, now unscanned
+        setScannedCount((prev) => prev - 1);
+        setUnscannedCount((prev) => prev + 1);
+      } else if (!wasScanned && newScanned) {
+        // Was unscanned, now scanned
+        setScannedCount((prev) => prev + 1);
+        setUnscannedCount((prev) => prev - 1);
+      }
       setSuccess("Scanned status updated successfully!");
     } catch (err) {
       console.error("Error updating scanned status:", err);
@@ -331,6 +361,8 @@ export default function TicketManagementClient({
     if (successCount > 0) {
       setTickets((prev) => [...createdTickets, ...prev]);
       setTotal((prev) => prev + successCount);
+      // New tickets are always unscanned
+      setUnscannedCount((prev) => prev + successCount);
       setSuccess(
         `Successfully created ${successCount} ticket(s)${
           errors.length > 0 ? ` (${errors.length} failed)` : ""

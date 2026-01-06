@@ -25,11 +25,13 @@ type TicketRow = {
 async function getInitialTickets(): Promise<{
   tickets: Ticket[];
   total: number;
+  scannedCount: number;
+  unscannedCount: number;
 }> {
   try {
     const auth = await verifyAdminRequest();
     if (!auth.authorized) {
-      return { tickets: [], total: 0 };
+      return { tickets: [], total: 0, scannedCount: 0, unscannedCount: 0 };
     }
 
     const client = auth.adminClient!;
@@ -59,12 +61,21 @@ async function getInitialTickets(): Promise<{
 
     if (error) {
       console.error("Tickets fetch error:", error);
-      return { tickets: [], total: 0 };
+      return { tickets: [], total: 0, scannedCount: 0, unscannedCount: 0 };
     }
 
-    const { count } = await client
-      .from("tickets")
-      .select("id", { count: "exact", head: true });
+    // Fetch total count and scanned/unscanned counts in parallel
+    const [totalResult, scannedResult, unscannedResult] = await Promise.all([
+      client.from("tickets").select("id", { count: "exact", head: true }),
+      client
+        .from("tickets")
+        .select("id", { count: "exact", head: true })
+        .eq("scanned", true),
+      client
+        .from("tickets")
+        .select("id", { count: "exact", head: true })
+        .eq("scanned", false),
+    ]);
 
     // Handle events relation - Supabase may return it as array or object
     const typedTickets = (tickets || []) as TicketRow[];
@@ -90,11 +101,13 @@ async function getInitialTickets(): Promise<{
 
     return {
       tickets: transformedTickets,
-      total: count || 0,
+      total: totalResult.count || 0,
+      scannedCount: scannedResult.count || 0,
+      unscannedCount: unscannedResult.count || 0,
     };
   } catch (error) {
     console.error("Failed to fetch initial tickets:", error);
-    return { tickets: [], total: 0 };
+    return { tickets: [], total: 0, scannedCount: 0, unscannedCount: 0 };
   }
 }
 
@@ -125,15 +138,15 @@ async function getEvents() {
 }
 
 export default async function AdminTicketsPage() {
-  const [{ tickets, total }, events] = await Promise.all([
-    getInitialTickets(),
-    getEvents(),
-  ]);
+  const [{ tickets, total, scannedCount, unscannedCount }, events] =
+    await Promise.all([getInitialTickets(), getEvents()]);
 
   return (
     <TicketManagementClient
       initialTickets={tickets}
       initialTotal={total}
+      initialScannedCount={scannedCount}
+      initialUnscannedCount={unscannedCount}
       initialEvents={events}
     />
   );
