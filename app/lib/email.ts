@@ -1,22 +1,174 @@
-import { SendEmailCommand, SESv2Client } from "@aws-sdk/client-sesv2";
-import QRCode from "qrcode";
 import type { QRCodeToBufferOptions } from "qrcode";
+import QRCode from "qrcode";
 import { PACIFIC_TIMEZONE, REFERRAL_MESSAGE } from "./constants";
 import { generateGoogleCalendarUrl, generateReferralCode } from "./utils";
 
 // emails are so stupid
 // on ios gmail to fix: https://www.hteumeuleu.com/2021/fixing-gmail-dark-mode-css-blend-modes/
 
-// Initialize SES client
-const sesClient = new SESv2Client({
-  region: process.env.AWS_REGION || "us-east-1",
-  credentials: process.env.AWS_ACCESS_KEY_ID
-    ? {
-        accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
-      }
-    : undefined,
-});
+// AWS SES configuration
+const AWS_REGION = process.env.AWS_REGION || "us-east-1";
+const AWS_ACCESS_KEY_ID = process.env.AWS_ACCESS_KEY_ID;
+const AWS_SECRET_ACCESS_KEY = process.env.AWS_SECRET_ACCESS_KEY;
+
+/**
+ * AWS Signature Version 4 signing for SES API requests
+ * This replaces the heavy @aws-sdk/client-sesv2 package (~300KB) with ~5KB of code
+ */
+async function signAWSRequest(
+  method: string,
+  url: string,
+  body: string,
+  headers: Record<string, string>,
+): Promise<Record<string, string>> {
+  if (!AWS_ACCESS_KEY_ID || !AWS_SECRET_ACCESS_KEY) {
+    throw new Error("AWS credentials not configured");
+  }
+
+  const urlObj = new URL(url);
+  const host = urlObj.host;
+  const path = urlObj.pathname;
+  const service = "ses";
+  const now = new Date();
+  const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, "");
+  const dateStamp = amzDate.slice(0, 8);
+
+  // Create canonical request
+  const canonicalHeaders = Object.entries({
+    ...headers,
+    host,
+    "x-amz-date": amzDate,
+  })
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([k, v]) => `${k.toLowerCase()}:${v.trim()}`)
+    .join("\n");
+
+  const signedHeaders = Object.keys({
+    ...headers,
+    host,
+    "x-amz-date": amzDate,
+  })
+    .map((k) => k.toLowerCase())
+    .sort()
+    .join(";");
+
+  const payloadHash = await sha256Hex(body);
+
+  const canonicalRequest = [
+    method,
+    path,
+    "", // query string (empty for POST)
+    canonicalHeaders + "\n",
+    signedHeaders,
+    payloadHash,
+  ].join("\n");
+
+  // Create string to sign
+  const algorithm = "AWS4-HMAC-SHA256";
+  const credentialScope = `${dateStamp}/${AWS_REGION}/${service}/aws4_request`;
+  const stringToSign = [
+    algorithm,
+    amzDate,
+    credentialScope,
+    await sha256Hex(canonicalRequest),
+  ].join("\n");
+
+  // Calculate signature
+  const signingKey = await getSignatureKey(
+    AWS_SECRET_ACCESS_KEY,
+    dateStamp,
+    AWS_REGION,
+    service,
+  );
+  const signature = await hmacHex(signingKey, stringToSign);
+
+  // Create authorization header
+  const authorization = `${algorithm} Credential=${AWS_ACCESS_KEY_ID}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}`;
+
+  return {
+    ...headers,
+    host,
+    "x-amz-date": amzDate,
+    "x-amz-content-sha256": payloadHash,
+    authorization,
+  };
+}
+
+async function sha256Hex(message: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(message);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+  return Array.from(new Uint8Array(hashBuffer))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+async function hmac(key: ArrayBuffer, message: string): Promise<ArrayBuffer> {
+  const cryptoKey = await crypto.subtle.importKey(
+    "raw",
+    key,
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const encoder = new TextEncoder();
+  return crypto.subtle.sign("HMAC", cryptoKey, encoder.encode(message));
+}
+
+async function hmacHex(key: ArrayBuffer, message: string): Promise<string> {
+  const result = await hmac(key, message);
+  return Array.from(new Uint8Array(result))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+async function getSignatureKey(
+  secretKey: string,
+  dateStamp: string,
+  region: string,
+  service: string,
+): Promise<ArrayBuffer> {
+  const encoder = new TextEncoder();
+  const kDate = await hmac(
+    encoder.encode("AWS4" + secretKey).buffer as ArrayBuffer,
+    dateStamp,
+  );
+  const kRegion = await hmac(kDate, region);
+  const kService = await hmac(kRegion, service);
+  return hmac(kService, "aws4_request");
+}
+
+/**
+ * Send raw email via AWS SES REST API
+ */
+async function sendRawEmailViaSES(rawMessage: string): Promise<void> {
+  const endpoint = `https://email.${AWS_REGION}.amazonaws.com/v2/email/outbound-emails`;
+
+  const body = JSON.stringify({
+    Content: {
+      Raw: {
+        Data: btoa(rawMessage),
+      },
+    },
+  });
+
+  const headers: Record<string, string> = {
+    "content-type": "application/json",
+  };
+
+  const signedHeaders = await signAWSRequest("POST", endpoint, body, headers);
+
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: signedHeaders,
+    body,
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`SES API error (${response.status}): ${errorText}`);
+  }
+}
 
 const FROM_EMAIL =
   process.env.SES_FROM_EMAIL || "hello@stanfordspeakersbureau.com";
@@ -124,7 +276,7 @@ function generateICalContent(data: TicketEmailData): string {
   const uid = `${formatForICalUTC(startDate)}-${data.ticketId}@stanfordspeakersbureau.org`;
 
   // Use Pacific Time with timezone identifier
-  const icsContent = [
+  return [
     "BEGIN:VCALENDAR",
     "VERSION:2.0",
     "PRODID:-//Stanford Speakers Bureau//Event//EN",
@@ -163,8 +315,6 @@ function generateICalContent(data: TicketEmailData): string {
   ]
     .filter((line) => line !== "")
     .join("\r\n");
-
-  return icsContent;
 }
 
 /**
@@ -184,8 +334,7 @@ async function generateQRCodePngBuffer(
         light: "#FFFFFF",
       },
     };
-    const buffer = await QRCode.toBuffer(ticketId, options);
-    return buffer;
+    return await QRCode.toBuffer(ticketId, options);
   } catch (error) {
     console.error("Error generating QR code buffer:", error);
     return null;
@@ -211,15 +360,15 @@ async function generateTicketEmailHTML(
 
   const formattedDate = eventStartTime
     ? new Intl.DateTimeFormat("en-US", {
-        weekday: "long",
-        year: "numeric",
-        month: "long",
-        day: "numeric",
-        hour: "numeric",
-        minute: "2-digit",
-        hour12: true,
-        timeZone: PACIFIC_TIMEZONE,
-      }).format(new Date(eventStartTime))
+      weekday: "long",
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+      timeZone: PACIFIC_TIMEZONE,
+    }).format(new Date(eventStartTime))
     : "TBA";
 
   const baseUrl =
@@ -401,23 +550,23 @@ async function generateTicketEmailHTML(
                 </td>
               </tr>
               ${
-                eventVenue
-                  ? `
+    eventVenue
+      ? `
               <tr>
                 <td class="details-label" style="padding: 8px 0; color: #a1a1aa; font-size: 14px; vertical-align: top;">
                   ${gmailBlendStart}Location:${gmailBlendEnd}
                 </td>
                 <td class="details-value" style="padding: 8px 0; color: #f4f4f5; font-size: 14px; font-weight: 500;">
                   ${
-                    eventVenueLink
-                      ? `<a href="${eventVenueLink}" target="_blank" rel="noopener noreferrer" style="color: #A80D0C; text-decoration: none; border-bottom: 1px solid #A80D0C;">${eventVenue}</a>`
-                      : `${gmailBlendStart}${eventVenue}${gmailBlendEnd}`
-                  }
+        eventVenueLink
+          ? `<a href="${eventVenueLink}" target="_blank" rel="noopener noreferrer" style="color: #A80D0C; text-decoration: none; border-bottom: 1px solid #A80D0C;">${eventVenue}</a>`
+          : `${gmailBlendStart}${eventVenue}${gmailBlendEnd}`
+      }
                 </td>
               </tr>
               `
-                  : ""
-              }
+      : ""
+  }
               <tr>
                 <td class="details-label" style="padding: 8px 0; color: #a1a1aa; font-size: 14px; vertical-align: top;">
                   ${gmailBlendStart}Ticket Type:${gmailBlendEnd}
@@ -437,8 +586,8 @@ async function generateTicketEmailHTML(
                 </td>
               </tr>
               ${
-                referralCode && !(ticketType.toUpperCase() == "VIP")
-                  ? `
+    referralCode && !(ticketType.toUpperCase() == "VIP")
+      ? `
               <tr>
                 <td class="details-label" style="padding: 8px 0; color: #a1a1aa; font-size: 14px; vertical-align: top;">
                   ${gmailBlendStart}Referral Code:${gmailBlendEnd}
@@ -456,27 +605,32 @@ async function generateTicketEmailHTML(
                 </td>
               </tr>
               `
-                  : ""
-              }
+      : ""
+  }
             </table>
             
             ${
-              referralCode && !(ticketType.toUpperCase() == "VIP")
-                ? `
+    referralCode && !(ticketType.toUpperCase() == "VIP")
+      ? `
             <div style="margin-top: 20px; padding: 16px 0; text-align: center; border-top: 1px solid #3f3f46;">
               ${gmailBlendStart}
                 <p style="margin: 0; color: #ffffff; font-size: 15px; font-weight: 700; line-height: 1.6;">
                   ${REFERRAL_MESSAGE}
                 </p>
               ${gmailBlendEnd}
+              ${gmailBlendStart}
+                <p style="margin: 8px 0 0 0; color: #71717a; font-size: 12px; line-height: 1.4;">
+                  Note: all referrals must be checked in to earn your front row seat!
+                </p>
+              ${gmailBlendEnd}
             </div>
             `
-                : ""
-            }
+      : ""
+  }
             
             ${
-              eventUrl
-                ? `
+    eventUrl
+      ? `
             <table role="presentation" style="width: 100%; border-collapse: collapse; margin-top: 20px;">
               <tr>
                 <td align="center" class="button-wrapper" style="padding: 0;">
@@ -485,13 +639,13 @@ async function generateTicketEmailHTML(
               </tr>
             </table>
             `
-                : ""
-            }
+      : ""
+  }
           </div>
           
           ${
-            qrImageSrc
-              ? `
+    qrImageSrc
+      ? `
           <!-- QR Code Section -->
           <div class="qr-section" style="background-color: #18181b; padding: 24px; margin-bottom: 24px; text-align: center;">
             
@@ -500,24 +654,24 @@ async function generateTicketEmailHTML(
             ${gmailBlendEnd}
 
             <div class="qr-code-wrapper" style="display: inline-block; border-radius: 12px; ${
-              isVIP ? "background-color: #A80D0C; padding: 4px;" : "padding: 0;"
-            }">
+        isVIP ? "background-color: #A80D0C; padding: 4px;" : "padding: 0;"
+      }">
               <div style="background-color: #ffffff; padding: 16px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);">
                 <img src="${qrImageSrc}" alt="Ticket QR Code" class="qr-code-img" style="display: block; width: 350px; max-width: 100%; height: auto;" />
               </div>
             </div>
 
             ${
-              isVIP
-                ? `
+        isVIP
+          ? `
             <div style="margin-top: 12px;">
               <span style="display: inline-block; padding: 6px 16px; background-color: #A80D0C; color: #ffffff; border-radius: 20px; font-size: 12px; font-weight: 700; text-transform: uppercase;">
                 VIP
               </span>
             </div>
             `
-                : ""
-            }
+          : ""
+      }
             
             <table width="100%" border="0" cellspacing="0" cellpadding="0" role="presentation" style="margin-top: 16px;">
               <tr>
@@ -542,8 +696,8 @@ async function generateTicketEmailHTML(
 
           </div>
           `
-              : ""
-          }
+      : ""
+  }
 
           ${gmailBlendStart}
             <p style="margin: 0 0 24px 0; color: #a1a1aa; font-size: 14px; line-height: 1.6;">
@@ -552,8 +706,8 @@ async function generateTicketEmailHTML(
           ${gmailBlendEnd}
           
           ${
-            googleCalendarUrl
-              ? `
+    googleCalendarUrl
+      ? `
           <table role="presentation" style="width: 100%; border-collapse: collapse; margin-bottom: 24px;">
             <tr>
               <td align="center" class="button-wrapper" style="padding: 0;">
@@ -565,8 +719,8 @@ async function generateTicketEmailHTML(
             </tr>
           </table>
           `
-              : ""
-          }
+      : ""
+  }
         </div>
       </td>
     </tr>
@@ -599,15 +753,15 @@ function generateTicketEmailText(data: TicketEmailData): string {
 
   const formattedDate = eventStartTime
     ? new Intl.DateTimeFormat("en-US", {
-        weekday: "long",
-        year: "numeric",
-        month: "long",
-        day: "numeric",
-        hour: "numeric",
-        minute: "2-digit",
-        hour12: true,
-        timeZone: PACIFIC_TIMEZONE,
-      }).format(new Date(eventStartTime))
+      weekday: "long",
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+      timeZone: PACIFIC_TIMEZONE,
+    }).format(new Date(eventStartTime))
     : "TBA";
 
   const eventUrl = eventRoute
@@ -754,18 +908,6 @@ export async function sendTicketEmail(data: TicketEmailData): Promise<void> {
 
   const rawMessage = lines.join("\r\n");
 
-  const command = new SendEmailCommand({
-    FromEmailAddress: FROM_EMAIL,
-    Destination: {
-      ToAddresses: [data.email],
-    },
-    Content: {
-      Raw: {
-        Data: new Uint8Array(Buffer.from(rawMessage, "utf-8")),
-      },
-    },
-  });
-
-  await sesClient.send(command);
+  await sendRawEmailViaSES(rawMessage);
   console.log(`Ticket confirmation email sent to ${data.email}`);
 }
