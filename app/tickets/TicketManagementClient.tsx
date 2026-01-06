@@ -96,6 +96,10 @@ export default function TicketManagementClient({
         params.append("eventId", selectedEventId);
       }
 
+      if (searchEmail.trim()) {
+        params.append("email", searchEmail.trim());
+      }
+
       const response = await fetch(`/api/tickets?${params}`);
 
       if (!response.ok) {
@@ -119,6 +123,15 @@ export default function TicketManagementClient({
   useEffect(() => {
     fetchTickets();
   }, [selectedEventId, offset]);
+
+  // Debounced email search
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setOffset(0);
+      fetchTickets();
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchEmail]);
 
   async function handleDelete(id: string) {
     if (!confirm("Are you sure you want to delete this ticket?")) return;
@@ -384,13 +397,6 @@ export default function TicketManagementClient({
 
     setIsSubmitting(false);
   }
-
-  const filteredTickets = tickets.filter((ticket) => {
-    if (searchEmail) {
-      return ticket.email.toLowerCase().includes(searchEmail.toLowerCase());
-    }
-    return true;
-  });
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
@@ -660,7 +666,7 @@ export default function TicketManagementClient({
           </div>
           <p className="text-zinc-400">Loading tickets...</p>
         </div>
-      ) : filteredTickets.length === 0 ? (
+      ) : tickets.length === 0 ? (
         <div className="text-center py-16 bg-zinc-900/50 rounded-2xl border border-zinc-800">
           <div className="w-16 h-16 bg-zinc-800 rounded-full flex items-center justify-center mx-auto mb-4">
             <svg
@@ -711,7 +717,7 @@ export default function TicketManagementClient({
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-800">
-                {filteredTickets.map((ticket) => (
+                {tickets.map((ticket) => (
                   <tr
                     key={ticket.id}
                     className="hover:bg-zinc-800/30 transition-colors"

@@ -11,6 +11,7 @@ export async function GET(req: Request) {
 
     const { searchParams } = new URL(req.url);
     const eventId = searchParams.get("eventId");
+    const email = searchParams.get("email");
     const limit = parseInt(searchParams.get("limit") || "100");
     const offset = parseInt(searchParams.get("offset") || "0");
 
@@ -40,6 +41,10 @@ export async function GET(req: Request) {
 
     if (eventId) {
       query = query.eq("event_id", eventId);
+    }
+
+    if (email) {
+      query = query.ilike("email", `%${email}%`);
     }
 
     const { data: tickets, error } = await query.range(
@@ -72,6 +77,12 @@ export async function GET(req: Request) {
       countQuery = countQuery.eq("event_id", eventId);
       scannedCountQuery = scannedCountQuery.eq("event_id", eventId);
       unscannedCountQuery = unscannedCountQuery.eq("event_id", eventId);
+    }
+
+    if (email) {
+      countQuery = countQuery.ilike("email", `%${email}%`);
+      scannedCountQuery = scannedCountQuery.ilike("email", `%${email}%`);
+      unscannedCountQuery = unscannedCountQuery.ilike("email", `%${email}%`);
     }
 
     const [totalResult, scannedResult, unscannedResult] = await Promise.all([
