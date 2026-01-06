@@ -52,6 +52,7 @@ export type Event = {
   desc: string | null;
   tagline: string | null;
   img: string | null;
+  img_version: number | null;
   capacity: number;
   tickets?: number | null;
   venue: string | null;

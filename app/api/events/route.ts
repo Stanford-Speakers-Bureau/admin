@@ -199,6 +199,19 @@ export async function POST(req: Request) {
 
     if (imgName) {
       eventData.img = imgName;
+      // Increment img_version when image is updated (for cache busting)
+      if (id) {
+        // For updates, fetch current version and increment
+        const { data: existingEvent } = await auth
+          .adminClient!.from("events")
+          .select("img_version")
+          .eq("id", id)
+          .single();
+        eventData.img_version = (existingEvent?.img_version ?? 0) + 1;
+      } else {
+        // For new events, start at version 1
+        eventData.img_version = 1;
+      }
     }
 
     let savedEvent: any;
