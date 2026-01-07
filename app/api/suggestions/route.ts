@@ -112,24 +112,9 @@ export async function PATCH(req: Request) {
       return NextResponse.json({ error: "Invalid request" }, { status: 400 });
     }
 
-    // Validate speaker name length
-    if (
-      speaker.length < MIN_SPEAKER_LENGTH ||
-      speaker.length > MAX_SPEAKER_LENGTH
-    ) {
-      return NextResponse.json(
-        {
-          error: `Speaker name must be between ${MIN_SPEAKER_LENGTH} and ${MAX_SPEAKER_LENGTH} characters`,
-        },
-        { status: 400 },
-      );
-    }
-
-    const formattedSpeaker = toTitleCase(speaker);
-
     const { error } = await auth
       .adminClient!.from("suggest")
-      .update({ speaker: formattedSpeaker })
+      .update({ speaker: speaker.trim() })
       .eq("id", id);
 
     if (error) {
