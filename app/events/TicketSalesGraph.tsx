@@ -29,6 +29,7 @@ export default function TicketSalesGraph({ eventId }: TicketSalesGraphProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [totalTickets, setTotalTickets] = useState(0);
+  const [startDate, setStartDate] = useState<string | null>(null);
 
   useEffect(() => {
     async function fetchSalesData() {
@@ -46,6 +47,7 @@ export default function TicketSalesGraph({ eventId }: TicketSalesGraphProps) {
         const result = await response.json();
         setData(result.data || []);
         setTotalTickets(result.totalTickets || 0);
+        setStartDate(result.startDate || null);
       } catch (err) {
         console.error("Error fetching sales data:", err);
         setError(err instanceof Error ? err.message : "Failed to load data");
@@ -60,7 +62,11 @@ export default function TicketSalesGraph({ eventId }: TicketSalesGraphProps) {
   }, [eventId]);
 
   // Format data for chart - always use hourly format
-  const chartData = data.map((point) => {
+  // Filter to only show data up to the current hour
+  const now = new Date();
+  const filteredData = data.filter((point) => new Date(point.time) <= now);
+
+  const chartData = filteredData.map((point) => {
     const date = new Date(point.time);
     const hours = date.getHours();
     const minutes = date.getMinutes();
@@ -76,6 +82,13 @@ export default function TicketSalesGraph({ eventId }: TicketSalesGraphProps) {
       "Total Tickets": point.cumulative,
     };
   });
+
+  // Calculate hours since sales opened
+  const hoursSinceSalesOpened = startDate
+    ? Math.floor(
+        (now.getTime() - new Date(startDate).getTime()) / (1000 * 60 * 60),
+      )
+    : chartData.length;
 
   // Calculate dynamic chart width based on data points
   const chartWidth = Math.max(
@@ -153,7 +166,7 @@ export default function TicketSalesGraph({ eventId }: TicketSalesGraphProps) {
           <span className="text-white font-medium">{totalTickets}</span>
           {" | "}
           <span className="text-zinc-500">
-            {chartData.length} hours of data
+            {hoursSinceSalesOpened} hours since sales opened
           </span>
         </p>
       </div>
