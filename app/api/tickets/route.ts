@@ -480,10 +480,76 @@ export async function POST(req: Request) {
       .single();
 
     if (existingTicket) {
-      return NextResponse.json(
-        { error: "User already has a ticket for this event" },
-        { status: 400 },
-      );
+      // Update the existing ticket's type
+      const { data: updatedTicket, error: updateError } = await adminClient
+        .from("tickets")
+        .update({ type: type || "VIP" })
+        .eq("id", existingTicket.id)
+        .select(
+          `
+          id,
+          email,
+          type,
+          created_at,
+          scanned,
+          scan_time,
+          referral,
+          event_id,
+          events (
+            id,
+            name,
+            route,
+            start_time_date,
+            venue,
+            venue_link,
+            desc
+          )
+        `,
+        )
+        .single();
+
+      if (updateError) {
+        console.error("Ticket update error:", updateError);
+        return NextResponse.json(
+          { error: "Failed to update ticket" },
+          { status: 500 },
+        );
+      }
+
+      // Resend ticket confirmation email
+      if (updatedTicket) {
+        try {
+          const eventData = Array.isArray(updatedTicket.events)
+            ? updatedTicket.events[0]
+            : updatedTicket.events;
+          await sendTicketEmail({
+            email: updatedTicket.email,
+            eventName: eventData?.name || "Event",
+            ticketType: updatedTicket.type || "VIP",
+            eventStartTime: eventData?.start_time_date || null,
+            eventRoute: eventData?.route || null,
+            ticketId: updatedTicket.id,
+            eventVenue: eventData?.venue || null,
+            eventVenueLink: eventData?.venue_link || null,
+            eventDescription: eventData?.desc || null,
+          });
+        } catch (emailError) {
+          console.error("Email sending error:", emailError);
+          return NextResponse.json(
+            {
+              error:
+                "Ticket was updated but failed to send confirmation email. Please contact support.",
+            },
+            { status: 500 },
+          );
+        }
+      }
+
+      return NextResponse.json({
+        success: true,
+        ticket: updatedTicket,
+        updated: true,
+      });
     }
 
     // Create the VIP ticket
