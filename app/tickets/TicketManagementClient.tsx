@@ -24,6 +24,7 @@ type TicketManagementClientProps = {
   initialTotal: number;
   initialScannedCount: number;
   initialUnscannedCount: number;
+  initialFilteredCount: number;
   initialEvents: { id: string; name: string | null }[];
 };
 
@@ -47,14 +48,18 @@ export default function TicketManagementClient({
   initialTotal,
   initialScannedCount,
   initialUnscannedCount,
+  initialFilteredCount,
   initialEvents,
 }: TicketManagementClientProps) {
   const [tickets, setTickets] = useState<Ticket[]>(initialTickets);
   const [total, setTotal] = useState(initialTotal);
   const [scannedCount, setScannedCount] = useState(initialScannedCount);
   const [unscannedCount, setUnscannedCount] = useState(initialUnscannedCount);
+  const [filteredCount, setFilteredCount] = useState(initialFilteredCount);
   const [selectedEventId, setSelectedEventId] = useState<string>("");
   const [searchEmail, setSearchEmail] = useState("");
+  const [ticketTypeFilter, setTicketTypeFilter] = useState<string>("");
+  const [scannedFilter, setScannedFilter] = useState<string>("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -83,6 +88,16 @@ export default function TicketManagementClient({
   }, [success]);
 
   async function fetchTickets() {
+    // Don't fetch if no event is selected
+    if (!selectedEventId) {
+      setTickets([]);
+      setTotal(0);
+      setScannedCount(0);
+      setUnscannedCount(0);
+      setFilteredCount(0);
+      return;
+    }
+
     setIsLoading(true);
     setError(null);
 
@@ -100,6 +115,14 @@ export default function TicketManagementClient({
         params.append("email", searchEmail.trim());
       }
 
+      if (ticketTypeFilter) {
+        params.append("type", ticketTypeFilter);
+      }
+
+      if (scannedFilter) {
+        params.append("scanned", scannedFilter);
+      }
+
       const response = await fetch(`/api/tickets?${params}`);
 
       if (!response.ok) {
@@ -112,6 +135,7 @@ export default function TicketManagementClient({
       setTotal(data.total || 0);
       setScannedCount(data.scannedCount || 0);
       setUnscannedCount(data.unscannedCount || 0);
+      setFilteredCount(data.filteredCount || 0);
     } catch (err) {
       console.error("Error fetching tickets:", err);
       setError(err instanceof Error ? err.message : "Failed to load tickets");
@@ -122,7 +146,7 @@ export default function TicketManagementClient({
 
   useEffect(() => {
     fetchTickets();
-  }, [selectedEventId, offset]);
+  }, [selectedEventId, offset, ticketTypeFilter, scannedFilter]);
 
   // Debounced email search
   useEffect(() => {
@@ -428,6 +452,15 @@ export default function TicketManagementClient({
                 </div>
               </>
             )}
+            {(searchEmail || ticketTypeFilter || scannedFilter) &&
+              selectedEventId && (
+                <div className="flex items-center gap-2">
+                  <span className="text-zinc-400">Matching Filters:</span>
+                  <span className="text-blue-400 font-semibold">
+                    {filteredCount}
+                  </span>
+                </div>
+              )}
           </div>
         </div>
         <button
@@ -447,7 +480,7 @@ export default function TicketManagementClient({
               d="M12 6v6m0 0v6m0-6h6m-6 0H6"
             />
           </svg>
-          Add VIP Ticket
+          Add Ticket
         </button>
       </div>
 
@@ -623,8 +656,8 @@ export default function TicketManagementClient({
       )}
 
       {/* Filters */}
-      <div className="mb-6 flex flex-col sm:flex-row gap-4">
-        <div className="flex-1">
+      <div className="mb-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div>
           <label className="block text-sm font-medium text-zinc-300 mb-2">
             Filter by Event
           </label>
@@ -636,7 +669,7 @@ export default function TicketManagementClient({
             }}
             className="w-full px-4 py-3 bg-zinc-900 border border-zinc-800 rounded-xl text-white focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50"
           >
-            <option value="">All Events</option>
+            <option value="">Select an event</option>
             {initialEvents.map((event) => (
               <option key={event.id} value={event.id}>
                 {event.name || "Unnamed Event"}
@@ -644,7 +677,7 @@ export default function TicketManagementClient({
             ))}
           </select>
         </div>
-        <div className="flex-1">
+        <div>
           <label className="block text-sm font-medium text-zinc-300 mb-2">
             Search by Email
           </label>
@@ -653,8 +686,45 @@ export default function TicketManagementClient({
             value={searchEmail}
             onChange={(e) => setSearchEmail(e.target.value)}
             placeholder="Search email..."
-            className="w-full px-4 py-3 bg-zinc-900 border border-zinc-800 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50"
+            disabled={!selectedEventId}
+            className="w-full px-4 py-3 bg-zinc-900 border border-zinc-800 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 disabled:opacity-50 disabled:cursor-not-allowed"
           />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-zinc-300 mb-2">
+            Ticket Type
+          </label>
+          <select
+            value={ticketTypeFilter}
+            onChange={(e) => {
+              setTicketTypeFilter(e.target.value);
+              setOffset(0);
+            }}
+            disabled={!selectedEventId}
+            className="w-full px-4 py-3 bg-zinc-900 border border-zinc-800 rounded-xl text-white focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <option value="">All Types</option>
+            <option value="VIP">VIP</option>
+            <option value="STANDARD">STANDARD</option>
+          </select>
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-zinc-300 mb-2">
+            Scanned Status
+          </label>
+          <select
+            value={scannedFilter}
+            onChange={(e) => {
+              setScannedFilter(e.target.value);
+              setOffset(0);
+            }}
+            disabled={!selectedEventId}
+            className="w-full px-4 py-3 bg-zinc-900 border border-zinc-800 rounded-xl text-white focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <option value="">All Statuses</option>
+            <option value="true">Scanned</option>
+            <option value="false">Not Scanned</option>
+          </select>
         </div>
       </div>
 
@@ -683,11 +753,17 @@ export default function TicketManagementClient({
               />
             </svg>
           </div>
-          <p className="text-zinc-400 text-lg mb-2">No tickets found</p>
+          <p className="text-zinc-400 text-lg mb-2">
+            {!selectedEventId
+              ? "Select an event to view tickets"
+              : "No tickets found"}
+          </p>
           <p className="text-zinc-600 text-sm">
-            {searchEmail || selectedEventId
-              ? "Try adjusting your filters"
-              : "Create your first ticket to get started"}
+            {!selectedEventId
+              ? "Choose an event from the filter above"
+              : searchEmail || ticketTypeFilter || scannedFilter
+                ? "Try adjusting your filters"
+                : "Create your first ticket to get started"}
           </p>
         </div>
       ) : (
@@ -830,11 +906,12 @@ export default function TicketManagementClient({
           </div>
 
           {/* Pagination */}
-          {total > limit && (
+          {filteredCount > limit && (
             <div className="px-6 py-4 border-t border-zinc-800 flex items-center justify-between">
               <div className="text-sm text-zinc-400">
-                Showing {offset + 1} to {Math.min(offset + limit, total)} of{" "}
-                {total} tickets
+                Showing {offset + 1} to{" "}
+                {Math.min(offset + limit, filteredCount)} of {filteredCount}{" "}
+                tickets
               </div>
               <div className="flex items-center gap-2">
                 <button
@@ -846,7 +923,7 @@ export default function TicketManagementClient({
                 </button>
                 <button
                   onClick={() => setOffset(offset + limit)}
-                  disabled={offset + limit >= total}
+                  disabled={offset + limit >= filteredCount}
                   className="px-4 py-2 bg-zinc-800 text-white rounded-lg text-sm font-medium hover:bg-zinc-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Next

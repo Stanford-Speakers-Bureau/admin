@@ -3,112 +3,21 @@ import { verifyAdminRequest } from "@/app/lib/supabase";
 
 export const dynamic = "force-dynamic";
 
-type EventData = {
-  id: string;
-  name: string | null;
-  route: string | null;
-  start_time_date: string | null;
-};
-
-type TicketRow = {
-  id: string;
-  email: string;
-  type: string | null;
-  created_at: string;
-  scanned: boolean;
-  scan_time: string | null;
-  referral: string | null;
-  event_id: string;
-  events: EventData | EventData[] | null;
-};
-
 async function getInitialTickets(): Promise<{
   tickets: Ticket[];
   total: number;
   scannedCount: number;
   unscannedCount: number;
+  filteredCount: number;
 }> {
-  try {
-    const auth = await verifyAdminRequest();
-    if (!auth.authorized) {
-      return { tickets: [], total: 0, scannedCount: 0, unscannedCount: 0 };
-    }
-
-    const client = auth.adminClient!;
-
-    const { data: tickets, error } = await client
-      .from("tickets")
-      .select(
-        `
-        id,
-        email,
-        type,
-        created_at,
-        scanned,
-        scan_time,
-        referral,
-        event_id,
-        events (
-          id,
-          name,
-          route,
-          start_time_date
-        )
-      `,
-      )
-      .order("created_at", { ascending: false })
-      .limit(50);
-
-    if (error) {
-      console.error("Tickets fetch error:", error);
-      return { tickets: [], total: 0, scannedCount: 0, unscannedCount: 0 };
-    }
-
-    // Fetch total count and scanned/unscanned counts in parallel
-    const [totalResult, scannedResult, unscannedResult] = await Promise.all([
-      client.from("tickets").select("id", { count: "exact", head: true }),
-      client
-        .from("tickets")
-        .select("id", { count: "exact", head: true })
-        .eq("scanned", true),
-      client
-        .from("tickets")
-        .select("id", { count: "exact", head: true })
-        .eq("scanned", false),
-    ]);
-
-    // Handle events relation - Supabase may return it as array or object
-    const typedTickets = (tickets || []) as TicketRow[];
-    const transformedTickets: Ticket[] = typedTickets.map((ticket) => {
-      let eventData: EventData | null = null;
-      if (Array.isArray(ticket.events)) {
-        eventData = ticket.events[0] || null;
-      } else if (ticket.events) {
-        eventData = ticket.events;
-      }
-      return {
-        ...ticket,
-        events: eventData
-          ? {
-              id: eventData.id,
-              name: eventData.name ?? null,
-              route: eventData.route ?? null,
-              start_time_date: eventData.start_time_date ?? null,
-            }
-          : null,
-      };
-    });
-
-    return {
-      tickets: transformedTickets,
-      total: totalResult.count || 0,
-      scannedCount: scannedResult.count || 0,
-      unscannedCount: unscannedResult.count || 0,
-    };
-  } catch (error) {
-    console.error("Failed to fetch initial tickets:", error);
-    return { tickets: [], total: 0, scannedCount: 0, unscannedCount: 0 };
-  }
+  // Don't load any tickets initially - require event selection
+  return {
+    tickets: [],
+    total: 0,
+    scannedCount: 0,
+    unscannedCount: 0,
+    filteredCount: 0,
+  };
 }
 
 async function getEvents() {
@@ -138,8 +47,10 @@ async function getEvents() {
 }
 
 export default async function AdminTicketsPage() {
-  const [{ tickets, total, scannedCount, unscannedCount }, events] =
-    await Promise.all([getInitialTickets(), getEvents()]);
+  const [
+    { tickets, total, scannedCount, unscannedCount, filteredCount },
+    events,
+  ] = await Promise.all([getInitialTickets(), getEvents()]);
 
   return (
     <TicketManagementClient
@@ -147,6 +58,7 @@ export default async function AdminTicketsPage() {
       initialTotal={total}
       initialScannedCount={scannedCount}
       initialUnscannedCount={unscannedCount}
+      initialFilteredCount={filteredCount}
       initialEvents={events}
     />
   );

@@ -12,6 +12,8 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const eventId = searchParams.get("eventId");
     const email = searchParams.get("email");
+    const type = searchParams.get("type");
+    const scanned = searchParams.get("scanned");
     const limit = parseInt(searchParams.get("limit") || "100");
     const offset = parseInt(searchParams.get("offset") || "0");
 
@@ -47,6 +49,14 @@ export async function GET(req: Request) {
       query = query.ilike("email", `%${email}%`);
     }
 
+    if (type) {
+      query = query.eq("type", type);
+    }
+
+    if (scanned !== null && scanned !== undefined && scanned !== "") {
+      query = query.eq("scanned", scanned === "true");
+    }
+
     const { data: tickets, error } = await query.range(
       offset,
       offset + limit - 1,
@@ -60,42 +70,60 @@ export async function GET(req: Request) {
       );
     }
 
-    // Get total count and scanned/unscanned counts for pagination and stats
-    let countQuery = adminClient
+    // Get total count for the event (not filtered)
+    let totalCountQuery = adminClient
       .from("tickets")
       .select("id", { count: "exact", head: true });
-    let scannedCountQuery = adminClient
+    let totalScannedQuery = adminClient
       .from("tickets")
       .select("id", { count: "exact", head: true })
       .eq("scanned", true);
-    let unscannedCountQuery = adminClient
+    let totalUnscannedQuery = adminClient
       .from("tickets")
       .select("id", { count: "exact", head: true })
       .eq("scanned", false);
 
     if (eventId) {
-      countQuery = countQuery.eq("event_id", eventId);
-      scannedCountQuery = scannedCountQuery.eq("event_id", eventId);
-      unscannedCountQuery = unscannedCountQuery.eq("event_id", eventId);
+      totalCountQuery = totalCountQuery.eq("event_id", eventId);
+      totalScannedQuery = totalScannedQuery.eq("event_id", eventId);
+      totalUnscannedQuery = totalUnscannedQuery.eq("event_id", eventId);
+    }
+
+    // Get filtered count (matches all current filters including email, type, scanned)
+    let filteredCountQuery = adminClient
+      .from("tickets")
+      .select("id", { count: "exact", head: true });
+
+    if (eventId) {
+      filteredCountQuery = filteredCountQuery.eq("event_id", eventId);
     }
 
     if (email) {
-      countQuery = countQuery.ilike("email", `%${email}%`);
-      scannedCountQuery = scannedCountQuery.ilike("email", `%${email}%`);
-      unscannedCountQuery = unscannedCountQuery.ilike("email", `%${email}%`);
+      filteredCountQuery = filteredCountQuery.ilike("email", `%${email}%`);
     }
 
-    const [totalResult, scannedResult, unscannedResult] = await Promise.all([
-      countQuery,
-      scannedCountQuery,
-      unscannedCountQuery,
-    ]);
+    if (type) {
+      filteredCountQuery = filteredCountQuery.eq("type", type);
+    }
+
+    if (scanned !== null && scanned !== undefined && scanned !== "") {
+      filteredCountQuery = filteredCountQuery.eq("scanned", scanned === "true");
+    }
+
+    const [totalResult, scannedResult, unscannedResult, filteredCountResult] =
+      await Promise.all([
+        totalCountQuery,
+        totalScannedQuery,
+        totalUnscannedQuery,
+        filteredCountQuery,
+      ]);
 
     return NextResponse.json({
       tickets: tickets || [],
       total: totalResult.count || 0,
       scannedCount: scannedResult.count || 0,
       unscannedCount: unscannedResult.count || 0,
+      filteredCount: filteredCountResult.count || 0,
       limit,
       offset,
     });
