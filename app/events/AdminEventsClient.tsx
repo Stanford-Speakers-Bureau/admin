@@ -1117,7 +1117,7 @@ export default function AdminEventsClient({
           onClick={() => setViewingEvent(null)}
         >
           <div
-            className="bg-zinc-900 rounded-2xl border border-zinc-800 max-w-4xl w-full max-h-[90vh] overflow-y-auto"
+            className="bg-zinc-900 rounded-2xl border border-zinc-800 w-full h-full flex flex-col overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="sticky top-0 bg-zinc-900 border-b border-zinc-800 p-6 flex items-center justify-between z-10">
@@ -1149,9 +1149,9 @@ export default function AdminEventsClient({
               </button>
             </div>
 
-            <div className="p-6 space-y-6">
+            <div className="flex-1 flex flex-col min-h-0 p-6 space-y-6 overflow-hidden">
               {/* Event Details */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm flex-shrink-0">
                 <div>
                   <span className="text-zinc-400">Capacity:</span>
                   <span className="text-white ml-2 font-medium">
@@ -1186,7 +1186,7 @@ export default function AdminEventsClient({
               <TicketSalesGraph eventId={viewingEvent.id} />
 
               {/* Action Buttons */}
-              <div className="flex items-center gap-3 pt-4 border-t border-zinc-800">
+              <div className="flex items-center gap-3 pt-4 border-t border-zinc-800 flex-shrink-0">
                 <button
                   onClick={() => {
                     setViewingEvent(null);

@@ -42,35 +42,41 @@ export async function GET(
       : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // Default to 7 days from now
 
     // Get all tickets for this event with created_at timestamps
-    const { data: tickets, error: ticketsError } = await adminClient
-      .from("tickets")
-      .select("created_at")
-      .eq("event_id", eventId)
-      .order("created_at", { ascending: true });
+    // Fetch all tickets using pagination to avoid Supabase's default 1000 row limit
+    const allTickets: { created_at: string }[] = [];
+    const pageSize = 1000;
+    let page = 0;
+    let hasMore = true;
 
-    if (ticketsError) {
-      console.error("Tickets fetch error:", ticketsError);
-      return NextResponse.json(
-        { error: "Failed to fetch ticket data" },
-        { status: 500 },
-      );
+    while (hasMore) {
+      const { data: tickets, error: ticketsError } = await adminClient
+        .from("tickets")
+        .select("created_at")
+        .eq("event_id", eventId)
+        .order("created_at", { ascending: true })
+        .range(page * pageSize, (page + 1) * pageSize - 1);
+
+      if (ticketsError) {
+        console.error("Tickets fetch error:", ticketsError);
+        return NextResponse.json(
+          { error: "Failed to fetch ticket data" },
+          { status: 500 },
+        );
+      }
+
+      if (tickets && tickets.length > 0) {
+        allTickets.push(...tickets);
+        hasMore = tickets.length === pageSize;
+        page++;
+      } else {
+        hasMore = false;
+      }
     }
 
-    // Calculate time intervals
-    const timeRange = endDate.getTime() - startDate.getTime();
-    const hours = Math.max(1, Math.ceil(timeRange / (1000 * 60 * 60)));
+    const tickets = allTickets;
 
-    // Determine interval size based on time range
-    let intervalHours: number;
-    if (hours <= 24) {
-      intervalHours = 1; // 1 hour intervals for events within 24 hours
-    } else if (hours <= 168) {
-      intervalHours = 6; // 6 hour intervals for events within a week
-    } else if (hours <= 720) {
-      intervalHours = 24; // Daily intervals for events within a month
-    } else {
-      intervalHours = 168; // Weekly intervals for longer periods
-    }
+    // Always use 1-hour intervals
+    const intervalHours = 1;
 
     // Create intervals
     const intervals: { time: string; count: number; cumulative: number }[] = [];

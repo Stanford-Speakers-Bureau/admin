@@ -8,7 +8,6 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
-  ResponsiveContainer,
   Legend,
 } from "recharts";
 
@@ -21,6 +20,9 @@ type SalesDataPoint = {
 type TicketSalesGraphProps = {
   eventId: string;
 };
+
+const MIN_CHART_WIDTH = 600;
+const WIDTH_PER_DATAPOINT = 50;
 
 export default function TicketSalesGraph({ eventId }: TicketSalesGraphProps) {
   const [data, setData] = useState<SalesDataPoint[]>([]);
@@ -57,7 +59,7 @@ export default function TicketSalesGraph({ eventId }: TicketSalesGraphProps) {
     }
   }, [eventId]);
 
-  // Format data for chart
+  // Format data for chart - always use hourly format
   const chartData = data.map((point) => {
     const date = new Date(point.time);
     const hours = date.getHours();
@@ -65,32 +67,25 @@ export default function TicketSalesGraph({ eventId }: TicketSalesGraphProps) {
     const month = date.toLocaleDateString("en-US", { month: "short" });
     const day = date.getDate();
 
-    // Format label based on data density
-    let label: string;
-    if (data.length <= 24) {
-      // Show time for hourly data
-      label = `${month} ${day}, ${hours.toString().padStart(2, "0")}:${minutes.toString().padStart(2, "0")}`;
-    } else if (data.length <= 28) {
-      // Show date for daily data
-      label = `${month} ${day}`;
-    } else {
-      // Show week for weekly data
-      const weekStart = new Date(date);
-      weekStart.setDate(date.getDate() - date.getDay());
-      label = `Week of ${weekStart.toLocaleDateString("en-US", { month: "short", day: "numeric" })}`;
-    }
+    const label = `${month} ${day}, ${hours.toString().padStart(2, "0")}:${minutes.toString().padStart(2, "0")}`;
 
     return {
       time: label,
       timestamp: point.time,
-      "Tickets Sold This Period": point.count,
+      "Tickets Sold This Hour": point.count,
       "Total Tickets": point.cumulative,
     };
   });
 
+  // Calculate dynamic chart width based on data points
+  const chartWidth = Math.max(
+    MIN_CHART_WIDTH,
+    chartData.length * WIDTH_PER_DATAPOINT,
+  );
+
   if (isLoading) {
     return (
-      <div className="w-full h-64 flex items-center justify-center bg-zinc-900/50 rounded-xl border border-zinc-800">
+      <div className="flex-1 flex items-center justify-center bg-zinc-900/50 rounded-xl border border-zinc-800">
         <div className="flex items-center gap-3 text-zinc-400">
           <div className="w-5 h-5 border-2 border-zinc-600 border-t-zinc-400 rounded-full animate-spin" />
           <span className="text-sm">Loading sales data...</span>
@@ -101,7 +96,7 @@ export default function TicketSalesGraph({ eventId }: TicketSalesGraphProps) {
 
   if (error) {
     return (
-      <div className="w-full h-64 flex items-center justify-center bg-zinc-900/50 rounded-xl border border-zinc-800">
+      <div className="flex-1 flex items-center justify-center bg-zinc-900/50 rounded-xl border border-zinc-800">
         <div className="text-center">
           <svg
             className="w-12 h-12 text-rose-400 mx-auto mb-2"
@@ -124,7 +119,7 @@ export default function TicketSalesGraph({ eventId }: TicketSalesGraphProps) {
 
   if (data.length === 0) {
     return (
-      <div className="w-full h-64 flex items-center justify-center bg-zinc-900/50 rounded-xl border border-zinc-800">
+      <div className="flex-1 flex items-center justify-center bg-zinc-900/50 rounded-xl border border-zinc-800">
         <div className="text-center">
           <svg
             className="w-12 h-12 text-zinc-600 mx-auto mb-2"
@@ -148,65 +143,74 @@ export default function TicketSalesGraph({ eventId }: TicketSalesGraphProps) {
   }
 
   return (
-    <div className="w-full bg-zinc-900/50 rounded-xl border border-zinc-800 p-6">
-      <div className="mb-4">
+    <div className="flex-1 flex flex-col min-h-0 bg-zinc-900/50 rounded-xl border border-zinc-800 p-6">
+      <div className="mb-4 flex-shrink-0">
         <h3 className="text-lg font-semibold text-white mb-1">
-          Ticket Sales Over Time
+          Ticket Sales Over Time (Hourly)
         </h3>
         <p className="text-sm text-zinc-400">
           Total tickets sold:{" "}
           <span className="text-white font-medium">{totalTickets}</span>
+          {" | "}
+          <span className="text-zinc-500">
+            {chartData.length} hours of data
+          </span>
         </p>
       </div>
-      <ResponsiveContainer width="100%" height={300}>
-        <LineChart
-          data={chartData}
-          margin={{ top: 5, right: 20, left: 0, bottom: 5 }}
-        >
-          <CartesianGrid strokeDasharray="3 3" stroke="#3f3f46" />
-          <XAxis
-            dataKey="time"
-            stroke="#a1a1aa"
-            style={{ fontSize: "12px" }}
-            angle={-45}
-            textAnchor="end"
-            height={80}
-          />
-          <YAxis
-            stroke="#a1a1aa"
-            style={{ fontSize: "12px" }}
-            allowDecimals={false}
-          />
-          <Tooltip
-            contentStyle={{
-              backgroundColor: "#18181b",
-              border: "1px solid #3f3f46",
-              borderRadius: "8px",
-              color: "#fafafa",
-            }}
-            labelStyle={{ color: "#a1a1aa", marginBottom: "4px" }}
-          />
-          <Legend wrapperStyle={{ paddingTop: "20px" }} iconType="line" />
-          <Line
-            type="monotone"
-            dataKey="Tickets Sold This Period"
-            stroke="#10b981"
-            strokeWidth={2}
-            dot={{ fill: "#10b981", r: 3 }}
-            activeDot={{ r: 5 }}
-            name="Tickets Sold This Period"
-          />
-          <Line
-            type="monotone"
-            dataKey="Total Tickets"
-            stroke="#3b82f6"
-            strokeWidth={2}
-            dot={{ fill: "#3b82f6", r: 3 }}
-            activeDot={{ r: 5 }}
-            name="Total Tickets"
-          />
-        </LineChart>
-      </ResponsiveContainer>
+      <div className="flex-1 min-h-0 overflow-x-auto overflow-y-hidden">
+        <div style={{ width: chartWidth, height: "100%", minHeight: 300 }}>
+          <LineChart
+            data={chartData}
+            width={chartWidth}
+            height={300}
+            margin={{ top: 5, right: 20, left: 0, bottom: 80 }}
+          >
+            <CartesianGrid strokeDasharray="3 3" stroke="#3f3f46" />
+            <XAxis
+              dataKey="time"
+              stroke="#a1a1aa"
+              style={{ fontSize: "11px" }}
+              angle={-45}
+              textAnchor="end"
+              height={80}
+              interval={0}
+            />
+            <YAxis
+              stroke="#a1a1aa"
+              style={{ fontSize: "12px" }}
+              allowDecimals={false}
+            />
+            <Tooltip
+              contentStyle={{
+                backgroundColor: "#18181b",
+                border: "1px solid #3f3f46",
+                borderRadius: "8px",
+                color: "#fafafa",
+              }}
+              labelStyle={{ color: "#a1a1aa", marginBottom: "4px" }}
+            />
+            <Legend wrapperStyle={{ paddingTop: "20px" }} iconType="line" />
+            <Line
+              type="monotone"
+              dataKey="Tickets Sold This Hour"
+              stroke="#10b981"
+              strokeWidth={2}
+              dot={{ fill: "#10b981", r: 3 }}
+              activeDot={{ r: 5 }}
+              name="Tickets Sold This Hour"
+            />
+            <Line
+              type="monotone"
+              dataKey="Total Tickets"
+              stroke="#3b82f6"
+              strokeWidth={2}
+              dot={{ fill: "#3b82f6", r: 3 }}
+              activeDot={{ r: 5 }}
+              name="Total Tickets"
+            />
+          </LineChart>
+        </div>
+      </div>
     </div>
   );
 }
