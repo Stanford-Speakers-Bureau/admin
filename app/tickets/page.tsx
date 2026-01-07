@@ -9,6 +9,8 @@ async function getInitialTickets(): Promise<{
   scannedCount: number;
   unscannedCount: number;
   filteredCount: number;
+  standardCount: number;
+  vipCount: number;
 }> {
   // Don't load any tickets initially - require event selection
   return {
@@ -17,6 +19,8 @@ async function getInitialTickets(): Promise<{
     scannedCount: 0,
     unscannedCount: 0,
     filteredCount: 0,
+    standardCount: 0,
+    vipCount: 0,
   };
 }
 
@@ -48,7 +52,15 @@ async function getEvents() {
 
 export default async function AdminTicketsPage() {
   const [
-    { tickets, total, scannedCount, unscannedCount, filteredCount },
+    {
+      tickets,
+      total,
+      scannedCount,
+      unscannedCount,
+      filteredCount,
+      standardCount,
+      vipCount,
+    },
     events,
   ] = await Promise.all([getInitialTickets(), getEvents()]);
 
@@ -59,6 +71,8 @@ export default async function AdminTicketsPage() {
       initialScannedCount={scannedCount}
       initialUnscannedCount={unscannedCount}
       initialFilteredCount={filteredCount}
+      initialStandardCount={standardCount}
+      initialVipCount={vipCount}
       initialEvents={events}
     />
   );

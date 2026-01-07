@@ -82,11 +82,21 @@ export async function GET(req: Request) {
       .from("tickets")
       .select("id", { count: "exact", head: true })
       .eq("scanned", false);
+    let standardCountQuery = adminClient
+      .from("tickets")
+      .select("id", { count: "exact", head: true })
+      .eq("type", "STANDARD");
+    let vipCountQuery = adminClient
+      .from("tickets")
+      .select("id", { count: "exact", head: true })
+      .eq("type", "VIP");
 
     if (eventId) {
       totalCountQuery = totalCountQuery.eq("event_id", eventId);
       totalScannedQuery = totalScannedQuery.eq("event_id", eventId);
       totalUnscannedQuery = totalUnscannedQuery.eq("event_id", eventId);
+      standardCountQuery = standardCountQuery.eq("event_id", eventId);
+      vipCountQuery = vipCountQuery.eq("event_id", eventId);
     }
 
     // Get filtered count (matches all current filters including email, type, scanned)
@@ -110,13 +120,21 @@ export async function GET(req: Request) {
       filteredCountQuery = filteredCountQuery.eq("scanned", scanned === "true");
     }
 
-    const [totalResult, scannedResult, unscannedResult, filteredCountResult] =
-      await Promise.all([
-        totalCountQuery,
-        totalScannedQuery,
-        totalUnscannedQuery,
-        filteredCountQuery,
-      ]);
+    const [
+      totalResult,
+      scannedResult,
+      unscannedResult,
+      filteredCountResult,
+      standardResult,
+      vipResult,
+    ] = await Promise.all([
+      totalCountQuery,
+      totalScannedQuery,
+      totalUnscannedQuery,
+      filteredCountQuery,
+      standardCountQuery,
+      vipCountQuery,
+    ]);
 
     return NextResponse.json({
       tickets: tickets || [],
@@ -124,6 +142,8 @@ export async function GET(req: Request) {
       scannedCount: scannedResult.count || 0,
       unscannedCount: unscannedResult.count || 0,
       filteredCount: filteredCountResult.count || 0,
+      standardCount: standardResult.count || 0,
+      vipCount: vipResult.count || 0,
       limit,
       offset,
     });

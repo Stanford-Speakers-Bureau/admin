@@ -25,6 +25,8 @@ type TicketManagementClientProps = {
   initialScannedCount: number;
   initialUnscannedCount: number;
   initialFilteredCount: number;
+  initialStandardCount: number;
+  initialVipCount: number;
   initialEvents: { id: string; name: string | null }[];
 };
 
@@ -49,6 +51,8 @@ export default function TicketManagementClient({
   initialScannedCount,
   initialUnscannedCount,
   initialFilteredCount,
+  initialStandardCount,
+  initialVipCount,
   initialEvents,
 }: TicketManagementClientProps) {
   const [tickets, setTickets] = useState<Ticket[]>(initialTickets);
@@ -56,6 +60,8 @@ export default function TicketManagementClient({
   const [scannedCount, setScannedCount] = useState(initialScannedCount);
   const [unscannedCount, setUnscannedCount] = useState(initialUnscannedCount);
   const [filteredCount, setFilteredCount] = useState(initialFilteredCount);
+  const [standardCount, setStandardCount] = useState(initialStandardCount);
+  const [vipCount, setVipCount] = useState(initialVipCount);
   const [selectedEventId, setSelectedEventId] = useState<string>("");
   const [searchEmail, setSearchEmail] = useState("");
   const [ticketTypeFilter, setTicketTypeFilter] = useState<string>("");
@@ -95,6 +101,8 @@ export default function TicketManagementClient({
       setScannedCount(0);
       setUnscannedCount(0);
       setFilteredCount(0);
+      setStandardCount(0);
+      setVipCount(0);
       return;
     }
 
@@ -136,6 +144,8 @@ export default function TicketManagementClient({
       setScannedCount(data.scannedCount || 0);
       setUnscannedCount(data.unscannedCount || 0);
       setFilteredCount(data.filteredCount || 0);
+      setStandardCount(data.standardCount || 0);
+      setVipCount(data.vipCount || 0);
     } catch (err) {
       console.error("Error fetching tickets:", err);
       setError(err instanceof Error ? err.message : "Failed to load tickets");
@@ -183,6 +193,12 @@ export default function TicketManagementClient({
       } else {
         setUnscannedCount((prev) => prev - 1);
       }
+      // Update ticket type counts
+      if (ticketToDelete?.type === "STANDARD") {
+        setStandardCount((prev) => prev - 1);
+      } else {
+        setVipCount((prev) => prev - 1);
+      }
       setSuccess("Ticket deleted successfully!");
     } catch (err) {
       console.error("Error deleting ticket:", err);
@@ -220,6 +236,10 @@ export default function TicketManagementClient({
   }
 
   async function handleUpdateType(id: string, newType: string) {
+    // Find the ticket to check its current type
+    const ticket = tickets.find((t) => t.id === id);
+    const oldType = ticket?.type;
+
     setUpdatingTicketId(id);
     try {
       const response = await fetch("/api/tickets", {
@@ -237,6 +257,16 @@ export default function TicketManagementClient({
       setTickets((prev) =>
         prev.map((t) => (t.id === id ? (data.ticket as Ticket) : t)),
       );
+      // Update ticket type counts if type actually changed
+      if (oldType !== newType) {
+        if (oldType === "STANDARD") {
+          setStandardCount((prev) => prev - 1);
+          setVipCount((prev) => prev + 1);
+        } else {
+          setVipCount((prev) => prev - 1);
+          setStandardCount((prev) => prev + 1);
+        }
+      }
       setSuccess("Ticket type updated successfully!");
     } catch (err) {
       console.error("Error updating ticket type:", err);
@@ -400,6 +430,12 @@ export default function TicketManagementClient({
       setTotal((prev) => prev + successCount);
       // New tickets are always unscanned
       setUnscannedCount((prev) => prev + successCount);
+      // Update ticket type counts based on the type of tickets created
+      if (newTicketType === "STANDARD") {
+        setStandardCount((prev) => prev + successCount);
+      } else {
+        setVipCount((prev) => prev + successCount);
+      }
       setSuccess(
         `Successfully created ${successCount} ticket(s)${
           errors.length > 0 ? ` (${errors.length} failed)` : ""
@@ -439,6 +475,18 @@ export default function TicketManagementClient({
             {tickets.length > 0 && (
               <>
                 <div className="flex items-center gap-2">
+                  <span className="text-zinc-400">Standard:</span>
+                  <span className="text-zinc-300 font-semibold">
+                    {standardCount}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-zinc-400">VIP:</span>
+                  <span className="text-blue-400 font-semibold">
+                    {vipCount}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
                   <span className="text-zinc-400">Scanned:</span>
                   <span className="text-emerald-400 font-semibold">
                     {scannedCount}
@@ -463,25 +511,48 @@ export default function TicketManagementClient({
               )}
           </div>
         </div>
-        <button
-          onClick={() => setShowAddForm(!showAddForm)}
-          className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-emerald-500 to-teal-500 text-white rounded-xl font-medium hover:opacity-90 transition-opacity"
-        >
-          <svg
-            className="w-5 h-5"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => fetchTickets()}
+            disabled={isLoading}
+            className="flex items-center gap-2 px-5 py-2.5 bg-zinc-800 border border-zinc-700 text-white rounded-xl font-medium hover:bg-zinc-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            title="Reload tickets"
           >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M12 6v6m0 0v6m0-6h6m-6 0H6"
-            />
-          </svg>
-          Add Ticket
-        </button>
+            <svg
+              className={`w-5 h-5 ${isLoading ? "animate-spin" : ""}`}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+              />
+            </svg>
+            Reload
+          </button>
+          <button
+            onClick={() => setShowAddForm(!showAddForm)}
+            className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-emerald-500 to-teal-500 text-white rounded-xl font-medium hover:opacity-90 transition-opacity"
+          >
+            <svg
+              className="w-5 h-5"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 6v6m0 0v6m0-6h6m-6 0H6"
+              />
+            </svg>
+            Add Ticket
+          </button>
+        </div>
       </div>
 
       {/* Messages */}
