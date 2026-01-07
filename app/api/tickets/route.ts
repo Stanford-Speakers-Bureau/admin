@@ -285,6 +285,23 @@ export async function PATCH(req: Request) {
         );
       }
 
+      // First, fetch the current ticket to check if type is changing
+      const { data: currentTicket, error: fetchError } = await adminClient
+        .from("tickets")
+        .select("type")
+        .eq("id", id)
+        .single();
+
+      if (fetchError || !currentTicket) {
+        console.error("Ticket fetch error:", fetchError);
+        return NextResponse.json(
+          { error: "Ticket not found" },
+          { status: 404 },
+        );
+      }
+
+      const typeChanged = currentTicket.type !== type;
+
       const { data: ticket, error: updateError } = await adminClient
         .from("tickets")
         .update({ type })
@@ -303,7 +320,10 @@ export async function PATCH(req: Request) {
             id,
             name,
             route,
-            start_time_date
+            start_time_date,
+            venue,
+            venue_link,
+            desc
           )
         `,
         )
@@ -315,6 +335,29 @@ export async function PATCH(req: Request) {
           { error: "Failed to update ticket type" },
           { status: 500 },
         );
+      }
+
+      // If the type changed, send updated ticket email
+      if (typeChanged && ticket) {
+        try {
+          const event = Array.isArray(ticket.events)
+            ? ticket.events[0]
+            : ticket.events;
+          await sendTicketEmail({
+            email: ticket.email,
+            eventName: event?.name || "Event",
+            ticketType: ticket.type || "STANDARD",
+            eventStartTime: event?.start_time_date || null,
+            eventRoute: event?.route || null,
+            ticketId: ticket.id,
+            eventVenue: event?.venue || null,
+            eventVenueLink: event?.venue_link || null,
+            eventDescription: event?.desc || null,
+          });
+        } catch (emailError) {
+          console.error("Email sending error:", emailError);
+          // Don't fail the update if email fails, just log it
+        }
       }
 
       return NextResponse.json({ success: true, ticket });
