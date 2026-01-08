@@ -607,6 +607,28 @@ export async function POST(req: Request) {
         );
       }
 
+      // Remove user from waitlist if they were on it
+      if (updatedTicket) {
+        try {
+          const { error: waitlistDeleteError } = await adminClient
+            .from("waitlist")
+            .delete()
+            .eq("event_id", eventId)
+            .eq("email", email);
+
+          if (waitlistDeleteError) {
+            console.error(
+              "Waitlist removal error (non-fatal):",
+              waitlistDeleteError,
+            );
+            // Don't fail the ticket update if waitlist removal fails
+          }
+        } catch (waitlistError) {
+          console.error("Waitlist removal error (non-fatal):", waitlistError);
+          // Don't fail the ticket update if waitlist removal fails
+        }
+      }
+
       // Resend ticket confirmation email
       if (updatedTicket) {
         try {
@@ -680,6 +702,28 @@ export async function POST(req: Request) {
         { error: "Failed to create ticket" },
         { status: 500 },
       );
+    }
+
+    // Remove user from waitlist if they were on it
+    if (ticket) {
+      try {
+        const { error: waitlistDeleteError } = await adminClient
+          .from("waitlist")
+          .delete()
+          .eq("event_id", eventId)
+          .eq("email", email);
+
+        if (waitlistDeleteError) {
+          console.error(
+            "Waitlist removal error (non-fatal):",
+            waitlistDeleteError,
+          );
+          // Don't fail the ticket creation if waitlist removal fails
+        }
+      } catch (waitlistError) {
+        console.error("Waitlist removal error (non-fatal):", waitlistError);
+        // Don't fail the ticket creation if waitlist removal fails
+      }
     }
 
     // Send ticket confirmation email
