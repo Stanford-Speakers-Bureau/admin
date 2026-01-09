@@ -380,6 +380,100 @@ export async function PATCH(req: Request) {
         }
       }
 
+      // If upgraded to VIP, pull someone off the waitlist
+      if (typeChanged && type === "VIP" && ticket?.event_id) {
+        try {
+          // Get the first person on the waitlist for this event
+          const { data: waitlistEntry, error: waitlistFetchError } =
+            await adminClient
+              .from("waitlist")
+              .select("id, email")
+              .eq("event_id", ticket.event_id)
+              .order("position", { ascending: true })
+              .limit(1)
+              .single();
+
+          if (!waitlistFetchError && waitlistEntry) {
+            // Create a STANDARD ticket for the waitlist person
+            const { data: newTicket, error: ticketCreateError } =
+              await adminClient
+                .from("tickets")
+                .insert({
+                  event_id: ticket.event_id,
+                  email: waitlistEntry.email,
+                  type: "STANDARD",
+                })
+                .select(
+                  `
+                id,
+                email,
+                type,
+                event_id,
+                events (
+                  id,
+                  name,
+                  route,
+                  start_time_date,
+                  venue,
+                  venue_link,
+                  desc
+                )
+              `,
+                )
+                .single();
+
+            if (!ticketCreateError && newTicket) {
+              // Remove them from the waitlist
+              const { error: waitlistDeleteError } = await adminClient
+                .from("waitlist")
+                .delete()
+                .eq("id", waitlistEntry.id);
+
+              if (waitlistDeleteError) {
+                console.error(
+                  "Waitlist removal error (non-fatal):",
+                  waitlistDeleteError,
+                );
+              }
+
+              // Send ticket email to the person who was on the waitlist
+              try {
+                const eventData = Array.isArray(newTicket.events)
+                  ? newTicket.events[0]
+                  : newTicket.events;
+                await sendTicketEmail({
+                  email: newTicket.email,
+                  eventName: eventData?.name || "Event",
+                  ticketType: newTicket.type || "STANDARD",
+                  eventStartTime: eventData?.start_time_date || null,
+                  eventRoute: eventData?.route || null,
+                  ticketId: newTicket.id,
+                  eventVenue: eventData?.venue || null,
+                  eventVenueLink: eventData?.venue_link || null,
+                  eventDescription: eventData?.desc || null,
+                });
+              } catch (emailError) {
+                console.error(
+                  "Email sending error for waitlist conversion (non-fatal):",
+                  emailError,
+                );
+              }
+            } else if (ticketCreateError) {
+              console.error(
+                "Failed to create ticket for waitlist person (non-fatal):",
+                ticketCreateError,
+              );
+            }
+          }
+        } catch (waitlistError) {
+          console.error(
+            "Waitlist conversion error (non-fatal):",
+            waitlistError,
+          );
+          // Don't fail the upgrade if waitlist conversion fails
+        }
+      }
+
       return NextResponse.json({ success: true, ticket });
     } else if (action === "updateScanned" || typeof scanned === "boolean") {
       // Update scanned status
