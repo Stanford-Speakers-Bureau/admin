@@ -270,14 +270,14 @@ export default function WaitlistViewerClient({
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-zinc-800">
-                        {group.waitlist.map((entry) => (
+                        {group.waitlist.map((entry, index) => (
                           <tr
                             key={entry.id}
                             className="hover:bg-zinc-800/30 transition-colors"
                           >
                             <td className="px-6 py-4 whitespace-nowrap">
                               <span className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-zinc-800 text-white font-semibold text-sm">
-                                {entry.position}
+                                {index + 1}
                               </span>
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-white font-medium">
@@ -446,14 +446,14 @@ export default function WaitlistViewerClient({
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-800">
-                {entries.map((entry) => (
+                {entries.map((entry, index) => (
                   <tr
                     key={entry.id}
                     className="hover:bg-zinc-800/30 transition-colors"
                   >
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-zinc-800 text-white font-semibold text-sm">
-                        {entry.position}
+                        {index + 1}
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-white font-medium">
