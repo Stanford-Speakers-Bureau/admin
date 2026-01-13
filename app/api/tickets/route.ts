@@ -1,10 +1,98 @@
 import { NextResponse } from "next/server";
 import {
   verifyAdminRequest,
+  getSupabaseClient,
   getAvailablePublicTickets,
   isEventUnderCapacity,
 } from "@/app/lib/supabase";
 import { sendTicketEmail } from "@/app/lib/email";
+
+async function pullFromWaitlistIfCapacity(
+  adminClient: ReturnType<typeof getSupabaseClient>,
+  eventId: string,
+) {
+  const hasCapacity = await isEventUnderCapacity(eventId);
+  if (!hasCapacity) return;
+
+  // Get the first person on the waitlist for this event
+  const { data: waitlistEntry, error: waitlistFetchError } = await adminClient
+    .from("waitlist")
+    .select("id, email")
+    .eq("event_id", eventId)
+    .order("position", { ascending: true })
+    .limit(1)
+    .single();
+
+  if (waitlistFetchError || !waitlistEntry) return;
+
+  // Create a STANDARD ticket for the waitlist person
+  const { data: newTicket, error: ticketCreateError } = await adminClient
+    .from("tickets")
+    .insert({
+      event_id: eventId,
+      email: waitlistEntry.email,
+      type: "STANDARD",
+    })
+    .select(
+      `
+      id,
+      email,
+      type,
+      event_id,
+      events (
+        id,
+        name,
+        route,
+        start_time_date,
+        venue,
+        venue_link,
+        desc
+      )
+    `,
+    )
+    .single();
+
+  if (ticketCreateError || !newTicket) {
+    console.error(
+      "Failed to create ticket for waitlist person (non-fatal):",
+      ticketCreateError,
+    );
+    return;
+  }
+
+  // Remove them from the waitlist
+  const { error: waitlistDeleteError } = await adminClient
+    .from("waitlist")
+    .delete()
+    .eq("id", waitlistEntry.id);
+
+  if (waitlistDeleteError) {
+    console.error("Waitlist removal error (non-fatal):", waitlistDeleteError);
+  }
+
+  // Send ticket email to the person who was on the waitlist
+  try {
+    const eventData = Array.isArray(newTicket.events)
+      ? newTicket.events[0]
+      : newTicket.events;
+    await sendTicketEmail({
+      email: newTicket.email,
+      eventName: eventData?.name || "Event",
+      ticketType: newTicket.type || "STANDARD",
+      eventStartTime: eventData?.start_time_date || null,
+      eventRoute: eventData?.route || null,
+      ticketId: newTicket.id,
+      eventVenue: eventData?.venue || null,
+      eventVenueLink: eventData?.venue_link || null,
+      eventDescription: eventData?.desc || null,
+    });
+  } catch (emailError) {
+    console.error(
+      "Email sending error for waitlist conversion (non-fatal):",
+      emailError,
+    );
+  }
+}
 
 export async function GET(req: Request) {
   try {
@@ -179,7 +267,18 @@ export async function DELETE(req: Request) {
 
     const adminClient = auth.adminClient!;
 
-    // Call the sync_votes RPC function
+    // Fetch the ticket before deleting to get event_id and type
+    const { data: ticketToDelete, error: fetchError } = await adminClient
+      .from("tickets")
+      .select("event_id, type")
+      .eq("id", id)
+      .single();
+
+    if (fetchError || !ticketToDelete) {
+      console.error("Ticket fetch error:", fetchError);
+      return NextResponse.json({ error: "Ticket not found" }, { status: 404 });
+    }
+
     // Delete the ticket
     const { error: deleteError } = await adminClient
       .from("tickets")
@@ -217,6 +316,16 @@ export async function DELETE(req: Request) {
         { error: "Failed to sync scanned" },
         { status: 500 },
       );
+    }
+
+    // If the deleted ticket was non-VIP and we have capacity, pull from waitlist
+    if (ticketToDelete.type !== "VIP" && ticketToDelete.event_id) {
+      try {
+        await pullFromWaitlistIfCapacity(adminClient, ticketToDelete.event_id);
+      } catch (waitlistError) {
+        console.error("Waitlist conversion error (non-fatal):", waitlistError);
+        // Don't fail the delete if waitlist conversion fails
+      }
     }
 
     return NextResponse.json({ success: true });
