@@ -133,3 +133,137 @@ export async function getSignedImageUrl(
  * @deprecated Import from "./utils" instead for use in Client Components.
  */
 export { generateReferralCode };
+
+/**
+ * Calculates available public ticket capacity with unified logic
+ *
+ * Business Rules:
+ * - Reserved slots are pre-allocated for VIP tickets
+ * - VIP tickets don't count towards public capacity UNLESS they exceed reserved
+ * - If VIPs <= reserved: public capacity = capacity - reserved
+ * - If VIPs > reserved: public capacity = capacity - vipCount (overflow protection)
+ * - Total tickets (VIP + public) can never exceed capacity
+ *
+ * @param eventId - The event UUID
+ * @returns Detailed capacity information for displaying to users
+ */
+export async function getAvailablePublicTickets(eventId: string): Promise<{
+  available: number; // How many public tickets can still be sold
+  publicSold: number; // How many public tickets have been sold
+  maxPublic: number; // Maximum public ticket capacity (accounting for VIP overflow)
+  vipCount: number; // How many VIP tickets exist
+  totalCapacity: number; // Total event capacity
+  reserved: number; // Reserved slots for VIPs
+}> {
+  const adminClient = getSupabaseClient();
+
+  // Get event capacity info
+  const { data: event } = await adminClient
+    .from("events")
+    .select("capacity, reserved")
+    .eq("id", eventId)
+    .single();
+
+  if (!event || !event.capacity) {
+    return {
+      available: 0,
+      publicSold: 0,
+      maxPublic: 0,
+      vipCount: 0,
+      totalCapacity: 0,
+      reserved: 0,
+    };
+  }
+
+  const capacity = event.capacity;
+  const reserved = event.reserved ?? 0;
+
+  // Get actual ticket counts from database
+  const { vipCount, publicCount } = await getTicketCounts(eventId);
+
+  // Calculate public capacity with VIP overflow protection
+  // If VIPs exceed reserved, they start taking from public capacity
+  let maxPublic: number;
+  if (vipCount <= reserved) {
+    // Normal case: VIPs fit within reserved allocation
+    maxPublic = capacity - reserved;
+  } else {
+    // Overflow case: VIPs exceed reserved, reduce public capacity
+    maxPublic = capacity - vipCount;
+  }
+
+  // Ensure maxPublic is non-negative
+  maxPublic = Math.max(0, maxPublic);
+
+  // Calculate available public tickets
+  const available = Math.max(0, maxPublic - publicCount);
+
+  return {
+    available,
+    publicSold: publicCount,
+    maxPublic,
+    vipCount,
+    totalCapacity: capacity,
+    reserved,
+  };
+}
+
+/**
+ * Check if an event is under capacity (has available public tickets)
+ *
+ * @param eventId - The event UUID
+ * @returns True if there are available tickets or no capacity is set, false if sold out
+ */
+export async function isEventUnderCapacity(eventId: string): Promise<boolean> {
+  const adminClient = getSupabaseClient();
+
+  // Get event capacity info
+  const { data: event } = await adminClient
+    .from("events")
+    .select("capacity")
+    .eq("id", eventId)
+    .single();
+
+  // If no capacity is set, event is never "sold out"
+  if (!event?.capacity) {
+    return true;
+  }
+
+  const ticketInfo = await getAvailablePublicTickets(eventId);
+  return ticketInfo.available > 0;
+}
+
+/**
+ * Gets detailed ticket counts for an event
+ * Separates VIP and public tickets for proper capacity management
+ *
+ * @param eventId - The event UUID
+ * @returns Object with vipCount, publicCount, and totalCount
+ */
+export async function getTicketCounts(eventId: string): Promise<{
+  vipCount: number;
+  publicCount: number;
+  totalCount: number;
+}> {
+  const adminClient = getSupabaseClient();
+
+  // Count VIP tickets (admin-created only)
+  const { count: vipCount } = await adminClient
+    .from("tickets")
+    .select("*", { count: "exact", head: true })
+    .eq("event_id", eventId)
+    .eq("type", "VIP");
+
+  // Count public tickets (STANDARD or null)
+  const { count: publicCount } = await adminClient
+    .from("tickets")
+    .select("*", { count: "exact", head: true })
+    .eq("event_id", eventId)
+    .or("type.eq.STANDARD,type.is.null");
+
+  return {
+    vipCount: vipCount ?? 0,
+    publicCount: publicCount ?? 0,
+    totalCount: (vipCount ?? 0) + (publicCount ?? 0),
+  };
+}

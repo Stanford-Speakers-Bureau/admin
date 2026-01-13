@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
-import { verifyAdminRequest } from "@/app/lib/supabase";
+import {
+  verifyAdminRequest,
+  getAvailablePublicTickets,
+  isEventUnderCapacity,
+} from "@/app/lib/supabase";
 import { sendTicketEmail } from "@/app/lib/email";
 
 export async function GET(req: Request) {
@@ -308,7 +312,7 @@ export async function PATCH(req: Request) {
       // First, fetch the current ticket to check if type is changing
       const { data: currentTicket, error: fetchError } = await adminClient
         .from("tickets")
-        .select("type")
+        .select("type, event_id")
         .eq("id", id)
         .single();
 
@@ -321,6 +325,19 @@ export async function PATCH(req: Request) {
       }
 
       const typeChanged = currentTicket.type !== type;
+
+      // Block STANDARD→VIP upgrade if VIP capacity is full
+      if (typeChanged && type === "VIP" && currentTicket.event_id) {
+        const ticketInfo = await getAvailablePublicTickets(
+          currentTicket.event_id,
+        );
+        if (ticketInfo.vipCount >= ticketInfo.reserved) {
+          return NextResponse.json(
+            { error: "VIP ticket capacity reached for this event" },
+            { status: 400 },
+          );
+        }
+      }
 
       const { data: ticket, error: updateError } = await adminClient
         .from("tickets")
@@ -380,89 +397,95 @@ export async function PATCH(req: Request) {
         }
       }
 
-      // If upgraded to VIP, pull someone off the waitlist
+      // If upgraded to VIP, pull someone off the waitlist if there's available public capacity
       if (typeChanged && type === "VIP" && ticket?.event_id) {
         try {
-          // Get the first person on the waitlist for this event
-          const { data: waitlistEntry, error: waitlistFetchError } =
-            await adminClient
-              .from("waitlist")
-              .select("id, email")
-              .eq("event_id", ticket.event_id)
-              .order("position", { ascending: true })
-              .limit(1)
-              .single();
+          // Check available public capacity after the upgrade
+          const hasCapacity = await isEventUnderCapacity(ticket.event_id);
 
-          if (!waitlistFetchError && waitlistEntry) {
-            // Create a STANDARD ticket for the waitlist person
-            const { data: newTicket, error: ticketCreateError } =
+          // Only pull from waitlist if there's available public capacity
+          if (hasCapacity) {
+            // Get the first person on the waitlist for this event
+            const { data: waitlistEntry, error: waitlistFetchError } =
               await adminClient
-                .from("tickets")
-                .insert({
-                  event_id: ticket.event_id,
-                  email: waitlistEntry.email,
-                  type: "STANDARD",
-                })
-                .select(
-                  `
-                id,
-                email,
-                type,
-                event_id,
-                events (
-                  id,
-                  name,
-                  route,
-                  start_time_date,
-                  venue,
-                  venue_link,
-                  desc
-                )
-              `,
-                )
+                .from("waitlist")
+                .select("id, email")
+                .eq("event_id", ticket.event_id)
+                .order("position", { ascending: true })
+                .limit(1)
                 .single();
 
-            if (!ticketCreateError && newTicket) {
-              // Remove them from the waitlist
-              const { error: waitlistDeleteError } = await adminClient
-                .from("waitlist")
-                .delete()
-                .eq("id", waitlistEntry.id);
+            if (!waitlistFetchError && waitlistEntry) {
+              // Create a STANDARD ticket for the waitlist person
+              const { data: newTicket, error: ticketCreateError } =
+                await adminClient
+                  .from("tickets")
+                  .insert({
+                    event_id: ticket.event_id,
+                    email: waitlistEntry.email,
+                    type: "STANDARD",
+                  })
+                  .select(
+                    `
+                  id,
+                  email,
+                  type,
+                  event_id,
+                  events (
+                    id,
+                    name,
+                    route,
+                    start_time_date,
+                    venue,
+                    venue_link,
+                    desc
+                  )
+                `,
+                  )
+                  .single();
 
-              if (waitlistDeleteError) {
+              if (!ticketCreateError && newTicket) {
+                // Remove them from the waitlist
+                const { error: waitlistDeleteError } = await adminClient
+                  .from("waitlist")
+                  .delete()
+                  .eq("id", waitlistEntry.id);
+
+                if (waitlistDeleteError) {
+                  console.error(
+                    "Waitlist removal error (non-fatal):",
+                    waitlistDeleteError,
+                  );
+                }
+
+                // Send ticket email to the person who was on the waitlist
+                try {
+                  const eventData = Array.isArray(newTicket.events)
+                    ? newTicket.events[0]
+                    : newTicket.events;
+                  await sendTicketEmail({
+                    email: newTicket.email,
+                    eventName: eventData?.name || "Event",
+                    ticketType: newTicket.type || "STANDARD",
+                    eventStartTime: eventData?.start_time_date || null,
+                    eventRoute: eventData?.route || null,
+                    ticketId: newTicket.id,
+                    eventVenue: eventData?.venue || null,
+                    eventVenueLink: eventData?.venue_link || null,
+                    eventDescription: eventData?.desc || null,
+                  });
+                } catch (emailError) {
+                  console.error(
+                    "Email sending error for waitlist conversion (non-fatal):",
+                    emailError,
+                  );
+                }
+              } else if (ticketCreateError) {
                 console.error(
-                  "Waitlist removal error (non-fatal):",
-                  waitlistDeleteError,
+                  "Failed to create ticket for waitlist person (non-fatal):",
+                  ticketCreateError,
                 );
               }
-
-              // Send ticket email to the person who was on the waitlist
-              try {
-                const eventData = Array.isArray(newTicket.events)
-                  ? newTicket.events[0]
-                  : newTicket.events;
-                await sendTicketEmail({
-                  email: newTicket.email,
-                  eventName: eventData?.name || "Event",
-                  ticketType: newTicket.type || "STANDARD",
-                  eventStartTime: eventData?.start_time_date || null,
-                  eventRoute: eventData?.route || null,
-                  ticketId: newTicket.id,
-                  eventVenue: eventData?.venue || null,
-                  eventVenueLink: eventData?.venue_link || null,
-                  eventDescription: eventData?.desc || null,
-                });
-              } catch (emailError) {
-                console.error(
-                  "Email sending error for waitlist conversion (non-fatal):",
-                  emailError,
-                );
-              }
-            } else if (ticketCreateError) {
-              console.error(
-                "Failed to create ticket for waitlist person (non-fatal):",
-                ticketCreateError,
-              );
             }
           }
         } catch (waitlistError) {
@@ -656,15 +679,55 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Event not found" }, { status: 404 });
     }
 
+    // Check capacity constraints for new tickets (only if event has capacity set)
+    const ticketType = type || "VIP"; // Admin-created tickets default to VIP
+    if (event.capacity) {
+      const ticketInfo = await getAvailablePublicTickets(eventId);
+
+      if (ticketType === "STANDARD") {
+        if (ticketInfo.available <= 0) {
+          return NextResponse.json(
+            { error: "Standard ticket capacity reached for this event" },
+            { status: 400 },
+          );
+        }
+      } else if (ticketType === "VIP") {
+        // Block VIP creation if it would exceed reserved allocation
+        if (ticketInfo.vipCount >= ticketInfo.reserved) {
+          return NextResponse.json(
+            { error: "VIP ticket capacity reached for this event" },
+            { status: 400 },
+          );
+        }
+      }
+    }
+
     // Check if user already has a ticket for this event
     const { data: existingTicket } = await adminClient
       .from("tickets")
-      .select("id")
+      .select("id, type")
       .eq("event_id", eventId)
       .eq("email", email)
       .single();
 
     if (existingTicket) {
+      const newType = type || "VIP";
+
+      // If upgrading to VIP from non-VIP, check VIP capacity
+      if (
+        newType === "VIP" &&
+        existingTicket.type !== "VIP" &&
+        event.capacity
+      ) {
+        const ticketInfo = await getAvailablePublicTickets(eventId);
+        if (ticketInfo.vipCount >= ticketInfo.reserved) {
+          return NextResponse.json(
+            { error: "VIP ticket capacity reached for this event" },
+            { status: 400 },
+          );
+        }
+      }
+
       // Update the existing ticket's type
       const { data: updatedTicket, error: updateError } = await adminClient
         .from("tickets")
