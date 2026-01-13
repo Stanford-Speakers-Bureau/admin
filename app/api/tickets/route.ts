@@ -684,14 +684,15 @@ export async function POST(req: Request) {
     if (event.capacity) {
       const ticketInfo = await getAvailablePublicTickets(eventId);
 
-      if (ticketType === "STANDARD") {
-        if (ticketInfo.available <= 0) {
-          return NextResponse.json(
-            { error: "Standard ticket capacity reached for this event" },
-            { status: 400 },
-          );
-        }
-      } else if (ticketType === "VIP") {
+      // if (ticketType === "STANDARD") {
+      //   if (ticketInfo.available <= 0) {
+      //     return NextResponse.json(
+      //       { error: "Standard ticket capacity reached for this event" },
+      //       { status: 400 },
+      //     );
+      //   }
+      // } else
+        if (ticketType === "VIP") {
         // Block VIP creation if it would exceed reserved allocation
         if (ticketInfo.vipCount >= ticketInfo.reserved) {
           return NextResponse.json(
