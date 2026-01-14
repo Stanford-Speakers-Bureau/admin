@@ -724,6 +724,10 @@ async function generateTicketEmailHTML(
             <p style="margin: 0 0 24px 0; color: #a1a1aa; font-size: 14px; line-height: 1.6;">
               Please bring a valid ID and this confirmation email to the event. We look forward to seeing you there!
             </p>
+            <p style="margin: 0 0 24px 0; color: #a1a1aa; font-size: 14px; line-height: 1.6;">
+              At 8:15, we will start letting people off the waitlist and your ticket may be invalidated. If you have
+              friends without tickets, they should come and wait on the in-person waitlist.
+            </p>
           ${gmailBlendEnd}
           
           ${
@@ -813,6 +817,7 @@ ${referralUrl && !(ticketType.toUpperCase() == "VIP") ? `- Your Referral Link: $
 ${REFERRAL_MESSAGE}
 
 Please bring a valid ID and this confirmation email to the event. We look forward to seeing you there!
+At 8:15, we will start letting people off the waitlist and your ticket may be invalidated. If you have friends without tickets, they should come and wait on the in-person waitlist.
 
 Stanford Speakers Bureau
 If you have any questions, please contact us at ${FROM_EMAIL}
@@ -1042,6 +1047,8 @@ async function generateDayOfReminderEmailHTML(
               <ul style="margin: 0; padding: 0 0 0 20px; color: #ffffff; font-size: 15px; line-height: 1.8;">
                 <li style="margin-bottom: 8px;"><strong>No bags are allowed</strong> at the venue</li>
                 <li>For ADA accommodations, please email <a href="mailto:tickets@stanfordspeakersbureau.com" style="color: #ffffff; text-decoration: underline;">tickets@stanfordspeakersbureau.com</a></li>
+                <li>At 8:15, we will start letting people off the waitlist and your ticket may be invalidated</li>
+                <li>If you have friends without tickets, they should come and wait on the in-person waitlist</li>
               </ul>
             ${gmailBlendEnd}
           </div>
@@ -1317,6 +1324,8 @@ ${ticketType?.toUpperCase() === "VIP" ? "We've reserved a seat for you in the fr
 IMPORTANT REMINDERS:
 - No bags are allowed at the venue
 - For ADA accommodations, please email tickets@stanfordspeakersbureau.com
+- At 8:15, we will start letting people off the waitlist and your ticket may be invalidated
+- If you have friends without tickets, they should come and wait on the in-person waitlist
 
 Event Details:
 - Event: ${eventName || "Event"}
