@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
-import { getSignedImageUrl, verifyAdminRequest } from "@/app/lib/supabase";
 import { randomUUID } from "crypto";
 import { fromZonedTime } from "date-fns-tz";
+import { getSignedImageUrl, verifyAdminRequest } from "@/app/lib/supabase";
 import { PACIFIC_TIMEZONE } from "@/app/lib/constants";
+import { pullFromWaitlist } from "@/app/lib/waitlist";
 import {
   isValidUUID,
   isValidUrl,
@@ -23,6 +24,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: auth.error }, { status: 401 });
     }
 
+    const adminClient = auth.adminClient!;
     const formData = await req.formData();
     const id = formData.get("id") as string | null;
     const name = formData.get("name") as string;
@@ -122,6 +124,29 @@ export async function POST(req: Request) {
       );
     }
 
+    let existingEvent:
+      | {
+          capacity: number | null;
+          reserved: number | null;
+          tickets: number | null;
+          img_version: number | null;
+        }
+      | null = null;
+
+    if (id) {
+      const { data, error } = await adminClient
+        .from("events")
+        .select("capacity, reserved, tickets, img_version")
+        .eq("id", id)
+        .single();
+
+      if (error) {
+        console.error("Event fetch error:", error);
+      } else {
+        existingEvent = data;
+      }
+    }
+
     let imgName: string | null = null;
 
     // Handle image upload with validation
@@ -148,8 +173,8 @@ export async function POST(req: Request) {
       const fileExt = imageFile.name.split(".").pop();
       const fileName = `${Date.now()}-${randomUUID()}.${fileExt}`;
 
-      const { error: uploadError } = await auth
-        .adminClient!.storage.from("speakers")
+      const { error: uploadError } = await adminClient.storage
+        .from("speakers")
         .upload(fileName, imageFile, {
           cacheControl: "3600",
           upsert: false,
@@ -201,13 +226,17 @@ export async function POST(req: Request) {
       eventData.img = imgName;
       // Increment img_version when image is updated (for cache busting)
       if (id) {
-        // For updates, fetch current version and increment
-        const { data: existingEvent } = await auth
-          .adminClient!.from("events")
-          .select("img_version")
-          .eq("id", id)
-          .single();
-        eventData.img_version = (existingEvent?.img_version ?? 0) + 1;
+        const currentVersion =
+          existingEvent?.img_version ??
+          (
+            await adminClient
+              .from("events")
+              .select("img_version")
+              .eq("id", id)
+              .single()
+          ).data?.img_version ??
+          0;
+        eventData.img_version = currentVersion + 1;
       } else {
         // For new events, start at version 1
         eventData.img_version = 1;
@@ -218,8 +247,8 @@ export async function POST(req: Request) {
 
     if (id) {
       // Update existing event
-      const { data, error } = await auth
-        .adminClient!.from("events")
+      const { data, error } = await adminClient
+        .from("events")
         .update(eventData)
         .eq("id", id)
         .select("*")
@@ -236,8 +265,8 @@ export async function POST(req: Request) {
       savedEvent = data;
     } else {
       // Create new event
-      const { data, error } = await auth
-        .adminClient!.from("events")
+      const { data, error } = await adminClient
+        .from("events")
         .insert([eventData])
         .select("*")
         .single();
@@ -251,6 +280,29 @@ export async function POST(req: Request) {
       }
 
       savedEvent = data;
+    }
+
+    if (id && existingEvent && savedEvent) {
+      const previousCapacity = existingEvent.capacity ?? 0;
+      const previousReserved = existingEvent.reserved ?? 0;
+      const newCapacity =
+        typeof savedEvent.capacity === "number" ? savedEvent.capacity : 0;
+      const newReserved =
+        typeof savedEvent.reserved === "number" ? savedEvent.reserved : 0;
+
+      const capacityIncreased = newCapacity > previousCapacity;
+      const reservedDecreased = newReserved < previousReserved;
+
+      if (capacityIncreased || reservedDecreased) {
+        try {
+          await pullFromWaitlist(adminClient, savedEvent.id);
+        } catch (waitlistError) {
+          console.error(
+            "Waitlist conversion error (non-fatal):",
+            waitlistError,
+          );
+        }
+      }
     }
 
     const eventWithImage = savedEvent
