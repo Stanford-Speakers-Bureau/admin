@@ -78,6 +78,10 @@ export default function TicketManagementClient({
   const limit = 50;
   const [resendingEmailId, setResendingEmailId] = useState<string | null>(null);
   const [updatingTicketId, setUpdatingTicketId] = useState<string | null>(null);
+  const [isSendingReminders, setIsSendingReminders] = useState(false);
+  const [sendingReminderId, setSendingReminderId] = useState<string | null>(
+    null,
+  );
 
   useEffect(() => {
     if (error) {
@@ -358,6 +362,91 @@ export default function TicketManagementClient({
     }
   }
 
+  async function handleSendDayOfReminders() {
+    if (!selectedEventId) {
+      setError("Please select an event first");
+      return;
+    }
+
+    const selectedEvent = initialEvents.find((e) => e.id === selectedEventId);
+    const eventName = selectedEvent?.name || "this event";
+
+    if (
+      !confirm(
+        `Send day-of reminder emails to all ${total} ticket holders for ${eventName}?\n\nThis will send reminder emails with "no bags" and ADA accommodation info.`,
+      )
+    )
+      return;
+
+    setIsSendingReminders(true);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      const response = await fetch(`/api/tickets?eventId=${selectedEventId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "sendDayOfReminders" }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to send reminders");
+      }
+
+      setSuccess(
+        `Day-of reminders sent! ${data.sent} sent, ${data.failed} failed.`,
+      );
+    } catch (err) {
+      console.error("Error sending day-of reminders:", err);
+      setError(
+        err instanceof Error ? err.message : "Failed to send day-of reminders",
+      );
+    } finally {
+      setIsSendingReminders(false);
+    }
+  }
+
+  async function handleSendIndividualReminder(id: string) {
+    const ticket = tickets.find((t) => t.id === id);
+    if (!ticket) return;
+
+    if (
+      !confirm(
+        `Send day-of reminder email to ${ticket.email}?\n\nThis will send a reminder with "no bags" and ADA accommodation info.`,
+      )
+    )
+      return;
+
+    setSendingReminderId(id);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      const response = await fetch(`/api/tickets?eventId=${ticket.event_id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, action: "sendDayOfReminder" }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to send reminder");
+      }
+
+      setSuccess(`Day-of reminder sent to ${ticket.email}!`);
+    } catch (err) {
+      console.error("Error sending individual reminder:", err);
+      setError(
+        err instanceof Error ? err.message : "Failed to send day-of reminder",
+      );
+    } finally {
+      setSendingReminderId(null);
+    }
+  }
+
   async function handleAddTicket(e: React.FormEvent) {
     e.preventDefault();
 
@@ -512,6 +601,31 @@ export default function TicketManagementClient({
           </div>
         </div>
         <div className="flex items-center gap-3">
+          <button
+            onClick={handleSendDayOfReminders}
+            disabled={!selectedEventId || isSendingReminders || total === 0}
+            className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded-xl font-medium hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
+            title="Send day-of reminder emails to all ticket holders"
+          >
+            {isSendingReminders ? (
+              <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+            ) : (
+              <svg
+                className="w-5 h-5"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"
+                />
+              </svg>
+            )}
+            Send Day-of Reminders
+          </button>
           <button
             onClick={() => fetchTickets()}
             disabled={isLoading}
@@ -945,6 +1059,32 @@ export default function TicketManagementClient({
                                 strokeLinejoin="round"
                                 strokeWidth={2}
                                 d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
+                              />
+                            </svg>
+                          )}
+                        </button>
+                        <button
+                          onClick={() =>
+                            handleSendIndividualReminder(ticket.id)
+                          }
+                          disabled={sendingReminderId === ticket.id}
+                          className="text-amber-400 hover:text-amber-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          title="Send day-of reminder"
+                        >
+                          {sendingReminderId === ticket.id ? (
+                            <div className="w-5 h-5 border-2 border-amber-400 border-t-transparent rounded-full animate-spin" />
+                          ) : (
+                            <svg
+                              className="w-5 h-5"
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"
                               />
                             </svg>
                           )}

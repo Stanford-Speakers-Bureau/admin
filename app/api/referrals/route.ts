@@ -15,6 +15,12 @@ type ReferralRow = {
   events: EventData | EventData[] | null;
 };
 
+type TicketRow = {
+  referral: string | null;
+  event_id: string;
+  scanned: boolean | null;
+};
+
 export async function GET(req: Request) {
   try {
     const auth = await verifyAdminRequest();
@@ -48,7 +54,37 @@ export async function GET(req: Request) {
       query = query.eq("event_id", eventId);
     }
 
-    const { data: referrals, error } = await query;
+    // Fetch tickets to count checked-in referrals
+    let ticketsQuery = adminClient
+      .from("tickets")
+      .select("referral, event_id, scanned")
+      .eq("scanned", true)
+      .not("referral", "is", null);
+
+    if (eventId) {
+      ticketsQuery = ticketsQuery.eq("event_id", eventId);
+    }
+
+    const [{ data: referrals, error }, { data: tickets, error: ticketsError }] =
+      await Promise.all([query, ticketsQuery]);
+
+    if (ticketsError) {
+      console.error("Tickets fetch error:", ticketsError);
+    }
+
+    // Build a map of referral_code -> event_id -> checked_in_count
+    const checkedInMap: Record<string, Record<string, number>> = {};
+    const typedTickets = (tickets || []) as TicketRow[];
+    typedTickets.forEach((ticket) => {
+      if (!ticket.referral) return;
+      if (!checkedInMap[ticket.referral]) {
+        checkedInMap[ticket.referral] = {};
+      }
+      if (!checkedInMap[ticket.referral][ticket.event_id]) {
+        checkedInMap[ticket.referral][ticket.event_id] = 0;
+      }
+      checkedInMap[ticket.referral][ticket.event_id]++;
+    });
 
     if (error) {
       console.error("Referrals fetch error:", error);
@@ -66,7 +102,11 @@ export async function GET(req: Request) {
         string,
         {
           event: { id: string; name: string | null; route: string | null };
-          referrals: Array<{ referral_code: string; count: number }>;
+          referrals: Array<{
+            referral_code: string;
+            count: number;
+            checked_in_count: number;
+          }>;
         }
       > = {};
 
@@ -95,9 +135,13 @@ export async function GET(req: Request) {
             referrals: [],
           };
         }
+
+        const checkedInCount = checkedInMap[ref.referral_code]?.[eventId] || 0;
+
         groupedByEvent[eventId].referrals.push({
           referral_code: ref.referral_code,
           count: ref.count || 0,
+          checked_in_count: checkedInCount,
         });
       });
 
@@ -117,6 +161,7 @@ export async function GET(req: Request) {
       .map((ref) => ({
         referral_code: ref.referral_code,
         count: ref.count || 0,
+        checked_in_count: checkedInMap[ref.referral_code]?.[ref.event_id] || 0,
       }))
       .sort((a, b) => b.count - a.count);
 

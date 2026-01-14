@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { HIGH_PERFORMER_CHECKIN_THRESHOLD } from "@/app/lib/constants";
 
 type ReferralEntry = {
   referral_code: string;
   count: number;
+  checked_in_count: number;
 };
 
 type EventGroup = {
@@ -45,6 +47,11 @@ export default function ReferralLeaderboardClient({
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isGrouped, setIsGrouped] = useState(initialIsGrouped);
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  const handleRefresh = () => {
+    setRefreshKey((prev) => prev + 1);
+  };
 
   useEffect(() => {
     async function fetchLeaderboard() {
@@ -89,7 +96,7 @@ export default function ReferralLeaderboardClient({
     }
 
     fetchLeaderboard();
-  }, [selectedEventId]);
+  }, [selectedEventId, refreshKey]);
 
   if (isGrouped && Array.isArray(leaderboard) && leaderboard.length > 0) {
     const eventGroups = leaderboard as EventGroup[];
@@ -103,22 +110,46 @@ export default function ReferralLeaderboardClient({
         </div>
 
         {/* Event Filter */}
-        <div className="mb-6">
-          <label className="block text-sm font-medium text-zinc-300 mb-2">
-            Filter by Event
-          </label>
-          <select
-            value={selectedEventId}
-            onChange={(e) => setSelectedEventId(e.target.value)}
-            className="w-full max-w-md px-4 py-3 bg-zinc-900 border border-zinc-800 rounded-xl text-white focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50"
-          >
-            <option value="">All Events</option>
-            {initialEvents.map((event) => (
-              <option key={event.id} value={event.id}>
-                {event.name || "Unnamed Event"}
-              </option>
-            ))}
-          </select>
+        <div className="mb-6 flex flex-col sm:flex-row gap-4">
+          <div className="flex-1">
+            <label className="block text-sm font-medium text-zinc-300 mb-2">
+              Filter by Event
+            </label>
+            <select
+              value={selectedEventId}
+              onChange={(e) => setSelectedEventId(e.target.value)}
+              className="w-full max-w-md px-4 py-3 bg-zinc-900 border border-zinc-800 rounded-xl text-white focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50"
+            >
+              <option value="">All Events</option>
+              {initialEvents.map((event) => (
+                <option key={event.id} value={event.id}>
+                  {event.name || "Unnamed Event"}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="flex items-end">
+            <button
+              onClick={handleRefresh}
+              disabled={isLoading}
+              className="px-4 py-3 bg-zinc-800 hover:bg-zinc-700 disabled:opacity-50 disabled:cursor-not-allowed border border-zinc-700 rounded-xl text-white font-medium transition-colors flex items-center gap-2"
+            >
+              <svg
+                className={`w-5 h-5 ${isLoading ? "animate-spin" : ""}`}
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                />
+              </svg>
+              Refresh
+            </button>
+          </div>
         </div>
 
         {error && (
@@ -148,33 +179,56 @@ export default function ReferralLeaderboardClient({
                   <p className="text-zinc-400 text-sm">No referrals yet</p>
                 ) : (
                   <div className="space-y-2">
-                    {group.referrals.map((referral, index) => (
-                      <div
-                        key={referral.referral_code}
-                        className="flex items-center gap-4 p-4 bg-zinc-800/50 rounded-lg hover:bg-zinc-800 transition-colors"
-                      >
+                    {group.referrals.map((referral, index) => {
+                      const isHighPerformer =
+                        referral.checked_in_count >=
+                        HIGH_PERFORMER_CHECKIN_THRESHOLD;
+                      return (
                         <div
-                          className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold shrink-0 ${getRankColor(
-                            index,
-                          )}`}
+                          key={referral.referral_code}
+                          className={`flex items-center gap-4 p-4 rounded-lg transition-colors ${
+                            isHighPerformer
+                              ? "bg-emerald-500/20 border border-emerald-500/30 hover:bg-emerald-500/25"
+                              : "bg-zinc-800/50 hover:bg-zinc-800"
+                          }`}
                         >
-                          {index + 1}
+                          <div
+                            className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold shrink-0 ${getRankColor(
+                              index,
+                            )}`}
+                          >
+                            {index + 1}
+                          </div>
+                          <div className="flex-1">
+                            <p
+                              className={`font-medium ${isHighPerformer ? "text-emerald-300" : "text-white"}`}
+                            >
+                              {referral.referral_code}
+                            </p>
+                          </div>
+                          <div className="text-right flex items-center gap-4">
+                            <div>
+                              <p className="text-amber-400 font-bold text-lg">
+                                {referral.checked_in_count}
+                              </p>
+                              <p className="text-zinc-500 text-xs">
+                                checked in
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-emerald-400 font-bold text-lg">
+                                {referral.count}
+                              </p>
+                              <p className="text-zinc-500 text-xs">
+                                {referral.count === 1
+                                  ? "referral"
+                                  : "referrals"}
+                              </p>
+                            </div>
+                          </div>
                         </div>
-                        <div className="flex-1">
-                          <p className="text-white font-medium">
-                            {referral.referral_code}
-                          </p>
-                        </div>
-                        <div className="text-right">
-                          <p className="text-emerald-400 font-bold text-lg">
-                            {referral.count}
-                          </p>
-                          <p className="text-zinc-500 text-xs">
-                            {referral.count === 1 ? "referral" : "referrals"}
-                          </p>
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -198,22 +252,46 @@ export default function ReferralLeaderboardClient({
       </div>
 
       {/* Event Filter */}
-      <div className="mb-6">
-        <label className="block text-sm font-medium text-zinc-300 mb-2">
-          Filter by Event
-        </label>
-        <select
-          value={selectedEventId}
-          onChange={(e) => setSelectedEventId(e.target.value)}
-          className="w-full max-w-md px-4 py-3 bg-zinc-900 border border-zinc-800 rounded-xl text-white focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50"
-        >
-          <option value="">All Events</option>
-          {initialEvents.map((event) => (
-            <option key={event.id} value={event.id}>
-              {event.name || "Unnamed Event"}
-            </option>
-          ))}
-        </select>
+      <div className="mb-6 flex flex-col sm:flex-row gap-4">
+        <div className="flex-1">
+          <label className="block text-sm font-medium text-zinc-300 mb-2">
+            Filter by Event
+          </label>
+          <select
+            value={selectedEventId}
+            onChange={(e) => setSelectedEventId(e.target.value)}
+            className="w-full max-w-md px-4 py-3 bg-zinc-900 border border-zinc-800 rounded-xl text-white focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50"
+          >
+            <option value="">All Events</option>
+            {initialEvents.map((event) => (
+              <option key={event.id} value={event.id}>
+                {event.name || "Unnamed Event"}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="flex items-end">
+          <button
+            onClick={handleRefresh}
+            disabled={isLoading}
+            className="px-4 py-3 bg-zinc-800 hover:bg-zinc-700 disabled:opacity-50 disabled:cursor-not-allowed border border-zinc-700 rounded-xl text-white font-medium transition-colors flex items-center gap-2"
+          >
+            <svg
+              className={`w-5 h-5 ${isLoading ? "animate-spin" : ""}`}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+              />
+            </svg>
+            Refresh
+          </button>
+        </div>
       </div>
 
       {error && (
@@ -256,33 +334,51 @@ export default function ReferralLeaderboardClient({
       ) : (
         <div className="bg-zinc-900 rounded-2xl border border-zinc-800 p-6">
           <div className="space-y-2">
-            {entries.map((referral, index) => (
-              <div
-                key={referral.referral_code}
-                className="flex items-center gap-4 p-4 bg-zinc-800/50 rounded-lg hover:bg-zinc-800 transition-colors"
-              >
+            {entries.map((referral, index) => {
+              const isHighPerformer =
+                referral.checked_in_count >= HIGH_PERFORMER_CHECKIN_THRESHOLD;
+              return (
                 <div
-                  className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold shrink-0 ${getRankColor(
-                    index,
-                  )}`}
+                  key={referral.referral_code}
+                  className={`flex items-center gap-4 p-4 rounded-lg transition-colors ${
+                    isHighPerformer
+                      ? "bg-emerald-500/20 border border-emerald-500/30 hover:bg-emerald-500/25"
+                      : "bg-zinc-800/50 hover:bg-zinc-800"
+                  }`}
                 >
-                  {index + 1}
+                  <div
+                    className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold shrink-0 ${getRankColor(
+                      index,
+                    )}`}
+                  >
+                    {index + 1}
+                  </div>
+                  <div className="flex-1">
+                    <p
+                      className={`font-medium ${isHighPerformer ? "text-emerald-300" : "text-white"}`}
+                    >
+                      {referral.referral_code}
+                    </p>
+                  </div>
+                  <div className="text-right flex items-center gap-4">
+                    <div>
+                      <p className="text-amber-400 font-bold text-lg">
+                        {referral.checked_in_count}
+                      </p>
+                      <p className="text-zinc-500 text-xs">checked in</p>
+                    </div>
+                    <div>
+                      <p className="text-emerald-400 font-bold text-lg">
+                        {referral.count}
+                      </p>
+                      <p className="text-zinc-500 text-xs">
+                        {referral.count === 1 ? "referral" : "referrals"}
+                      </p>
+                    </div>
+                  </div>
                 </div>
-                <div className="flex-1">
-                  <p className="text-white font-medium">
-                    {referral.referral_code}
-                  </p>
-                </div>
-                <div className="text-right">
-                  <p className="text-emerald-400 font-bold text-lg">
-                    {referral.count}
-                  </p>
-                  <p className="text-zinc-500 text-xs">
-                    {referral.count === 1 ? "referral" : "referrals"}
-                  </p>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}

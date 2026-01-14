@@ -12,10 +12,13 @@ async function getInitialLeaderboard() {
 
     const client = auth.adminClient!;
 
-    const { data: referrals, error } = await client
-      .from("referrals")
-      .select(
-        `
+    // Fetch referrals and checked-in tickets in parallel
+    const [{ data: referrals, error }, { data: tickets, error: ticketsError }] =
+      await Promise.all([
+        client
+          .from("referrals")
+          .select(
+            `
         referral_code,
         count,
         event_id,
@@ -26,20 +29,47 @@ async function getInitialLeaderboard() {
           start_time_date
         )
       `,
-      )
-      .order("count", { ascending: false });
+          )
+          .order("count", { ascending: false }),
+        client
+          .from("tickets")
+          .select("referral, event_id, scanned")
+          .eq("scanned", true)
+          .not("referral", "is", null),
+      ]);
 
     if (error) {
       console.error("Referrals fetch error:", error);
       return { leaderboard: [], isGrouped: true };
     }
 
+    if (ticketsError) {
+      console.error("Tickets fetch error:", ticketsError);
+    }
+
+    // Build a map of referral_code -> event_id -> checked_in_count
+    const checkedInMap: Record<string, Record<string, number>> = {};
+    tickets?.forEach((ticket) => {
+      if (!ticket.referral) return;
+      if (!checkedInMap[ticket.referral]) {
+        checkedInMap[ticket.referral] = {};
+      }
+      if (!checkedInMap[ticket.referral][ticket.event_id]) {
+        checkedInMap[ticket.referral][ticket.event_id] = 0;
+      }
+      checkedInMap[ticket.referral][ticket.event_id]++;
+    });
+
     // Group by event
     const groupedByEvent: Record<
       string,
       {
         event: { id: string; name: string | null; route: string | null };
-        referrals: Array<{ referral_code: string; count: number }>;
+        referrals: Array<{
+          referral_code: string;
+          count: number;
+          checked_in_count: number;
+        }>;
       }
     > = {};
 
@@ -76,6 +106,7 @@ async function getInitialLeaderboard() {
       groupedByEvent[eventId].referrals.push({
         referral_code: ref.referral_code,
         count: ref.count || 0,
+        checked_in_count: checkedInMap[ref.referral_code]?.[eventId] || 0,
       });
     });
 

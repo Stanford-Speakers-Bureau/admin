@@ -29,3 +29,6 @@ export const BANNER_MESSAGES = {
 export const PACIFIC_TIMEZONE = "America/Los_Angeles";
 
 export const REFERRAL_MESSAGE = "Refer 10 people to earn a front row seat!";
+
+// Referral leaderboard - threshold for highlighting high performers
+export const HIGH_PERFORMER_CHECKIN_THRESHOLD = 10;
