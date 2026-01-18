@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import {
   verifyAdminRequest,
   getSupabaseClient,
-  getAvailablePublicTickets, isEventUnderCapacity,
+  getAvailablePublicTickets,
+  isEventUnderCapacity,
 } from "@/app/lib/supabase";
 import { sendDayOfReminderEmail, sendTicketEmail } from "@/app/lib/email";
 import { pullFromWaitlist } from "@/app/lib/waitlist";
@@ -995,99 +996,10 @@ export async function POST(req: Request) {
         }
       }
 
-      // If upgraded to VIP (from STANDARD), pull someone off the waitlist if there's available public capacity
+      // If upgraded to VIP (from STANDARD), pull someone off the waitlist if there's capacity
       if (typeChanged && newType === "VIP" && updatedTicket?.event_id) {
         try {
-          // Check available public capacity after the upgrade
-          const hasCapacity = await isEventUnderCapacity(
-            updatedTicket.event_id,
-          );
-
-          // Only pull from waitlist if there's available public capacity
-          if (hasCapacity) {
-            // Get the first person on the waitlist for this event
-            const { data: waitlistEntry, error: waitlistFetchError } =
-              await adminClient
-                .from("waitlist")
-                .select("id, email")
-                .eq("event_id", updatedTicket.event_id)
-                .order("position", { ascending: true })
-                .limit(1)
-                .single();
-
-            if (!waitlistFetchError && waitlistEntry) {
-              // Create a STANDARD ticket for the waitlist person
-              const { data: newTicket, error: ticketCreateError } =
-                await adminClient
-                  .from("tickets")
-                  .insert({
-                    event_id: updatedTicket.event_id,
-                    email: waitlistEntry.email,
-                    type: "STANDARD",
-                  })
-                  .select(
-                    `
-                  id,
-                  email,
-                  type,
-                  event_id,
-                  events (
-                    id,
-                    name,
-                    route,
-                    start_time_date,
-                    venue,
-                    venue_link,
-                    desc
-                  )
-                `,
-                  )
-                  .single();
-
-              if (!ticketCreateError && newTicket) {
-                // Remove them from the waitlist
-                const { error: waitlistDeleteError } = await adminClient
-                  .from("waitlist")
-                  .delete()
-                  .eq("id", waitlistEntry.id);
-
-                if (waitlistDeleteError) {
-                  console.error(
-                    "Waitlist removal error (non-fatal):",
-                    waitlistDeleteError,
-                  );
-                }
-
-                // Send ticket email to the person who was on the waitlist
-                try {
-                  const eventData = Array.isArray(newTicket.events)
-                    ? newTicket.events[0]
-                    : newTicket.events;
-                  await sendTicketEmail({
-                    email: newTicket.email,
-                    eventName: eventData?.name || "Event",
-                    ticketType: newTicket.type || "STANDARD",
-                    eventStartTime: eventData?.start_time_date || null,
-                    eventRoute: eventData?.route || null,
-                    ticketId: newTicket.id,
-                    eventVenue: eventData?.venue || null,
-                    eventVenueLink: eventData?.venue_link || null,
-                    eventDescription: eventData?.desc || null,
-                  });
-                } catch (emailError) {
-                  console.error(
-                    "Email sending error for waitlist conversion (non-fatal):",
-                    emailError,
-                  );
-                }
-              } else if (ticketCreateError) {
-                console.error(
-                  "Failed to create ticket for waitlist person (non-fatal):",
-                  ticketCreateError,
-                );
-              }
-            }
-          }
+          await pullFromWaitlist(adminClient, updatedTicket.event_id, 1);
         } catch (waitlistError) {
           console.error(
             "Waitlist conversion error (non-fatal):",

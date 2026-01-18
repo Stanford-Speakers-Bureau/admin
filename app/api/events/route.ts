@@ -124,14 +124,12 @@ export async function POST(req: Request) {
       );
     }
 
-    let existingEvent:
-      | {
-          capacity: number | null;
-          reserved: number | null;
-          tickets: number | null;
-          img_version: number | null;
-        }
-      | null = null;
+    let existingEvent: {
+      capacity: number | null;
+      reserved: number | null;
+      tickets: number | null;
+      img_version: number | null;
+    } | null = null;
 
     if (id) {
       const { data, error } = await adminClient

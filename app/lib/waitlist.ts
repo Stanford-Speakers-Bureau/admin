@@ -1,4 +1,7 @@
-import { getAvailablePublicTickets, getSupabaseClient } from "@/app/lib/supabase";
+import {
+  getAvailablePublicTickets,
+  getSupabaseClient,
+} from "@/app/lib/supabase";
 import { sendTicketEmail } from "@/app/lib/email";
 
 export async function pullFromWaitlist(
