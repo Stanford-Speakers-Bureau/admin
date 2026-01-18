@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import {
   verifyAdminRequest,
   getSupabaseClient,
-  getAvailablePublicTickets,
+  getAvailablePublicTickets, isEventUnderCapacity,
 } from "@/app/lib/supabase";
 import { sendDayOfReminderEmail, sendTicketEmail } from "@/app/lib/email";
 import { pullFromWaitlist } from "@/app/lib/waitlist";
