@@ -5,7 +5,11 @@ import {
   getAvailablePublicTickets,
   isEventUnderCapacity,
 } from "@/app/lib/supabase";
-import { sendDayOfReminderEmail, sendTicketEmail } from "@/app/lib/email";
+import {
+  sendDayOfReminderEmail,
+  sendEarlyReminderEmail,
+  sendTicketEmail,
+} from "@/app/lib/email";
 import { pullFromWaitlist } from "@/app/lib/waitlist";
 
 export async function GET(req: Request) {
@@ -812,11 +816,170 @@ export async function PATCH(req: Request) {
         success: true,
         message: "Day-of reminder sent successfully",
       });
+    } else if (action === "sendEarlyReminders") {
+      // Send early reminder emails to all ticket holders for an event
+      const { searchParams } = new URL(req.url);
+      const eventId = searchParams.get("eventId");
+
+      if (!eventId) {
+        return NextResponse.json(
+          { error: "Event ID is required" },
+          { status: 400 },
+        );
+      }
+
+      // Fetch event details including doors_open time
+      const { data: event, error: eventError } = await adminClient
+        .from("events")
+        .select(
+          "id, name, route, start_time_date, doors_open, venue, venue_link, desc",
+        )
+        .eq("id", eventId)
+        .single();
+
+      if (eventError || !event) {
+        console.error("Event fetch error:", eventError);
+        return NextResponse.json({ error: "Event not found" }, { status: 404 });
+      }
+
+      // Fetch all tickets for this event (both VIP and STANDARD)
+      const { data: tickets, error: ticketsError } = await adminClient
+        .from("tickets")
+        .select("id, email, type")
+        .eq("event_id", eventId);
+
+      if (ticketsError) {
+        console.error("Tickets fetch error:", ticketsError);
+        return NextResponse.json(
+          { error: "Failed to fetch tickets" },
+          { status: 500 },
+        );
+      }
+
+      if (!tickets || tickets.length === 0) {
+        return NextResponse.json({
+          success: true,
+          sent: 0,
+          failed: 0,
+          message: "No tickets found for this event",
+        });
+      }
+
+      // Send early reminder emails to all ticket holders
+      let sent = 0;
+      let failed = 0;
+      const errors: string[] = [];
+
+      for (const ticket of tickets) {
+        try {
+          await sendEarlyReminderEmail({
+            email: ticket.email,
+            eventName: event.name || "Event",
+            ticketType: ticket.type || "STANDARD",
+            eventStartTime: event.start_time_date || null,
+            eventRoute: event.route || null,
+            ticketId: ticket.id,
+            eventVenue: event.venue || null,
+            eventVenueLink: event.venue_link || null,
+            eventDescription: event.desc || null,
+            doorsOpenTime: event.doors_open || null,
+          });
+          sent++;
+        } catch (emailError) {
+          console.error(
+            `Failed to send early reminder to ${ticket.email}:`,
+            emailError,
+          );
+          failed++;
+          errors.push(
+            `${ticket.email}: ${emailError instanceof Error ? emailError.message : "Unknown error"}`,
+          );
+        }
+      }
+
+      return NextResponse.json({
+        success: true,
+        sent,
+        failed,
+        total: tickets.length,
+        message: `Sent ${sent} early reminder(s), ${failed} failed`,
+        errors: errors.length > 0 ? errors : undefined,
+      });
+    } else if (action === "sendEarlyReminder") {
+      // Send early reminder email to a single ticket holder
+      if (!id) {
+        return NextResponse.json(
+          { error: "Ticket ID is required" },
+          { status: 400 },
+        );
+      }
+
+      // Fetch the ticket with event details
+      const { data: ticket, error: ticketError } = await adminClient
+        .from("tickets")
+        .select(
+          `
+          id,
+          email,
+          type,
+          event_id,
+          events (
+            id,
+            name,
+            route,
+            start_time_date,
+            doors_open,
+            venue,
+            venue_link,
+            desc
+          )
+        `,
+        )
+        .eq("id", id)
+        .single();
+
+      if (ticketError || !ticket) {
+        console.error("Ticket fetch error:", ticketError);
+        return NextResponse.json(
+          { error: "Ticket not found" },
+          { status: 404 },
+        );
+      }
+
+      const event = Array.isArray(ticket.events)
+        ? ticket.events[0]
+        : ticket.events;
+
+      try {
+        await sendEarlyReminderEmail({
+          email: ticket.email,
+          eventName: event?.name || "Event",
+          ticketType: ticket.type || "STANDARD",
+          eventStartTime: event?.start_time_date || null,
+          eventRoute: event?.route || null,
+          ticketId: ticket.id,
+          eventVenue: event?.venue || null,
+          eventVenueLink: event?.venue_link || null,
+          eventDescription: event?.desc || null,
+          doorsOpenTime: event?.doors_open || null,
+        });
+      } catch (emailError) {
+        console.error("Email sending error:", emailError);
+        return NextResponse.json(
+          { error: "Failed to send early reminder email" },
+          { status: 500 },
+        );
+      }
+
+      return NextResponse.json({
+        success: true,
+        message: "Early reminder sent successfully",
+      });
     } else {
       return NextResponse.json(
         {
           error:
-            "Invalid action. Use 'unscan', 'updateType', 'updateScanned', 'resendEmail', 'sendDayOfReminders', or 'sendDayOfReminder'.",
+            "Invalid action. Use 'unscan', 'updateType', 'updateScanned', 'resendEmail', 'sendDayOfReminders', 'sendDayOfReminder', 'sendEarlyReminders', or 'sendEarlyReminder'.",
         },
         { status: 400 },
       );

@@ -82,6 +82,10 @@ export default function TicketManagementClient({
   const [sendingReminderId, setSendingReminderId] = useState<string | null>(
     null,
   );
+  const [isSendingEarlyReminders, setIsSendingEarlyReminders] = useState(false);
+  const [sendingEarlyReminderId, setSendingEarlyReminderId] = useState<
+    string | null
+  >(null);
 
   useEffect(() => {
     if (error) {
@@ -447,6 +451,95 @@ export default function TicketManagementClient({
     }
   }
 
+  async function handleSendEarlyReminders() {
+    if (!selectedEventId) {
+      setError("Please select an event first");
+      return;
+    }
+
+    const selectedEvent = initialEvents.find((e) => e.id === selectedEventId);
+    const eventName = selectedEvent?.name || "this event";
+
+    if (
+      !confirm(
+        `Send early reminder emails to all ${total} ticket holders for ${eventName}?\n\nThis will send reminder emails with doors open time, ticket validity, and no bags notice.`,
+      )
+    )
+      return;
+
+    setIsSendingEarlyReminders(true);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      const response = await fetch(`/api/tickets?eventId=${selectedEventId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "sendEarlyReminders" }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to send early reminders");
+      }
+
+      setSuccess(
+        `Early reminders sent! ${data.sent} sent, ${data.failed} failed.`,
+      );
+    } catch (err) {
+      console.error("Error sending early reminders:", err);
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Failed to send early reminders",
+      );
+    } finally {
+      setIsSendingEarlyReminders(false);
+    }
+  }
+
+  async function handleSendIndividualEarlyReminder(id: string) {
+    const ticket = tickets.find((t) => t.id === id);
+    if (!ticket) return;
+
+    if (
+      !confirm(
+        `Send early reminder email to ${ticket.email}?\n\nThis will send a reminder with doors open time, ticket validity, and no bags notice.`,
+      )
+    )
+      return;
+
+    setSendingEarlyReminderId(id);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      const response = await fetch(`/api/tickets?eventId=${ticket.event_id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, action: "sendEarlyReminder" }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to send early reminder");
+      }
+
+      setSuccess(`Early reminder sent to ${ticket.email}!`);
+    } catch (err) {
+      console.error("Error sending individual early reminder:", err);
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Failed to send early reminder",
+      );
+    } finally {
+      setSendingEarlyReminderId(null);
+    }
+  }
+
   async function handleAddTicket(e: React.FormEvent) {
     e.preventDefault();
 
@@ -602,8 +695,43 @@ export default function TicketManagementClient({
         </div>
         <div className="flex items-center gap-3">
           <button
+            onClick={handleSendEarlyReminders}
+            disabled={
+              !selectedEventId ||
+              isSendingEarlyReminders ||
+              total === 0 ||
+              isSendingReminders
+            }
+            className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-blue-500 to-indigo-500 text-white rounded-xl font-medium hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
+            title="Send early reminder emails to all ticket holders"
+          >
+            {isSendingEarlyReminders ? (
+              <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+            ) : (
+              <svg
+                className="w-5 h-5"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                />
+              </svg>
+            )}
+            Send Early Reminders
+          </button>
+          <button
             onClick={handleSendDayOfReminders}
-            disabled={!selectedEventId || isSendingReminders || total === 0}
+            disabled={
+              !selectedEventId ||
+              isSendingReminders ||
+              total === 0 ||
+              isSendingEarlyReminders
+            }
             className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded-xl font-medium hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
             title="Send day-of reminder emails to all ticket holders"
           >
@@ -1059,6 +1187,32 @@ export default function TicketManagementClient({
                                 strokeLinejoin="round"
                                 strokeWidth={2}
                                 d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
+                              />
+                            </svg>
+                          )}
+                        </button>
+                        <button
+                          onClick={() =>
+                            handleSendIndividualEarlyReminder(ticket.id)
+                          }
+                          disabled={sendingEarlyReminderId === ticket.id}
+                          className="text-indigo-400 hover:text-indigo-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          title="Send early reminder"
+                        >
+                          {sendingEarlyReminderId === ticket.id ? (
+                            <div className="w-5 h-5 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin" />
+                          ) : (
+                            <svg
+                              className="w-5 h-5"
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
                               />
                             </svg>
                           )}

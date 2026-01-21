@@ -1474,6 +1474,633 @@ export async function sendDayOfReminderEmail(
 }
 
 /**
+ * Generate HTML email content for early reminder
+ * Includes welcome message, doors open reminder, ticket validity, no bags notice, cancel button, and full ticket details
+ */
+async function generateEarlyReminderEmailHTML(
+  data: TicketEmailData & { doorsOpenTime?: string | null },
+  options?: { qrCid?: string },
+): Promise<string> {
+  const {
+    eventName,
+    ticketType,
+    eventStartTime,
+    eventRoute,
+    ticketId,
+    eventVenue,
+    eventVenueLink,
+    doorsOpenTime,
+  } = data;
+
+  const formattedDate = eventStartTime
+    ? new Intl.DateTimeFormat("en-US", {
+        weekday: "long",
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+        hour12: true,
+        timeZone: PACIFIC_TIMEZONE,
+      }).format(new Date(eventStartTime))
+    : "TBA";
+
+  const formattedDoorsOpen = doorsOpenTime
+    ? new Intl.DateTimeFormat("en-US", {
+        hour: "numeric",
+        minute: "2-digit",
+        hour12: true,
+        timeZone: PACIFIC_TIMEZONE,
+      }).format(new Date(doorsOpenTime))
+    : "7:30 PM";
+
+  const baseUrl =
+    process.env.NEXT_PUBLIC_BASE_URL || "https://stanfordspeakersbureau.com";
+  const eventUrl = eventRoute ? `${baseUrl}/events/${eventRoute}` : null;
+  const cancelTicketUrl = eventRoute
+    ? `${baseUrl}/events/${eventRoute}?cancel_ticket=${ticketId}`
+    : null;
+  const logoUrl = `${baseUrl}/logo.png`;
+  const googleCalendarUrl = generateGoogleCalendarUrl({
+    eventName: data.eventName,
+    eventStartTime: data.eventStartTime,
+    eventRoute: data.eventRoute,
+    eventVenue: data.eventVenue,
+    eventDescription: data.eventDescription,
+    ticketId: data.ticketId,
+    ticketType: data.ticketType,
+  });
+
+  const referralCode = generateReferralCode(data.email);
+  const referralUrl =
+    referralCode && data.eventRoute
+      ? `${baseUrl}/events/${data.eventRoute}?referral_code=${referralCode}`
+      : null;
+
+  const qrImageSrc = options?.qrCid ? `cid:${options.qrCid}` : "";
+  const isVIP = ticketType?.toUpperCase() === "VIP";
+
+  // Gmail-specific wrapper for enforcing white text in dark mode
+  const gmailBlendStart = `<span class="gmail-blend-screen"><span class="gmail-blend-difference">`;
+  const gmailBlendEnd = `</span></span>`;
+
+  return `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="color-scheme" content="light dark">
+  <meta name="supported-color-schemes" content="light dark">
+  <title>Event Reminder</title>
+  <style type="text/css">
+    :root {
+      color-scheme: light dark;
+      supported-color-schemes: light dark;
+    }
+
+    /* ========================================= */
+    /* GMAIL DARK MODE FIX (blend mode)          */
+    /* ========================================= */
+    /* Only applies in Gmail - uses blend modes to force white text */
+    u + .body .gmail-blend-screen { 
+      background: #000; 
+      mix-blend-mode: screen; 
+      display: block;
+      width: 100%;
+    }
+    
+    u + .body .gmail-blend-difference { 
+      background: #000; 
+      mix-blend-mode: difference; 
+      display: block;
+      color: #f4f4f5;
+      width: 100%;
+      padding: 0;
+    }
+
+    /* Gmail dark mode color overrides with linear gradients */
+    u + .body .email-container { 
+      background-color: #27272a !important; 
+      background-image: linear-gradient(#27272a, #27272b) !important;
+    }
+    u + .body .details-card, 
+    u + .body .qr-section,
+    u + .body .footer,
+    u + .body .reminder-card { 
+      background-color: #18181b !important; 
+      background-image: linear-gradient(#18181b, #18181c) !important;
+    }
+    u + .body .qr-code-wrapper { 
+      background-color: #A80D0C !important; 
+      background-image: linear-gradient(180deg, #A80D0C, #A80D0D) !important;
+    }
+    u + .body .ticket-type-vip { 
+      background-color: #A80D0C !important; 
+      background-image: linear-gradient(#A80D0C, #A80D0D) !important;
+      color: #ffffff !important; 
+    }
+    u + .body .ticket-type-standard { 
+      background-color: #71717a !important; 
+      background-image: linear-gradient(#71717a, #71717b) !important;
+      color: #ffffff !important; 
+    }
+    u + .body .button { 
+      background-color: #A80D0C !important; 
+      background-image: linear-gradient(#A80D0C, #A80D0D) !important;
+      color: #ffffff !important; 
+    }
+    u + .body .button-cancel { 
+      background-color: #71717a !important; 
+      background-image: linear-gradient(#71717a, #71717b) !important;
+      color: #ffffff !important; 
+    }
+    u + .body .button-calendar { 
+      background-color: #175dcd !important; 
+      background-image: linear-gradient(#175dcd, #175dce) !important;
+      color: #ffffff !important; 
+    }
+    u + .body a { color: #A80D0C !important; }
+
+    /* VIP Gold accent borders */
+    u + .body .vip-border { 
+      border-color: #D4AF37 !important; 
+    }
+    u + .body .vip-shadow { 
+      box-shadow: 0 0 15px rgba(212, 175, 55, 0.3) !important;
+    }
+
+    /* Standard dark mode support (for non-Gmail clients) */
+    @media (prefers-color-scheme: dark) {
+      body, table, td, div, p, span, h1, h2, h3 {
+        color: #f4f4f5 !important;
+      }
+      .email-container { background-color: #27272a !important; }
+      .email-header { background: linear-gradient(135deg, #A80D0C 0%, #C11211 100%) !important; }
+      .details-card { background-color: #18181b !important; }
+      .qr-section { background-color: #18181b !important; }
+      .footer { background-color: #18181b !important; border-top: 1px solid #3f3f46 !important; }
+      .reminder-card { background-color: #18181b !important; }
+      .vip-border { border-color: #D4AF37 !important; }
+      .vip-shadow { box-shadow: 0 0 15px rgba(212, 175, 55, 0.3) !important; }
+    }
+
+    /* Mobile responsive */
+    @media only screen and (max-width: 600px) {
+      .email-container { width: 100% !important; padding: 20px 15px !important; }
+      .email-header { padding: 30px 20px !important; }
+      .logo { width: 50px !important; height: 50px !important; }
+      .header-title { font-size: 20px !important; }
+      .header-subtitle { font-size: 24px !important; }
+      .details-card { padding: 20px 16px !important; }
+      .reminder-card { padding: 20px 16px !important; }
+      .qr-code-img { width: 280px !important; height: auto !important; }
+      .button { display: inline-block !important; margin: 0 auto !important; }
+      .wallet-buttons td { display: block !important; width: 100% !important; padding: 8px 0 !important; }
+    }
+  </style>
+</head>
+<body class="body" style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #18181b; color: #f4f4f5;">
+
+  <table role="presentation" style="width: 100%; border-collapse: collapse; background-color: #27272a;${isVIP ? " border: 3px solid #D4AF37;" : ""}">
+    
+    <!-- Header -->
+    <tr>
+      <td align="center" class="email-header" style="background: linear-gradient(135deg, #A80D0C 0%, #C11211 100%); padding: 40px 30px; text-align: center;${isVIP ? " border: 3px solid #D4AF37; border-bottom: none;" : ""}">
+        <div style="margin-bottom: 20px;">
+          <img src="${logoUrl}" alt="Stanford Speakers Bureau Logo" class="logo" style="width: 60px; height: 60px; margin: 0 auto; display: block;" />
+        </div>
+        ${gmailBlendStart}
+          <h2 class="header-subtitle" style="margin: 0 0 12px 0; color: #ffffff; font-size: 24px; font-weight: 600; letter-spacing: 0.5px;">Stanford Speakers Bureau</h2>
+          <h1 class="header-title" style="margin: 0; color: #ffffff; font-size: 28px; font-weight: 700;">We are so excited to welcome you!</h1>
+        ${gmailBlendEnd}
+      </td>
+    </tr>
+    
+    <!-- Content -->
+    <tr>
+      <td align="center" class="email-container" style="background-color: #27272a; padding: 40px 20px; max-width: 900px; width: 100%;">
+        <div class="email-content" style="padding: 0; max-width: 600px; margin: 0 auto;">
+          
+          <!-- Early Reminder Card -->
+          <div class="reminder-card" style="background-color: #18181b; padding: 24px; margin-bottom: 24px; border-radius: 8px;">
+            ${gmailBlendStart}
+              <p style="margin: 0 0 16px 0; color: #f4f4f5; font-size: 16px; line-height: 1.6;">
+                We are so excited to welcome you to our event this ${formattedDate.includes("Friday") ? "Friday" : formattedDate.split(",")[0]}! As a reminder, doors open at ${formattedDoorsOpen}, and your ticket is only valid until 8:15 PM. Additionally, no bags will be permitted at the event.
+              </p>
+              <p style="margin: 0 0 20px 0; color: #f4f4f5; font-size: 16px; line-height: 1.6;">
+                Life happens, and we understand plans can change. If you find yourself unable to attend, please take a moment to cancel your ticket using the link below. Your thoughtfulness helps us extend the opportunity to others who are excited to attend.
+              </p>
+            ${gmailBlendEnd}
+            
+            ${
+              cancelTicketUrl
+                ? `
+            <table role="presentation" style="width: 100%; border-collapse: collapse; margin-top: 20px;">
+              <tr>
+                <td align="center" class="button-wrapper" style="padding: 0;">
+                  <a href="${cancelTicketUrl}" class="button button-cancel" style="display: inline-block; padding: 14px 28px; background-color: #71717a; color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 16px;">Cancel Ticket</a>
+                </td>
+              </tr>
+            </table>
+            `
+                : ""
+            }
+          </div>
+          
+          <!-- Event Details Card -->
+          <div class="details-card" style="background-color: #18181b; padding: 24px; margin-bottom: 24px;${isVIP ? " border: 2px solid #D4AF37; border-radius: 8px; box-shadow: 0 0 15px rgba(212, 175, 55, 0.3);" : ""}">
+            
+            ${gmailBlendStart}
+              <h2 class="details-title" style="margin: 0 0 20px 0; color: #ffffff; font-size: 22px; font-weight: 600;">Event Details</h2>
+            ${gmailBlendEnd}
+            
+            <table role="presentation" style="width: 100%; border-collapse: collapse;">
+              <tr>
+                <td class="details-label" style="padding: 8px 0; color: #a1a1aa; font-size: 14px; width: 120px; vertical-align: top;">
+                  ${gmailBlendStart}Event:${gmailBlendEnd}
+                </td>
+                <td class="details-value" style="padding: 8px 0; color: #f4f4f5; font-size: 14px; font-weight: 500;">
+                  ${gmailBlendStart}${eventName || "Event"}${gmailBlendEnd}
+                </td>
+              </tr>
+              <tr>
+                <td class="details-label" style="padding: 8px 0; color: #a1a1aa; font-size: 14px; vertical-align: top;">
+                  ${gmailBlendStart}Date & Time:${gmailBlendEnd}
+                </td>
+                <td class="details-value" style="padding: 8px 0; color: #f4f4f5; font-size: 14px; font-weight: 500;">
+                  ${gmailBlendStart}${formattedDate}${gmailBlendEnd}
+                </td>
+              </tr>
+              ${
+                eventVenue
+                  ? `
+              <tr>
+                <td class="details-label" style="padding: 8px 0; color: #a1a1aa; font-size: 14px; vertical-align: top;">
+                  ${gmailBlendStart}Location:${gmailBlendEnd}
+                </td>
+                <td class="details-value" style="padding: 8px 0; color: #f4f4f5; font-size: 14px; font-weight: 500;">
+                  ${
+                    eventVenueLink
+                      ? `<a href="${eventVenueLink}" target="_blank" rel="noopener noreferrer" style="color: #A80D0C; text-decoration: none; border-bottom: 1px solid #A80D0C;">${eventVenue}</a>`
+                      : `${gmailBlendStart}${eventVenue}${gmailBlendEnd}`
+                  }
+                </td>
+              </tr>
+              `
+                  : ""
+              }
+              <tr>
+                <td class="details-label" style="padding: 8px 0; color: #a1a1aa; font-size: 14px; vertical-align: top;">
+                  ${gmailBlendStart}Ticket Type:${gmailBlendEnd}
+                </td>
+                <td class="details-value" style="padding: 8px 0;">
+                  <span class="${ticketType === "VIP" ? "ticket-type-vip" : "ticket-type-standard"}" style="display: inline-block; padding: 4px 12px; background-color: ${ticketType === "VIP" ? "#A80D0C" : "#71717a"}; color: #ffffff; border-radius: 4px; font-size: 12px; font-weight: 600; text-transform: uppercase;">
+                    ${ticketType || "STANDARD"}
+                  </span>
+                </td>
+              </tr>
+              <tr>
+                <td class="details-label" style="padding: 8px 0; color: #a1a1aa; font-size: 14px; vertical-align: top;">
+                  ${gmailBlendStart}Ticket ID:${gmailBlendEnd}
+                </td>
+                <td class="details-value" style="padding: 8px 0; color: #f4f4f5; font-size: 14px; font-family: monospace; word-break: break-all;">
+                  ${gmailBlendStart}${ticketId}${gmailBlendEnd}
+                </td>
+              </tr>
+              ${
+                referralCode && !(ticketType.toUpperCase() == "VIP")
+                  ? `
+              <tr>
+                <td class="details-label" style="padding: 8px 0; color: #a1a1aa; font-size: 14px; vertical-align: top;">
+                  ${gmailBlendStart}Referral Code:${gmailBlendEnd}
+                </td>
+                <td class="details-value" style="padding: 8px 0; color: #f4f4f5; font-size: 14px; font-weight: 500; font-family: monospace;">
+                  ${gmailBlendStart}${referralCode}${gmailBlendEnd}
+                </td>
+              </tr>
+              `
+                  : ""
+              }
+            </table>
+            
+            ${
+              eventUrl
+                ? `
+            <table role="presentation" style="width: 100%; border-collapse: collapse; margin-top: 20px;">
+              <tr>
+                <td align="center" class="button-wrapper" style="padding: 0;">
+                  <a href="${eventUrl}" class="button" style="display: inline-block; padding: 14px 28px; background-color: #A80D0C; color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 16px;${isVIP ? " border: 2px solid #D4AF37;" : ""}">View Event Details</a>
+                </td>
+              </tr>
+            </table>
+            `
+                : ""
+            }
+          </div>
+          
+          ${
+            qrImageSrc
+              ? `
+          <!-- QR Code Section -->
+          <div class="qr-section" style="background-color: #18181b; padding: 24px; margin-bottom: 24px; text-align: center;${isVIP ? " border: 2px solid #D4AF37; border-radius: 8px; box-shadow: 0 0 15px rgba(212, 175, 55, 0.3);" : ""}">
+            
+            ${gmailBlendStart}
+              <h2 class="qr-title" style="margin: 0 0 16px 0; color: #ffffff; font-size: 20px; font-weight: 600;">Your Ticket QR Code</h2>
+            ${gmailBlendEnd}
+
+            <div class="qr-code-wrapper" style="display: inline-block; border-radius: 12px; ${
+              isVIP ? "background-color: #A80D0C; padding: 4px;" : "padding: 0;"
+            }">
+              <div style="background-color: #ffffff; padding: 16px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);">
+                <img src="${qrImageSrc}" alt="Ticket QR Code" class="qr-code-img" style="display: block; width: 350px; max-width: 100%; height: auto;" />
+              </div>
+            </div>
+
+            ${
+              isVIP
+                ? `
+            <div style="margin-top: 12px;">
+              <span style="display: inline-block; padding: 6px 16px; background-color: #A80D0C; color: #ffffff; border-radius: 20px; font-size: 12px; font-weight: 700; text-transform: uppercase;">
+                VIP
+              </span>
+            </div>
+            `
+                : ""
+            }
+            
+            <table width="100%" border="0" cellspacing="0" cellpadding="0" role="presentation" style="margin-top: 16px;">
+              <tr>
+                <td align="right" width="50%" style="padding-right: 4px;">
+                  <a href="${baseUrl}/api/tickets/apple-wallet?ticket_id=${ticketId}" target="_blank" rel="noopener noreferrer">
+                    <img src="${baseUrl}/images/add-to-apple-wallet.png" alt="Add to Apple Wallet" width="auto" height="48" style="display: block; height: 48px; border: 0;" />
+                  </a>
+                </td>
+                <td align="left" width="50%" style="padding-left: 4px;">
+                  <a href="${baseUrl}/api/tickets/google-wallet?ticket_id=${ticketId}" target="_blank" rel="noopener noreferrer">
+                    <img src="${baseUrl}/images/enUS_add_to_google_wallet_add-wallet-badge.png" alt="Add to Google Wallet" width="auto" height="48" style="display: block; height: 48px; border: 0;" />
+                  </a>
+                </td>
+              </tr>
+            </table>
+                        
+            ${gmailBlendStart}
+              <p style="margin: 16px 0 0 0; color: #a1a1aa; font-size: 14px; line-height: 1.6;">
+                Show this QR code at the event entrance for quick check-in.
+              </p>
+            ${gmailBlendEnd}
+
+          </div>
+          `
+              : ""
+          }
+
+          ${gmailBlendStart}
+            <p style="margin: 0 0 24px 0; color: #a1a1aa; font-size: 14px; line-height: 1.6;">
+              Please bring your Stanford ID card and this confirmation email to the event. We look forward to seeing you there!
+            </p>
+          ${gmailBlendEnd}
+          
+          ${
+            googleCalendarUrl
+              ? `
+          <table role="presentation" style="width: 100%; border-collapse: collapse; margin-bottom: 24px;">
+            <tr>
+              <td align="center" class="button-wrapper" style="padding: 0;">
+                <a href="${googleCalendarUrl}" target="_blank" rel="noopener noreferrer" class="button button-calendar" style="display: inline-flex; align-items: center; gap: 10px; padding: 10px 20px; background-color: #175dcd; color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 14px;">
+                  <img src="${baseUrl}/g.png" alt="Google" style="width: 18px; height: 18px; display: inline-block; vertical-align: middle; margin-right: 8px;" />
+                  Add to Google Calendar
+                </a>
+              </td>
+            </tr>
+          </table>
+          `
+              : ""
+          }
+        </div>
+      </td>
+    </tr>
+    
+    <!-- Footer -->
+    <tr>
+      <td align="center" class="footer" style="padding: 30px; background-color: #18181b; border-top: 1px solid #3f3f46; text-align: center;">
+        ${gmailBlendStart}
+          <p style="margin: 0 0 8px 0; color: #71717a; font-size: 12px;">
+            Stanford Speakers Bureau
+          </p>
+          <p style="margin: 0; color: #71717a; font-size: 12px;">
+            If you have any questions, please contact us at <a href="mailto:${FROM_EMAIL}" style="color: #a1a1aa; text-decoration: none;">${FROM_EMAIL}</a>
+          </p>
+        ${gmailBlendEnd}
+      </td>
+    </tr>
+  </table>
+
+</body>
+</html>
+  `.trim();
+}
+
+/**
+ * Generate plain text email content for early reminder
+ */
+function generateEarlyReminderEmailText(
+  data: TicketEmailData & { doorsOpenTime?: string | null },
+): string {
+  const {
+    eventName,
+    ticketType,
+    eventStartTime,
+    eventRoute,
+    ticketId,
+    doorsOpenTime,
+  } = data;
+
+  const formattedDate = eventStartTime
+    ? new Intl.DateTimeFormat("en-US", {
+        weekday: "long",
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+        hour12: true,
+        timeZone: PACIFIC_TIMEZONE,
+      }).format(new Date(eventStartTime))
+    : "TBA";
+
+  const formattedDoorsOpen = doorsOpenTime
+    ? new Intl.DateTimeFormat("en-US", {
+        hour: "numeric",
+        minute: "2-digit",
+        hour12: true,
+        timeZone: PACIFIC_TIMEZONE,
+      }).format(new Date(doorsOpenTime))
+    : "7:30 PM";
+
+  const baseUrl =
+    process.env.NEXT_PUBLIC_BASE_URL || "https://stanfordspeakersbureau.com";
+  const eventUrl = eventRoute ? `${baseUrl}/events/${eventRoute}` : null;
+  const cancelTicketUrl = eventRoute
+    ? `${baseUrl}/events/${eventRoute}?cancel_ticket=${ticketId}`
+    : null;
+
+  // Generate referral code from email
+  const referralCode = generateReferralCode(data.email);
+
+  return `
+We are so excited to welcome you to our event this ${formattedDate.includes("Friday") ? "Friday" : formattedDate.split(",")[0]}! As a reminder, doors open at ${formattedDoorsOpen}, and your ticket is only valid until 8:15 PM. Additionally, no bags will be permitted at the event.
+
+Life happens, and we understand plans can change. If you find yourself unable to attend, please take a moment to cancel your ticket using the link below. Your thoughtfulness helps us extend the opportunity to others who are excited to attend.
+
+${cancelTicketUrl ? `Cancel Ticket: ${cancelTicketUrl}` : ""}
+
+Event Details:
+- Event: ${eventName || "Event"}
+- Date & Time: ${formattedDate}
+- Ticket Type: ${ticketType || "STANDARD"}
+- Ticket ID: ${ticketId}
+${eventUrl ? `- Event URL: ${eventUrl}` : ""}
+${referralCode && !(ticketType?.toUpperCase() == "VIP") ? `- Referral Code: ${referralCode}` : ""}
+
+Please bring your Stanford ID card and this confirmation email to the event. We look forward to seeing you there!
+
+Stanford Speakers Bureau
+If you have any questions, please contact us at ${FROM_EMAIL}
+  `.trim();
+}
+
+type EarlyReminderEmailData = TicketEmailData & {
+  doorsOpenTime?: string | null;
+};
+
+/**
+ * Send early reminder email via AWS SES
+ * Includes welcome message, doors open reminder, ticket validity, no bags notice, cancel button, and full ticket details
+ */
+export async function sendEarlyReminderEmail(
+  data: EarlyReminderEmailData,
+): Promise<void> {
+  // Check if email sending is disabled
+  if (process.env.DISABLE_EMAIL?.toLowerCase().trim() == "true") {
+    console.log(
+      `Email sending is disabled (DISABLE_EMAIL=true). Skipping early reminder email to ${data.email}`,
+    );
+    return;
+  }
+
+  const formattedDoorsOpen = data.doorsOpenTime
+    ? new Intl.DateTimeFormat("en-US", {
+        hour: "numeric",
+        minute: "2-digit",
+        hour12: true,
+        timeZone: PACIFIC_TIMEZONE,
+      }).format(new Date(data.doorsOpenTime))
+    : "7:30 PM";
+
+  const subject = data.eventName
+    ? `Reminder: ${data.eventName} - Doors open at ${formattedDoorsOpen}`
+    : "Event Reminder";
+  const textContent = generateEarlyReminderEmailText(data);
+
+  // Generate QR and prepare cid
+  const qrCid = `ticket-qr-${data.ticketId}@stanfordspeakersbureau`;
+  const qrBuffer = await generateQRCodePngBuffer(data.ticketId);
+  const htmlContent = await generateEarlyReminderEmailHTML(data, {
+    qrCid: qrBuffer ? qrCid : undefined,
+  });
+
+  // Optional ICS content
+  const icsContent = generateICalContent(data);
+  const icsBuffer = icsContent ? Buffer.from(icsContent, "utf-8") : null;
+
+  // Build MIME message with CID image inside multipart/related for HTML part
+  const mixBoundary = `mix_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+  const altBoundary = `alt_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+  const relBoundary = `rel_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+
+  const lines: string[] = [];
+  lines.push(
+    `From: ${FROM_EMAIL}`,
+    `To: ${data.email}`,
+    `Subject: ${subject}`,
+    `MIME-Version: 1.0`,
+    `Content-Type: multipart/mixed; boundary="${mixBoundary}"`,
+    "",
+    `--${mixBoundary}`,
+    `Content-Type: multipart/alternative; boundary="${altBoundary}"`,
+    "",
+    `--${altBoundary}`,
+    `Content-Type: text/plain; charset=UTF-8`,
+    `Content-Transfer-Encoding: 7bit`,
+    "",
+    textContent,
+    "",
+  );
+
+  if (qrBuffer) {
+    // multipart/related containing HTML and inline image
+    const qrBase64 = wrapToMimeLines(qrBuffer.toString("base64"));
+    lines.push(
+      `--${altBoundary}`,
+      `Content-Type: multipart/related; boundary="${relBoundary}"`,
+      "",
+      `--${relBoundary}`,
+      `Content-Type: text/html; charset=UTF-8`,
+      `Content-Transfer-Encoding: 7bit`,
+      "",
+      htmlContent,
+      "",
+      `--${relBoundary}`,
+      `Content-Type: image/png; name="ticket-qr.png"`,
+      `Content-Transfer-Encoding: base64`,
+      `Content-Disposition: inline; filename="ticket-qr.png"`,
+      `Content-ID: <${qrCid}>`,
+      "",
+      qrBase64,
+      "",
+      `--${relBoundary}--`,
+      "",
+    );
+  } else {
+    // No QR image; include HTML directly
+    lines.push(
+      `--${altBoundary}`,
+      `Content-Type: text/html; charset=UTF-8`,
+      `Content-Transfer-Encoding: 7bit`,
+      "",
+      htmlContent,
+      "",
+    );
+  }
+
+  // Close alternative part
+  lines.push(`--${altBoundary}--`);
+
+  // Attach ICS file (optional)
+  if (icsBuffer) {
+    const icsBase64 = wrapToMimeLines(icsBuffer.toString("base64"));
+    lines.push(
+      `--${mixBoundary}`,
+      `Content-Type: text/calendar; charset="utf-8"; name="stanford-speakers-bureau-event.ics"`,
+      `Content-Transfer-Encoding: base64`,
+      `Content-Disposition: attachment; filename="stanford-speakers-bureau-event.ics"`,
+      "",
+      icsBase64,
+      "",
+    );
+  }
+
+  lines.push(`--${mixBoundary}--`, "");
+
+  const rawMessage = lines.join("\r\n");
+
+  await sendRawEmailViaSES(rawMessage);
+  console.log(`Early reminder email sent to ${data.email}`);
+}
+
+/**
  * Send ticket confirmation email via AWS SES
  * Throws an error if email sending fails
  */
