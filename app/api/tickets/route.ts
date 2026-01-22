@@ -264,9 +264,11 @@ export async function PATCH(req: Request) {
     }
 
     const body = await req.json();
-    const { id, action, type, scanned } = body;
+    const { id, action, type, scanned, promo } = body;
 
-    if (!id || typeof id !== "string") {
+    // Batch reminder actions don't require a ticket ID - they use eventId from query params
+    const batchActions = ["sendDayOfReminders", "sendEarlyReminders"];
+    if (!batchActions.includes(action) && (!id || typeof id !== "string")) {
       return NextResponse.json(
         { error: "Ticket ID is required" },
         { status: 400 },
@@ -883,6 +885,7 @@ export async function PATCH(req: Request) {
             eventVenueLink: event.venue_link || null,
             eventDescription: event.desc || null,
             doorsOpenTime: event.doors_open || null,
+            promo: promo || null,
           });
           sent++;
         } catch (emailError) {
@@ -962,6 +965,7 @@ export async function PATCH(req: Request) {
           eventVenueLink: event?.venue_link || null,
           eventDescription: event?.desc || null,
           doorsOpenTime: event?.doors_open || null,
+          promo: promo || null,
         });
       } catch (emailError) {
         console.error("Email sending error:", emailError);
