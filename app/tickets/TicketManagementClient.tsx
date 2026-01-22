@@ -479,7 +479,8 @@ export default function TicketManagementClient({
           action: "sendEarlyReminders",
           promo: {
             title: "Want a front row seat?",
-            description: "We're hosting a Hasan Minhaj lookalike contest! It's your ticket to a front row seat at the show!",
+            description:
+              "We're hosting a Hasan Minhaj lookalike contest! It's your ticket to a front row seat at the show!",
             day: "This Thursday",
             location: "White Plaza",
             time: "5 PM",
@@ -499,9 +500,7 @@ export default function TicketManagementClient({
     } catch (err) {
       console.error("Error sending early reminders:", err);
       setError(
-        err instanceof Error
-          ? err.message
-          : "Failed to send early reminders",
+        err instanceof Error ? err.message : "Failed to send early reminders",
       );
     } finally {
       setIsSendingEarlyReminders(false);
@@ -532,7 +531,8 @@ export default function TicketManagementClient({
           action: "sendEarlyReminder",
           promo: {
             title: "Want a front row seat?",
-            description: "We're hosting a Hasan Minhaj lookalike contest! It's your ticket to a front row seat at the show!",
+            description:
+              "We're hosting a Hasan Minhaj lookalike contest! It's your ticket to a front row seat at the show!",
             day: "This Thursday",
             location: "White Plaza",
             time: "5 PM",
@@ -550,9 +550,7 @@ export default function TicketManagementClient({
     } catch (err) {
       console.error("Error sending individual early reminder:", err);
       setError(
-        err instanceof Error
-          ? err.message
-          : "Failed to send early reminder",
+        err instanceof Error ? err.message : "Failed to send early reminder",
       );
     } finally {
       setSendingEarlyReminderId(null);
@@ -638,7 +636,8 @@ export default function TicketManagementClient({
         setVipCount((prev) => prev + successCount);
       }
       setSuccess(
-        `Successfully created ${successCount} ticket(s)${errors.length > 0 ? ` (${errors.length} failed)` : ""
+        `Successfully created ${successCount} ticket(s)${
+          errors.length > 0 ? ` (${errors.length} failed)` : ""
         }`,
       );
       setNewTicketEmail("");
@@ -1148,10 +1147,11 @@ export default function TicketManagementClient({
                           }
                         }}
                         disabled={updatingTicketId === ticket.id}
-                        className={`px-2 py-1 text-xs font-medium rounded-lg bg-zinc-800 border border-zinc-700 text-white focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 disabled:opacity-50 disabled:cursor-not-allowed ${ticket.type === "VIP"
+                        className={`px-2 py-1 text-xs font-medium rounded-lg bg-zinc-800 border border-zinc-700 text-white focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 disabled:opacity-50 disabled:cursor-not-allowed ${
+                          ticket.type === "VIP"
                             ? "bg-blue-500/20 text-blue-400 border-blue-500/30"
                             : ""
-                          }`}
+                        }`}
                       >
                         <option value="VIP">VIP</option>
                         <option value="STANDARD">STANDARD</option>
@@ -1172,10 +1172,11 @@ export default function TicketManagementClient({
                           }
                         }}
                         disabled={updatingTicketId === ticket.id}
-                        className={`px-2 py-1 text-xs font-medium rounded-lg bg-zinc-800 border border-zinc-700 text-white focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 disabled:opacity-50 disabled:cursor-not-allowed ${ticket.scanned
+                        className={`px-2 py-1 text-xs font-medium rounded-lg bg-zinc-800 border border-zinc-700 text-white focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 disabled:opacity-50 disabled:cursor-not-allowed ${
+                          ticket.scanned
                             ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/30"
                             : ""
-                          }`}
+                        }`}
                       >
                         <option value="scanned">Scanned</option>
                         <option value="not-scanned">Not Scanned</option>
