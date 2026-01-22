@@ -743,12 +743,14 @@ export async function PATCH(req: Request) {
             sent++;
           } else {
             failed++;
-            errors.push(
-              `${emailResult.email}: ${emailResult.error instanceof Error ? emailResult.error.message : "Unknown error"}`,
-            );
+            const errorMessage =
+              "error" in emailResult && emailResult.error instanceof Error
+                ? emailResult.error.message
+                : "Unknown error";
+            errors.push(`${emailResult.email}: ${errorMessage}`);
             console.error(
               `Failed to send reminder to ${emailResult.email}:`,
-              emailResult.error,
+              "error" in emailResult ? emailResult.error : "Unknown error",
             );
           }
         } else {
@@ -921,12 +923,14 @@ export async function PATCH(req: Request) {
             sent++;
           } else {
             failed++;
-            errors.push(
-              `${emailResult.email}: ${emailResult.error instanceof Error ? emailResult.error.message : "Unknown error"}`,
-            );
+            const errorMessage =
+              "error" in emailResult && emailResult.error instanceof Error
+                ? emailResult.error.message
+                : "Unknown error";
+            errors.push(`${emailResult.email}: ${errorMessage}`);
             console.error(
               `Failed to send early reminder to ${emailResult.email}:`,
-              emailResult.error,
+              "error" in emailResult ? emailResult.error : "Unknown error",
             );
           }
         } else {
