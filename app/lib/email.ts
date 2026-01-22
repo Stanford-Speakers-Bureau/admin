@@ -184,6 +184,7 @@ type TicketEmailData = {
   eventVenue?: string | null;
   eventVenueLink?: string | null;
   eventDescription?: string | null;
+  doorsOpenTime?: string | null;
 };
 
 // Wrap base64 (or any long) strings to 76-character lines for MIME compatibility
@@ -357,6 +358,7 @@ async function generateTicketEmailHTML(
     ticketId,
     eventVenue,
     eventVenueLink,
+    doorsOpenTime,
   } = data;
 
   const formattedDate = eventStartTime
@@ -371,6 +373,15 @@ async function generateTicketEmailHTML(
       timeZone: PACIFIC_TIMEZONE,
     }).format(new Date(eventStartTime))
     : "TBA";
+
+  const formattedDoorsOpen = doorsOpenTime
+    ? new Intl.DateTimeFormat("en-US", {
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+      timeZone: PACIFIC_TIMEZONE,
+    }).format(new Date(doorsOpenTime))
+    : null;
 
   const baseUrl =
     process.env.NEXT_PUBLIC_BASE_URL || "https://stanfordspeakersbureau.com";
@@ -570,6 +581,19 @@ async function generateTicketEmailHTML(
                   ${gmailBlendStart}${formattedDate}${gmailBlendEnd}
                 </td>
               </tr>
+              ${formattedDoorsOpen
+      ? `
+              <tr>
+                <td class="details-label" style="padding: 8px 0; color: #a1a1aa; font-size: 14px; vertical-align: top;">
+                  ${gmailBlendStart}Doors Open:${gmailBlendEnd}
+                </td>
+                <td class="details-value" style="padding: 8px 0; color: #f4f4f5; font-size: 14px; font-weight: 500;">
+                  ${gmailBlendStart}${formattedDoorsOpen}${gmailBlendEnd}
+                </td>
+              </tr>
+              `
+      : ""
+    }
               ${eventVenue
       ? `
               <tr>
@@ -765,7 +789,7 @@ async function generateTicketEmailHTML(
  * Generate plain text email content for ticket confirmation
  */
 function generateTicketEmailText(data: TicketEmailData): string {
-  const { eventName, ticketType, eventStartTime, eventRoute, ticketId } = data;
+  const { eventName, ticketType, eventStartTime, eventRoute, ticketId, doorsOpenTime } = data;
 
   const formattedDate = eventStartTime
     ? new Intl.DateTimeFormat("en-US", {
@@ -779,6 +803,15 @@ function generateTicketEmailText(data: TicketEmailData): string {
       timeZone: PACIFIC_TIMEZONE,
     }).format(new Date(eventStartTime))
     : "TBA";
+
+  const formattedDoorsOpen = doorsOpenTime
+    ? new Intl.DateTimeFormat("en-US", {
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+      timeZone: PACIFIC_TIMEZONE,
+    }).format(new Date(doorsOpenTime))
+    : null;
 
   const eventUrl = eventRoute
     ? `${process.env.NEXT_PUBLIC_BASE_URL || "https://stanfordspeakersbureau.com"}/events/${eventRoute}`
@@ -799,7 +832,7 @@ Thank you for your ticket purchase. Your ticket has been confirmed!
 ${ticketType?.toUpperCase() === "VIP" ? "We've reserved a seat for you in the front few rows. When you arrive at the event, please use the VIP entrance.\n\n" : ""}Event Details:
 - Event: ${eventName || "Event"}
 - Date & Time: ${formattedDate}
-- Ticket Type: ${ticketType || "STANDARD"}
+${formattedDoorsOpen ? `- Doors Open: ${formattedDoorsOpen}` : ""}- Ticket Type: ${ticketType || "STANDARD"}
 - Ticket ID: ${ticketId}
 ${eventUrl ? `- Event URL: ${eventUrl}` : ""}
 
@@ -1026,7 +1059,7 @@ async function generateDayOfReminderEmailHTML(
       : ""
     }
             <p style="margin: 0 0 24px 0; color: #f4f4f5; font-size: 16px; line-height: 1.6;">
-              Your ticket is enclosed below. We can't wait to see you!
+              We're so excited to see you tonight! As a reminder, doors open at ${formattedDoorsOpen || "7:30 PM"}, and your ticket is only valid until 8:15. Late entry is not permitted. For security reasons, no bags will be permitted at the event.
             </p>
           ${gmailBlendEnd}
           
@@ -1300,7 +1333,7 @@ function generateDayOfReminderEmailText(
   return `
 ${eventName || "Event"} is TODAY${formattedDoorsOpen ? ` - Doors at ${formattedDoorsOpen}` : ""}!
 
-${ticketType?.toUpperCase() === "VIP" ? "We've reserved a seat for you in the front few rows. When you arrive at the event, please use the VIP entrance.\n\n" : ""}Your ticket is enclosed below. We can't wait to see you!
+${ticketType?.toUpperCase() === "VIP" ? "We've reserved a seat for you in the front few rows. When you arrive at the event, please use the VIP entrance.\n\n" : ""}We're so excited to see you tonight! As a reminder, doors open at ${formattedDoorsOpen || "7:30 PM"}, and your ticket is only valid until 8:15. Late entry is not permitted. For security reasons, no bags will be permitted at the event.
 
 IMPORTANT REMINDERS:
 - No bags are allowed at the venue
@@ -1594,8 +1627,8 @@ async function generateEarlyReminderEmailHTML(
       color: #ffffff !important; 
     }
     u + .body .button-cancel { 
-      background-color: #71717a !important; 
-      background-image: linear-gradient(#71717a, #71717b) !important;
+      background-color: #A80D0C !important; 
+      background-image: linear-gradient(#A80D0C, #A80D0D) !important;
       color: #ffffff !important; 
     }
     u + .body .button-calendar { 
@@ -1683,7 +1716,7 @@ async function generateEarlyReminderEmailHTML(
             ` : ""}
             ${gmailBlendStart}
               <p style="margin: 0 0 16px 0; color: #f4f4f5; font-size: 16px; line-height: 1.6;">
-                ${promo ? "Not interested? No worries, we're" : "We're"} still excited to welcome you this ${formattedDate.includes("Friday") ? "Friday" : formattedDate.split(",")[0]}! As a reminder, doors open at ${formattedDoorsOpen}, and no late entry will be permitted.
+                ${promo ? "Not interested? No worries, we're" : "We're"} still excited to welcome you this ${formattedDate.includes("Friday") ? "Friday" : formattedDate.split(",")[0]}! As a reminder, doors open at ${formattedDoorsOpen}, and your ticket is only valid until 8:15. Late entry is not permitted. For security reasons, no bags will be permitted at the event.
               </p>
               <p style="margin: 0 0 20px 0; color: #f4f4f5; font-size: 16px; line-height: 1.6;">
                 Life happens, and we understand plans can change. If you find yourself unable to attend, please take a moment to cancel your ticket using the link below. Your thoughtfulness helps us extend the opportunity to others who are excited to attend.
@@ -1695,7 +1728,7 @@ async function generateEarlyReminderEmailHTML(
             <table role="presentation" style="width: 100%; border-collapse: collapse; margin-top: 20px;">
               <tr>
                 <td align="center" class="button-wrapper" style="padding: 0;">
-                  <a href="${cancelTicketUrl}" class="button button-cancel" style="display: inline-block; padding: 14px 28px; background-color: #71717a; color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 16px;">Cancel Ticket</a>
+                  <a href="${cancelTicketUrl}" class="button button-cancel" style="display: inline-block; padding: 14px 28px; background-color: #A80D0C; color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 16px;">Cancel Ticket</a>
                 </td>
               </tr>
             </table>
@@ -1728,6 +1761,19 @@ async function generateEarlyReminderEmailHTML(
                   ${gmailBlendStart}${formattedDate}${gmailBlendEnd}
                 </td>
               </tr>
+              ${formattedDoorsOpen
+      ? `
+              <tr>
+                <td class="details-label" style="padding: 8px 0; color: #a1a1aa; font-size: 14px; vertical-align: top;">
+                  ${gmailBlendStart}Doors Open:${gmailBlendEnd}
+                </td>
+                <td class="details-value" style="padding: 8px 0; color: #f4f4f5; font-size: 14px; font-weight: 500;">
+                  ${gmailBlendStart}${formattedDoorsOpen}${gmailBlendEnd}
+                </td>
+              </tr>
+              `
+      : ""
+    }
               ${eventVenue
       ? `
               <tr>
@@ -1949,7 +1995,7 @@ ${promo.time ? `🕔 ${promo.time}` : ""}
   return `
 ${eventName} is this ${formattedDate.includes("Friday") ? "Friday" : formattedDate.split(",")[0]}!${promo?.title ? ` ${promo.title}` : ""}
 ${promoSection}
-${promo ? "Not interested? No worries, we're" : "We're"} still excited to welcome you this ${formattedDate.includes("Friday") ? "Friday" : formattedDate.split(",")[0]}! As a reminder, doors open at ${formattedDoorsOpen}, and no late entry will be permitted.
+${promo ? "Not interested? No worries, we're" : "We're"} still excited to welcome you this ${formattedDate.includes("Friday") ? "Friday" : formattedDate.split(",")[0]}! As a reminder, doors open at ${formattedDoorsOpen}, and your ticket is only valid until 8:15. Late entry is not permitted. For security reasons, no bags will be permitted at the event.
 
 Life happens, and we understand plans can change. If you find yourself unable to attend, please take a moment to cancel your ticket using the link below. Your thoughtfulness helps us extend the opportunity to others who are excited to attend.
 
@@ -1958,7 +2004,7 @@ ${cancelTicketUrl ? `Cancel Ticket: ${cancelTicketUrl}` : ""}
 Event Details:
 - Event: ${eventName || "Event"}
 - Date & Time: ${formattedDate}
-- Ticket Type: ${ticketType || "STANDARD"}
+${formattedDoorsOpen ? `- Doors Open: ${formattedDoorsOpen}` : ""}- Ticket Type: ${ticketType || "STANDARD"}
 - Ticket ID: ${ticketId}
 ${eventUrl ? `- Event URL: ${eventUrl}` : ""}
 ${referralCode && !(ticketType?.toUpperCase() == "VIP") ? `- Referral Code: ${referralCode}` : ""}
