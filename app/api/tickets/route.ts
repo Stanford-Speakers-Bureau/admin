@@ -708,35 +708,53 @@ export async function PATCH(req: Request) {
         });
       }
 
-      // Send reminder emails to all ticket holders
+      // Send reminder emails to all ticket holders in parallel
+      const emailPromises = tickets.map((ticket) =>
+        sendDayOfReminderEmail({
+          email: ticket.email,
+          eventName: event.name || "Event",
+          ticketType: ticket.type || "STANDARD",
+          eventStartTime: event.start_time_date || null,
+          eventRoute: event.route || null,
+          ticketId: ticket.id,
+          eventVenue: event.venue || null,
+          eventVenueLink: event.venue_link || null,
+          eventDescription: event.desc || null,
+          doorsOpenTime: event.doors_open || null,
+        }).then(
+          () => ({ success: true, email: ticket.email }),
+          (error) => ({
+            success: false,
+            email: ticket.email,
+            error,
+          }),
+        ),
+      );
+
+      const results = await Promise.allSettled(emailPromises);
       let sent = 0;
       let failed = 0;
       const errors: string[] = [];
 
-      for (const ticket of tickets) {
-        try {
-          await sendDayOfReminderEmail({
-            email: ticket.email,
-            eventName: event.name || "Event",
-            ticketType: ticket.type || "STANDARD",
-            eventStartTime: event.start_time_date || null,
-            eventRoute: event.route || null,
-            ticketId: ticket.id,
-            eventVenue: event.venue || null,
-            eventVenueLink: event.venue_link || null,
-            eventDescription: event.desc || null,
-            doorsOpenTime: event.doors_open || null,
-          });
-          sent++;
-        } catch (emailError) {
-          console.error(
-            `Failed to send reminder to ${ticket.email}:`,
-            emailError,
-          );
+      for (const result of results) {
+        if (result.status === "fulfilled") {
+          const emailResult = result.value;
+          if (emailResult.success) {
+            sent++;
+          } else {
+            failed++;
+            errors.push(
+              `${emailResult.email}: ${emailResult.error instanceof Error ? emailResult.error.message : "Unknown error"}`,
+            );
+            console.error(
+              `Failed to send reminder to ${emailResult.email}:`,
+              emailResult.error,
+            );
+          }
+        } else {
           failed++;
-          errors.push(
-            `${ticket.email}: ${emailError instanceof Error ? emailError.message : "Unknown error"}`,
-          );
+          errors.push(`Promise rejected: ${result.reason}`);
+          console.error("Email promise rejected:", result.reason);
         }
       }
 
@@ -867,36 +885,54 @@ export async function PATCH(req: Request) {
         });
       }
 
-      // Send early reminder emails to all ticket holders
+      // Send early reminder emails to all ticket holders in parallel
+      const emailPromises = tickets.map((ticket) =>
+        sendEarlyReminderEmail({
+          email: ticket.email,
+          eventName: event.name || "Event",
+          ticketType: ticket.type || "STANDARD",
+          eventStartTime: event.start_time_date || null,
+          eventRoute: event.route || null,
+          ticketId: ticket.id,
+          eventVenue: event.venue || null,
+          eventVenueLink: event.venue_link || null,
+          eventDescription: event.desc || null,
+          doorsOpenTime: event.doors_open || null,
+          promo: promo || null,
+        }).then(
+          () => ({ success: true, email: ticket.email }),
+          (error) => ({
+            success: false,
+            email: ticket.email,
+            error,
+          }),
+        ),
+      );
+
+      const results = await Promise.allSettled(emailPromises);
       let sent = 0;
       let failed = 0;
       const errors: string[] = [];
 
-      for (const ticket of tickets) {
-        try {
-          await sendEarlyReminderEmail({
-            email: ticket.email,
-            eventName: event.name || "Event",
-            ticketType: ticket.type || "STANDARD",
-            eventStartTime: event.start_time_date || null,
-            eventRoute: event.route || null,
-            ticketId: ticket.id,
-            eventVenue: event.venue || null,
-            eventVenueLink: event.venue_link || null,
-            eventDescription: event.desc || null,
-            doorsOpenTime: event.doors_open || null,
-            promo: promo || null,
-          });
-          sent++;
-        } catch (emailError) {
-          console.error(
-            `Failed to send early reminder to ${ticket.email}:`,
-            emailError,
-          );
+      for (const result of results) {
+        if (result.status === "fulfilled") {
+          const emailResult = result.value;
+          if (emailResult.success) {
+            sent++;
+          } else {
+            failed++;
+            errors.push(
+              `${emailResult.email}: ${emailResult.error instanceof Error ? emailResult.error.message : "Unknown error"}`,
+            );
+            console.error(
+              `Failed to send early reminder to ${emailResult.email}:`,
+              emailResult.error,
+            );
+          }
+        } else {
           failed++;
-          errors.push(
-            `${ticket.email}: ${emailError instanceof Error ? emailError.message : "Unknown error"}`,
-          );
+          errors.push(`Promise rejected: ${result.reason}`);
+          console.error("Email promise rejected:", result.reason);
         }
       }
 
