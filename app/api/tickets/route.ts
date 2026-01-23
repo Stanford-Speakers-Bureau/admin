@@ -360,9 +360,13 @@ export async function PATCH(req: Request) {
         const ticketInfo = await getAvailablePublicTickets(
           currentTicket.event_id,
         );
-        if (ticketInfo.vipCount >= ticketInfo.reserved) {
+        // CRITICAL: Block upgrade if it would exceed reserved allocation
+        // Check if adding one more VIP would exceed reserved: vipCount + 1 > reserved
+        if (ticketInfo.vipCount + 1 > ticketInfo.reserved) {
           return NextResponse.json(
-            { error: "VIP ticket capacity reached for this event" },
+            {
+              error: `Cannot upgrade to VIP: would exceed reserved allocation (${ticketInfo.vipCount + 1} > ${ticketInfo.reserved})`,
+            },
             { status: 400 },
           );
         }
@@ -450,13 +454,13 @@ export async function PATCH(req: Request) {
             if (!waitlistFetchError && waitlistEntry) {
               // Create a STANDARD ticket for the waitlist person
               const { data: newTicket, error: ticketCreateError } =
-                await adminClient
-                  .from("tickets")
-                  .insert({
-                    event_id: ticket.event_id,
-                    email: waitlistEntry.email,
-                    type: "STANDARD",
-                  })
+                  await adminClient
+                    .from("tickets")
+                    .insert({
+                      event_id: ticket.event_id,
+                      email: waitlistEntry.email,
+                      type: "STANDARD",
+                    })
                   .select(
                     `
                   id,
@@ -1063,7 +1067,7 @@ export async function POST(req: Request) {
     // Check if event exists
     const { data: event, error: eventError } = await adminClient
       .from("events")
-      .select("id, name, capacity")
+      .select("id, name, capacity, reserved")
       .eq("id", eventId)
       .single();
 
@@ -1085,10 +1089,13 @@ export async function POST(req: Request) {
       //   }
       // } else
       if (ticketType === "VIP") {
-        // Block VIP creation if it would exceed reserved allocation
-        if (ticketInfo.vipCount >= ticketInfo.reserved) {
+        // CRITICAL: Block VIP creation if it would exceed reserved allocation
+        // Check if adding one more VIP would exceed reserved: vipCount + 1 > reserved
+        if (ticketInfo.vipCount + 1 > ticketInfo.reserved) {
           return NextResponse.json(
-            { error: "VIP ticket capacity reached for this event" },
+            {
+              error: `Cannot add VIP ticket: would exceed reserved allocation (${ticketInfo.vipCount + 1} > ${ticketInfo.reserved})`,
+            },
             { status: 400 },
           );
         }
@@ -1114,9 +1121,13 @@ export async function POST(req: Request) {
         event.capacity
       ) {
         const ticketInfo = await getAvailablePublicTickets(eventId);
-        if (ticketInfo.vipCount >= ticketInfo.reserved) {
+        // CRITICAL: Block upgrade if it would exceed reserved allocation
+        // Check if adding one more VIP would exceed reserved: vipCount + 1 > reserved
+        if (ticketInfo.vipCount + 1 > ticketInfo.reserved) {
           return NextResponse.json(
-            { error: "VIP ticket capacity reached for this event" },
+            {
+              error: `Cannot upgrade to VIP: would exceed reserved allocation (${ticketInfo.vipCount + 1} > ${ticketInfo.reserved})`,
+            },
             { status: 400 },
           );
         }
