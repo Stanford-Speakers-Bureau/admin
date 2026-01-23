@@ -713,7 +713,9 @@ export async function PATCH(req: Request) {
       }
 
       // Send reminder emails to all ticket holders in batches to avoid memory overflow
-      const BATCH_SIZE = 10; // Process 10 emails at a time
+      // Rate limit: max 14 emails per second
+      const BATCH_SIZE = 14;
+      const MIN_BATCH_DURATION_MS = 1000; // Ensure at least 1 second per batch
       const results: PromiseSettledResult<{
         success: boolean;
         email: string;
@@ -721,6 +723,7 @@ export async function PATCH(req: Request) {
       }>[] = [];
 
       for (let i = 0; i < tickets.length; i += BATCH_SIZE) {
+        const batchStartTime = Date.now();
         const batch = tickets.slice(i, i + BATCH_SIZE);
         const batchPromises = batch.map((ticket) =>
           sendDayOfReminderEmail({
@@ -745,6 +748,14 @@ export async function PATCH(req: Request) {
         );
         const batchResults = await Promise.allSettled(batchPromises);
         results.push(...batchResults);
+
+        // Rate limiting: ensure we don't exceed 14 emails/second
+        const batchDuration = Date.now() - batchStartTime;
+        if (batchDuration < MIN_BATCH_DURATION_MS && i + BATCH_SIZE < tickets.length) {
+          await new Promise((resolve) =>
+            setTimeout(resolve, MIN_BATCH_DURATION_MS - batchDuration),
+          );
+        }
       }
       let sent = 0;
       let failed = 0;
@@ -902,7 +913,9 @@ export async function PATCH(req: Request) {
       }
 
       // Send early reminder emails to all ticket holders in batches to avoid memory overflow
-      const BATCH_SIZE = 10; // Process 10 emails at a time
+      // Rate limit: max 14 emails per second
+      const BATCH_SIZE = 14;
+      const MIN_BATCH_DURATION_MS = 1000; // Ensure at least 1 second per batch
       const results: PromiseSettledResult<{
         success: boolean;
         email: string;
@@ -910,6 +923,7 @@ export async function PATCH(req: Request) {
       }>[] = [];
 
       for (let i = 0; i < tickets.length; i += BATCH_SIZE) {
+        const batchStartTime = Date.now();
         const batch = tickets.slice(i, i + BATCH_SIZE);
         const batchPromises = batch.map((ticket) =>
           sendEarlyReminderEmail({
@@ -935,6 +949,14 @@ export async function PATCH(req: Request) {
         );
         const batchResults = await Promise.allSettled(batchPromises);
         results.push(...batchResults);
+
+        // Rate limiting: ensure we don't exceed 14 emails/second
+        const batchDuration = Date.now() - batchStartTime;
+        if (batchDuration < MIN_BATCH_DURATION_MS && i + BATCH_SIZE < tickets.length) {
+          await new Promise((resolve) =>
+            setTimeout(resolve, MIN_BATCH_DURATION_MS - batchDuration),
+          );
+        }
       }
       let sent = 0;
       let failed = 0;
