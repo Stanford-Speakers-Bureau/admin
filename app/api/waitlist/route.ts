@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { verifyAdminRequest } from "@/app/lib/supabase";
 import { isValidUUID } from "@/app/lib/validation";
+import { sendWaitlistClosedEmail } from "@/app/lib/email";
 
 export async function GET(req: Request) {
   try {
@@ -171,6 +172,109 @@ export async function GET(req: Request) {
     );
   } catch (error) {
     console.error("Admin waitlist fetch error:", error);
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 },
+    );
+  }
+}
+
+export async function POST(req: Request) {
+  try {
+    const auth = await verifyAdminRequest();
+    if (!auth.authorized) {
+      return NextResponse.json({ error: auth.error }, { status: 401 });
+    }
+
+    const body = await req.json();
+    const { eventId, waitlistOpenTime, expectedCapacity } = body;
+
+    if (!eventId) {
+      return NextResponse.json(
+        { error: "eventId is required" },
+        { status: 400 },
+      );
+    }
+
+    if (!isValidUUID(eventId)) {
+      return NextResponse.json(
+        { error: "Invalid event ID format" },
+        { status: 400 },
+      );
+    }
+
+    const adminClient = auth.adminClient;
+
+    // Fetch event details
+    const { data: event, error: eventError } = await adminClient
+      .from("events")
+      .select("id, name, start_time_date, venue, venue_link")
+      .eq("id", eventId)
+      .single();
+
+    if (eventError || !event) {
+      return NextResponse.json({ error: "Event not found" }, { status: 404 });
+    }
+
+    // Fetch all waitlist entries for this event
+    const { data: waitlistEntries, error: waitlistError } = await adminClient
+      .from("waitlist")
+      .select("id, email")
+      .eq("event_id", eventId);
+
+    if (waitlistError) {
+      console.error("Waitlist fetch error:", waitlistError);
+      return NextResponse.json(
+        { error: "Failed to fetch waitlist" },
+        { status: 500 },
+      );
+    }
+
+    if (!waitlistEntries || waitlistEntries.length === 0) {
+      return NextResponse.json(
+        { error: "No waitlist entries found for this event" },
+        { status: 404 },
+      );
+    }
+
+    // Send emails to all waitlist entries
+    let successCount = 0;
+    let errorCount = 0;
+    const errors: string[] = [];
+
+    for (const entry of waitlistEntries) {
+      try {
+        await sendWaitlistClosedEmail({
+          email: entry.email,
+          eventName: event.name || "Event",
+          eventStartTime: event.start_time_date,
+          eventVenue: event.venue,
+          eventVenueLink: event.venue_link,
+          waitlistOpenTime: waitlistOpenTime || "7:30 PM",
+          expectedCapacity: expectedCapacity || "100-200",
+        });
+        successCount++;
+      } catch (error) {
+        errorCount++;
+        const errorMessage =
+          error instanceof Error ? error.message : "Unknown error";
+        errors.push(`${entry.email}: ${errorMessage}`);
+        console.error(`Failed to send email to ${entry.email}:`, error);
+      }
+    }
+
+    return NextResponse.json(
+      {
+        success: true,
+        totalEntries: waitlistEntries.length,
+        emailsSent: successCount,
+        errors: errorCount,
+        errorDetails: errors.length > 0 ? errors : undefined,
+      },
+      { status: 200 },
+    );
+  } catch (error) {
+    console.error("Admin waitlist closed email error:", error);
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 },

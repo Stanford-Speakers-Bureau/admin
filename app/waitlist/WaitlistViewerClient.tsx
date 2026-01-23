@@ -64,6 +64,12 @@ export default function WaitlistViewerClient({
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isGrouped, setIsGrouped] = useState(initialIsGrouped);
+  const [showNotifyDialog, setShowNotifyDialog] = useState(false);
+  const [isSendingEmails, setIsSendingEmails] = useState(false);
+  const [waitlistOpenTime, setWaitlistOpenTime] = useState("7:30 PM");
+  const [expectedCapacity, setExpectedCapacity] = useState("100-200");
+  const [notifySuccess, setNotifySuccess] = useState<string | null>(null);
+  const [notifyError, setNotifyError] = useState<string | null>(null);
 
   async function fetchWaitlist() {
     setIsLoading(true);
@@ -118,6 +124,55 @@ export default function WaitlistViewerClient({
     fetchWaitlist();
   }
 
+  async function handleNotifyWaitlistClosed() {
+    if (!selectedEventId) {
+      setNotifyError("Please select an event first");
+      return;
+    }
+
+    setIsSendingEmails(true);
+    setNotifyError(null);
+    setNotifySuccess(null);
+
+    try {
+      const response = await fetch("/api/waitlist", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          eventId: selectedEventId,
+          waitlistOpenTime,
+          expectedCapacity,
+        }),
+      });
+
+      if (!response.ok) {
+        let errorMessage = "Failed to send waitlist closed emails";
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.error || errorMessage;
+        } catch {
+          errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+        }
+        throw new Error(errorMessage);
+      }
+
+      const data = await response.json();
+      setNotifySuccess(
+        `Successfully sent ${data.emailsSent} email${data.emailsSent !== 1 ? "s" : ""} to waitlist entries${data.errors > 0 ? ` (${data.errors} failed)` : ""}`,
+      );
+      setShowNotifyDialog(false);
+    } catch (err) {
+      console.error("Error sending waitlist closed emails:", err);
+      setNotifyError(
+        err instanceof Error ? err.message : "Failed to send emails",
+      );
+    } finally {
+      setIsSendingEmails(false);
+    }
+  }
+
   // Grouped view (all events)
   if (isGrouped && Array.isArray(waitlist) && waitlist.length > 0) {
     const eventGroups = waitlist as EventGroup[];
@@ -132,26 +187,50 @@ export default function WaitlistViewerClient({
               View and manage event waitlist entries
             </p>
           </div>
-          <button
-            onClick={handleRefresh}
-            disabled={isLoading}
-            className="flex items-center gap-2 px-5 py-2.5 bg-zinc-800 text-white rounded-xl font-medium hover:bg-zinc-700 transition-colors disabled:opacity-50"
-          >
-            <svg
-              className={`w-5 h-5 ${isLoading ? "animate-spin" : ""}`}
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
+          <div className="flex items-center gap-3">
+            {selectedEventId && (
+              <button
+                onClick={() => setShowNotifyDialog(true)}
+                disabled={isLoading || isSendingEmails}
+                className="flex items-center gap-2 px-5 py-2.5 bg-emerald-600 text-white rounded-xl font-medium hover:bg-emerald-700 transition-colors disabled:opacity-50"
+              >
+                <svg
+                  className="w-5 h-5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
+                  />
+                </svg>
+                Notify Waitlist Closed
+              </button>
+            )}
+            <button
+              onClick={handleRefresh}
+              disabled={isLoading}
+              className="flex items-center gap-2 px-5 py-2.5 bg-zinc-800 text-white rounded-xl font-medium hover:bg-zinc-700 transition-colors disabled:opacity-50"
             >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-              />
-            </svg>
-            Refresh
-          </button>
+              <svg
+                className={`w-5 h-5 ${isLoading ? "animate-spin" : ""}`}
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                />
+              </svg>
+              Refresh
+            </button>
+          </div>
         </div>
 
         {/* Event Filter */}
@@ -189,6 +268,44 @@ export default function WaitlistViewerClient({
               />
             </svg>
             <p className="text-rose-400 text-sm">{error}</p>
+          </div>
+        )}
+
+        {notifySuccess && (
+          <div className="mb-6 p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-xl flex items-center gap-3">
+            <svg
+              className="w-5 h-5 text-emerald-400 shrink-0"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+              />
+            </svg>
+            <p className="text-emerald-400 text-sm">{notifySuccess}</p>
+          </div>
+        )}
+
+        {notifyError && (
+          <div className="mb-6 p-4 bg-rose-500/10 border border-rose-500/30 rounded-xl flex items-center gap-3">
+            <svg
+              className="w-5 h-5 text-rose-400 shrink-0"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+              />
+            </svg>
+            <p className="text-rose-400 text-sm">{notifyError}</p>
           </div>
         )}
 
@@ -299,6 +416,74 @@ export default function WaitlistViewerClient({
             ))}
           </div>
         )}
+
+        {/* Notify Dialog */}
+        {showNotifyDialog && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-zinc-900 rounded-2xl border border-zinc-800 p-6 max-w-md w-full">
+              <h2 className="text-xl font-bold text-white mb-4">
+                Notify Waitlist Closed
+              </h2>
+              <p className="text-zinc-400 mb-6">
+                This will send an email to all waitlist entries for the selected
+                event, notifying them to come in-person for their ticket.
+              </p>
+              <div className="space-y-4 mb-6">
+                <div>
+                  <label className="block text-sm font-medium text-zinc-300 mb-2">
+                    Waitlist Open Time
+                  </label>
+                  <input
+                    type="text"
+                    value={waitlistOpenTime}
+                    onChange={(e) => setWaitlistOpenTime(e.target.value)}
+                    placeholder="7:30 PM"
+                    className="w-full px-4 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-zinc-300 mb-2">
+                    Expected Capacity
+                  </label>
+                  <input
+                    type="text"
+                    value={expectedCapacity}
+                    onChange={(e) => setExpectedCapacity(e.target.value)}
+                    placeholder="100-200"
+                    className="w-full px-4 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50"
+                  />
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => {
+                    setShowNotifyDialog(false);
+                    setNotifyError(null);
+                    setNotifySuccess(null);
+                  }}
+                  disabled={isSendingEmails}
+                  className="flex-1 px-4 py-2 bg-zinc-800 text-white rounded-lg font-medium hover:bg-zinc-700 transition-colors disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleNotifyWaitlistClosed}
+                  disabled={isSendingEmails}
+                  className="flex-1 px-4 py-2 bg-emerald-600 text-white rounded-lg font-medium hover:bg-emerald-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {isSendingEmails ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      Sending...
+                    </>
+                  ) : (
+                    "Send Emails"
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -318,26 +503,50 @@ export default function WaitlistViewerClient({
             View and manage event waitlist entries
           </p>
         </div>
-        <button
-          onClick={handleRefresh}
-          disabled={isLoading}
-          className="flex items-center gap-2 px-5 py-2.5 bg-zinc-800 text-white rounded-xl font-medium hover:bg-zinc-700 transition-colors disabled:opacity-50"
-        >
-          <svg
-            className={`w-5 h-5 ${isLoading ? "animate-spin" : ""}`}
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
+        <div className="flex items-center gap-3">
+          {selectedEventId && (
+            <button
+              onClick={() => setShowNotifyDialog(true)}
+              disabled={isLoading || isSendingEmails}
+              className="flex items-center gap-2 px-5 py-2.5 bg-emerald-600 text-white rounded-xl font-medium hover:bg-emerald-700 transition-colors disabled:opacity-50"
+            >
+              <svg
+                className="w-5 h-5"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
+                />
+              </svg>
+              Notify Waitlist Closed
+            </button>
+          )}
+          <button
+            onClick={handleRefresh}
+            disabled={isLoading}
+            className="flex items-center gap-2 px-5 py-2.5 bg-zinc-800 text-white rounded-xl font-medium hover:bg-zinc-700 transition-colors disabled:opacity-50"
           >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-            />
-          </svg>
-          Refresh
-        </button>
+            <svg
+              className={`w-5 h-5 ${isLoading ? "animate-spin" : ""}`}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+              />
+            </svg>
+            Refresh
+          </button>
+        </div>
       </div>
 
       {/* Event Filter */}
@@ -375,6 +584,44 @@ export default function WaitlistViewerClient({
             />
           </svg>
           <p className="text-rose-400 text-sm">{error}</p>
+        </div>
+      )}
+
+      {notifySuccess && (
+        <div className="mb-6 p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-xl flex items-center gap-3">
+          <svg
+            className="w-5 h-5 text-emerald-400 shrink-0"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+            />
+          </svg>
+          <p className="text-emerald-400 text-sm">{notifySuccess}</p>
+        </div>
+      )}
+
+      {notifyError && (
+        <div className="mb-6 p-4 bg-rose-500/10 border border-rose-500/30 rounded-xl flex items-center gap-3">
+          <svg
+            className="w-5 h-5 text-rose-400 shrink-0"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+            />
+          </svg>
+          <p className="text-rose-400 text-sm">{notifyError}</p>
         </div>
       )}
 
@@ -469,6 +716,74 @@ export default function WaitlistViewerClient({
                 ))}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* Notify Dialog */}
+      {showNotifyDialog && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-zinc-900 rounded-2xl border border-zinc-800 p-6 max-w-md w-full">
+            <h2 className="text-xl font-bold text-white mb-4">
+              Notify Waitlist Closed
+            </h2>
+            <p className="text-zinc-400 mb-6">
+              This will send an email to all waitlist entries for the selected
+              event, notifying them to come in-person for their ticket.
+            </p>
+            <div className="space-y-4 mb-6">
+              <div>
+                <label className="block text-sm font-medium text-zinc-300 mb-2">
+                  Waitlist Open Time
+                </label>
+                <input
+                  type="text"
+                  value={waitlistOpenTime}
+                  onChange={(e) => setWaitlistOpenTime(e.target.value)}
+                  placeholder="7:30 PM"
+                  className="w-full px-4 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-zinc-300 mb-2">
+                  Expected Capacity
+                </label>
+                <input
+                  type="text"
+                  value={expectedCapacity}
+                  onChange={(e) => setExpectedCapacity(e.target.value)}
+                  placeholder="100-200"
+                  className="w-full px-4 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50"
+                />
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => {
+                  setShowNotifyDialog(false);
+                  setNotifyError(null);
+                  setNotifySuccess(null);
+                }}
+                disabled={isSendingEmails}
+                className="flex-1 px-4 py-2 bg-zinc-800 text-white rounded-lg font-medium hover:bg-zinc-700 transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleNotifyWaitlistClosed}
+                disabled={isSendingEmails}
+                className="flex-1 px-4 py-2 bg-emerald-600 text-white rounded-lg font-medium hover:bg-emerald-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {isSendingEmails ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    Sending...
+                  </>
+                ) : (
+                  "Send Emails"
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}
