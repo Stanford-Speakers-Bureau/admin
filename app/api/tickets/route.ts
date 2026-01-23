@@ -712,30 +712,40 @@ export async function PATCH(req: Request) {
         });
       }
 
-      // Send reminder emails to all ticket holders in parallel
-      const emailPromises = tickets.map((ticket) =>
-        sendDayOfReminderEmail({
-          email: ticket.email,
-          eventName: event.name || "Event",
-          ticketType: ticket.type || "STANDARD",
-          eventStartTime: event.start_time_date || null,
-          eventRoute: event.route || null,
-          ticketId: ticket.id,
-          eventVenue: event.venue || null,
-          eventVenueLink: event.venue_link || null,
-          eventDescription: event.desc || null,
-          doorsOpenTime: event.doors_open || null,
-        }).then(
-          () => ({ success: true, email: ticket.email }),
-          (error) => ({
-            success: false,
-            email: ticket.email,
-            error,
-          }),
-        ),
-      );
+      // Send reminder emails to all ticket holders in batches to avoid memory overflow
+      const BATCH_SIZE = 10; // Process 10 emails at a time
+      const results: PromiseSettledResult<{
+        success: boolean;
+        email: string;
+        error?: unknown;
+      }>[] = [];
 
-      const results = await Promise.allSettled(emailPromises);
+      for (let i = 0; i < tickets.length; i += BATCH_SIZE) {
+        const batch = tickets.slice(i, i + BATCH_SIZE);
+        const batchPromises = batch.map((ticket) =>
+          sendDayOfReminderEmail({
+            email: ticket.email,
+            eventName: event.name || "Event",
+            ticketType: ticket.type || "STANDARD",
+            eventStartTime: event.start_time_date || null,
+            eventRoute: event.route || null,
+            ticketId: ticket.id,
+            eventVenue: event.venue || null,
+            eventVenueLink: event.venue_link || null,
+            eventDescription: event.desc || null,
+            doorsOpenTime: event.doors_open || null,
+          }).then(
+            () => ({ success: true, email: ticket.email }),
+            (error) => ({
+              success: false,
+              email: ticket.email,
+              error,
+            }),
+          ),
+        );
+        const batchResults = await Promise.allSettled(batchPromises);
+        results.push(...batchResults);
+      }
       let sent = 0;
       let failed = 0;
       const errors: string[] = [];
@@ -891,31 +901,41 @@ export async function PATCH(req: Request) {
         });
       }
 
-      // Send early reminder emails to all ticket holders in parallel
-      const emailPromises = tickets.map((ticket) =>
-        sendEarlyReminderEmail({
-          email: ticket.email,
-          eventName: event.name || "Event",
-          ticketType: ticket.type || "STANDARD",
-          eventStartTime: event.start_time_date || null,
-          eventRoute: event.route || null,
-          ticketId: ticket.id,
-          eventVenue: event.venue || null,
-          eventVenueLink: event.venue_link || null,
-          eventDescription: event.desc || null,
-          doorsOpenTime: event.doors_open || null,
-          promo: promo || null,
-        }).then(
-          () => ({ success: true, email: ticket.email }),
-          (error) => ({
-            success: false,
-            email: ticket.email,
-            error,
-          }),
-        ),
-      );
+      // Send early reminder emails to all ticket holders in batches to avoid memory overflow
+      const BATCH_SIZE = 10; // Process 10 emails at a time
+      const results: PromiseSettledResult<{
+        success: boolean;
+        email: string;
+        error?: unknown;
+      }>[] = [];
 
-      const results = await Promise.allSettled(emailPromises);
+      for (let i = 0; i < tickets.length; i += BATCH_SIZE) {
+        const batch = tickets.slice(i, i + BATCH_SIZE);
+        const batchPromises = batch.map((ticket) =>
+          sendEarlyReminderEmail({
+            email: ticket.email,
+            eventName: event.name || "Event",
+            ticketType: ticket.type || "STANDARD",
+            eventStartTime: event.start_time_date || null,
+            eventRoute: event.route || null,
+            ticketId: ticket.id,
+            eventVenue: event.venue || null,
+            eventVenueLink: event.venue_link || null,
+            eventDescription: event.desc || null,
+            doorsOpenTime: event.doors_open || null,
+            promo: promo || null,
+          }).then(
+            () => ({ success: true, email: ticket.email }),
+            (error) => ({
+              success: false,
+              email: ticket.email,
+              error,
+            }),
+          ),
+        );
+        const batchResults = await Promise.allSettled(batchPromises);
+        results.push(...batchResults);
+      }
       let sent = 0;
       let failed = 0;
       const errors: string[] = [];
