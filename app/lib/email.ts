@@ -914,6 +914,9 @@ async function generateDayOfReminderEmailHTML(
   const baseUrl =
     process.env.NEXT_PUBLIC_BASE_URL || "https://stanfordspeakersbureau.com";
   const eventUrl = eventRoute ? `${baseUrl}/events/${eventRoute}` : null;
+  const cancelTicketUrl = eventRoute
+    ? `${baseUrl}/events/${eventRoute}?cancel_ticket=${ticketId}`
+    : null;
   const logoUrl = `${baseUrl}/logo.png`;
   const googleCalendarUrl = generateGoogleCalendarUrl({
     eventName: data.eventName,
@@ -1000,6 +1003,11 @@ async function generateDayOfReminderEmailHTML(
       color: #ffffff !important; 
     }
     u + .body .button { 
+      background-color: #A80D0C !important; 
+      background-image: linear-gradient(#A80D0C, #A80D0D) !important;
+      color: #ffffff !important; 
+    }
+    u + .body .button-cancel { 
       background-color: #A80D0C !important; 
       background-image: linear-gradient(#A80D0C, #A80D0D) !important;
       color: #ffffff !important; 
@@ -1098,6 +1106,26 @@ async function generateDayOfReminderEmailHTML(
               </ul>
             ${gmailBlendEnd}
           </div>
+          
+          ${gmailBlendStart}
+            <p style="margin: 0 0 20px 0; color: #f4f4f5; font-size: 16px; line-height: 1.6;">
+              Life happens, and we understand plans can change. If you find yourself unable to attend, please take a moment to cancel your ticket using the link below. Your thoughtfulness helps us extend the opportunity to others who are excited to attend.
+            </p>
+          ${gmailBlendEnd}
+          
+          ${
+            cancelTicketUrl
+              ? `
+          <table role="presentation" style="width: 100%; border-collapse: collapse; margin-bottom: 24px;">
+            <tr>
+              <td align="center" class="button-wrapper" style="padding: 0;">
+                <a href="${cancelTicketUrl}" class="button button-cancel" style="display: inline-block; padding: 14px 28px; background-color: #A80D0C; color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 16px;">Cancel Ticket</a>
+              </td>
+            </tr>
+          </table>
+          `
+              : ""
+          }
           
           <!-- Event Details Card -->
           <div class="details-card" style="background-color: #18181b; padding: 24px; margin-bottom: 24px;${isVIP ? " border: 2px solid #D4AF37; border-radius: 8px; box-shadow: 0 0 15px rgba(212, 175, 55, 0.3);" : ""}">
@@ -1354,15 +1382,18 @@ function generateDayOfReminderEmailText(
       }).format(new Date(doorsOpenTime))
     : null;
 
-  const eventUrl = eventRoute
-    ? `${process.env.NEXT_PUBLIC_BASE_URL || "https://stanfordspeakersbureau.com"}/events/${eventRoute}`
+  const baseUrl =
+    process.env.NEXT_PUBLIC_BASE_URL || "https://stanfordspeakersbureau.com";
+  const eventUrl = eventRoute ? `${baseUrl}/events/${eventRoute}` : null;
+  const cancelTicketUrl = eventRoute
+    ? `${baseUrl}/events/${eventRoute}?cancel_ticket=${ticketId}`
     : null;
 
   // Generate referral code from email
   const referralCode = generateReferralCode(data.email);
   const referralUrl =
     referralCode && data.eventRoute
-      ? `${process.env.NEXT_PUBLIC_BASE_URL || "https://stanfordspeakersbureau.com"}/events/${data.eventRoute}?referral_code=${referralCode}`
+      ? `${baseUrl}/events/${data.eventRoute}?referral_code=${referralCode}`
       : null;
 
   return `
@@ -1375,6 +1406,10 @@ IMPORTANT REMINDERS:
 - For ADA accommodations, please email ${FROM_EMAIL}
 - At 8:15, we will start letting people off the waitlist and your ticket may be invalidated
 - If you have friends without tickets, they should come and wait on the in-person waitlist
+
+Life happens, and we understand plans can change. If you find yourself unable to attend, please take a moment to cancel your ticket using the link below. Your thoughtfulness helps us extend the opportunity to others who are excited to attend.
+
+${cancelTicketUrl ? `Cancel Ticket: ${cancelTicketUrl}` : ""}
 
 Event Details:
 - Event: ${eventName || "Event"}
