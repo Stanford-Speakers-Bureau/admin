@@ -50,6 +50,26 @@ export async function GET(req: Request) {
       redirectUrl.searchParams.set("error", "auth_failed");
       return NextResponse.redirect(redirectUrl);
     }
+
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+
+    const email = user?.email?.toLowerCase() || "";
+    const isStanfordEmail = email.endsWith("@stanford.edu");
+
+    if (userError || !isStanfordEmail) {
+      if (userError) {
+        console.error("Supabase auth getUser error:", userError);
+      }
+
+      await supabase.auth.signOut();
+
+      const redirectUrl = new URL(safeRedirect, baseUrl);
+      redirectUrl.searchParams.set("error", "unauthorized_domain");
+      return NextResponse.redirect(redirectUrl);
+    }
   }
 
   // Parse the redirect URL to ensure query parameters are preserved
