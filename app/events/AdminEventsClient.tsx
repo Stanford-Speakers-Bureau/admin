@@ -59,6 +59,7 @@ export type Event = {
   reserved: number | null;
   venue_link: string | null;
   release_date: string | null;
+  ticketing_date?: string | null;
   banner: boolean | null;
   start_time_date: string | null;
   doors_open: string | null;
@@ -80,6 +81,7 @@ type FormData = {
   venue: string;
   venue_link: string;
   release_date: string;
+  ticketing_date: string;
   start_time_date: string;
   doors_open: string;
   route: string;
@@ -99,6 +101,7 @@ const emptyForm: FormData = {
   venue: "",
   venue_link: "",
   release_date: "",
+  ticketing_date: "",
   start_time_date: "",
   doors_open: "",
   route: "",
@@ -202,6 +205,7 @@ export default function AdminEventsClient({
       venue: event.venue || "",
       venue_link: event.venue_link || "",
       release_date: formatDateTimeForInput(event.release_date),
+      ticketing_date: formatDateTimeForInput(event.ticketing_date ?? null),
       start_time_date: formatDateTimeForInput(event.start_time_date),
       doors_open: formatDateTimeForInput(event.doors_open),
       route: event.route || "",
@@ -250,6 +254,20 @@ export default function AdminEventsClient({
     setError(null);
 
     try {
+      // Client-side validation: ticketing must be on/after publish when both are set
+      if (formData.release_date && formData.ticketing_date) {
+        const publish = new Date(formData.release_date);
+        const ticketing = new Date(formData.ticketing_date);
+        if (Number.isNaN(publish.getTime()) || Number.isNaN(ticketing.getTime())) {
+          setError("Invalid date format");
+          return;
+        }
+        if (ticketing.getTime() < publish.getTime()) {
+          setError("Ticketing date must be on or after the release (publish) date.");
+          return;
+        }
+      }
+
       const submitData = new FormData();
       submitData.append("name", formData.name);
       submitData.append("desc", formData.desc);
@@ -260,6 +278,7 @@ export default function AdminEventsClient({
       submitData.append("venue", formData.venue);
       submitData.append("venue_link", formData.venue_link);
       submitData.append("release_date", formData.release_date);
+      submitData.append("ticketing_date", formData.ticketing_date);
       submitData.append("start_time_date", formData.start_time_date);
       submitData.append("doors_open", formData.doors_open);
       submitData.append("route", formData.route);
@@ -698,6 +717,41 @@ export default function AdminEventsClient({
                   }
                   className="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50"
                 />
+              </div>
+
+              {/* Ticketing Date */}
+              <div>
+                <label className="block text-sm font-medium text-zinc-300 mb-2">
+                  Ticketing Date (when ticket sales open)
+                </label>
+                <input
+                  type="datetime-local"
+                  value={formData.ticketing_date}
+                  onChange={(e) =>
+                    setFormData({ ...formData, ticketing_date: e.target.value })
+                  }
+                  className="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50"
+                />
+                {formData.release_date &&
+                  formData.ticketing_date &&
+                  (() => {
+                    const publish = new Date(formData.release_date);
+                    const ticketing = new Date(formData.ticketing_date);
+                    if (
+                      Number.isNaN(publish.getTime()) ||
+                      Number.isNaN(ticketing.getTime())
+                    )
+                      return null;
+                    if (ticketing.getTime() < publish.getTime()) {
+                      return (
+                        <p className="mt-2 text-sm text-rose-400">
+                          Ticketing date must be on or after the release
+                          (publish) date.
+                        </p>
+                      );
+                    }
+                    return null;
+                  })()}
               </div>
 
               {/* Event Start Date/Time */}

@@ -387,7 +387,7 @@ export async function PATCH(req: Request) {
           const { data: waitlistEntry, error: waitlistFetchError } =
             await adminClient
               .from("waitlist")
-              .select("id, email")
+              .select("id, email, position")
               .eq("event_id", ticket.event_id)
               .order("position", { ascending: true })
               .limit(1)
@@ -434,6 +434,33 @@ export async function PATCH(req: Request) {
                   "Waitlist removal error (non-fatal):",
                   waitlistDeleteError,
                 );
+              } else {
+                // Move everyone else up the waitlist (decrease position by 1)
+                // Fetch all remaining entries with position > deleted position
+                const { data: remainingEntries, error: fetchError } =
+                  await adminClient
+                    .from("waitlist")
+                    .select("id, position")
+                    .eq("event_id", ticket.event_id)
+                    .gt("position", waitlistEntry.position)
+                    .order("position", { ascending: true });
+
+                if (!fetchError && remainingEntries && remainingEntries.length > 0) {
+                  // Update each entry to decrease position by 1
+                  for (const entry of remainingEntries) {
+                    const { error: updateError } = await adminClient
+                      .from("waitlist")
+                      .update({ position: entry.position - 1 })
+                      .eq("id", entry.id);
+
+                    if (updateError) {
+                      console.error(
+                        `Waitlist position update error for entry ${entry.id} (non-fatal):`,
+                        updateError,
+                      );
+                    }
+                  }
+                }
               }
 
               // Send ticket email to the person who was on the waitlist
@@ -704,18 +731,53 @@ export async function POST(req: Request) {
       // Remove user from waitlist if they were on it
       if (updatedTicket) {
         try {
-          const { error: waitlistDeleteError } = await adminClient
+          // First, get the waitlist entry to know its position
+          const { data: waitlistEntry } = await adminClient
             .from("waitlist")
-            .delete()
+            .select("id, position")
             .eq("event_id", eventId)
-            .eq("email", email);
+            .eq("email", email)
+            .single();
 
-          if (waitlistDeleteError) {
-            console.error(
-              "Waitlist removal error (non-fatal):",
-              waitlistDeleteError,
-            );
-            // Don't fail the ticket update if waitlist removal fails
+          if (waitlistEntry) {
+            const { error: waitlistDeleteError } = await adminClient
+              .from("waitlist")
+              .delete()
+              .eq("event_id", eventId)
+              .eq("email", email);
+
+            if (waitlistDeleteError) {
+              console.error(
+                "Waitlist removal error (non-fatal):",
+                waitlistDeleteError,
+              );
+              // Don't fail the ticket update if waitlist removal fails
+            } else {
+              // Move everyone else up the waitlist (decrease position by 1)
+              const { data: remainingEntries, error: fetchError } =
+                await adminClient
+                  .from("waitlist")
+                  .select("id, position")
+                  .eq("event_id", eventId)
+                  .gt("position", waitlistEntry.position)
+                  .order("position", { ascending: true });
+
+              if (!fetchError && remainingEntries && remainingEntries.length > 0) {
+                for (const entry of remainingEntries) {
+                  const { error: updateError } = await adminClient
+                    .from("waitlist")
+                    .update({ position: entry.position - 1 })
+                    .eq("id", entry.id);
+
+                  if (updateError) {
+                    console.error(
+                      `Waitlist position update error for entry ${entry.id} (non-fatal):`,
+                      updateError,
+                    );
+                  }
+                }
+              }
+            }
           }
         } catch (waitlistError) {
           console.error("Waitlist removal error (non-fatal):", waitlistError);
@@ -801,18 +863,53 @@ export async function POST(req: Request) {
     // Remove user from waitlist if they were on it
     if (ticket) {
       try {
-        const { error: waitlistDeleteError } = await adminClient
+        // First, get the waitlist entry to know its position
+        const { data: waitlistEntry } = await adminClient
           .from("waitlist")
-          .delete()
+          .select("id, position")
           .eq("event_id", eventId)
-          .eq("email", email);
+          .eq("email", email)
+          .single();
 
-        if (waitlistDeleteError) {
-          console.error(
-            "Waitlist removal error (non-fatal):",
-            waitlistDeleteError,
-          );
-          // Don't fail the ticket creation if waitlist removal fails
+        if (waitlistEntry) {
+          const { error: waitlistDeleteError } = await adminClient
+            .from("waitlist")
+            .delete()
+            .eq("event_id", eventId)
+            .eq("email", email);
+
+          if (waitlistDeleteError) {
+            console.error(
+              "Waitlist removal error (non-fatal):",
+              waitlistDeleteError,
+            );
+            // Don't fail the ticket creation if waitlist removal fails
+          } else {
+            // Move everyone else up the waitlist (decrease position by 1)
+            const { data: remainingEntries, error: fetchError } =
+              await adminClient
+                .from("waitlist")
+                .select("id, position")
+                .eq("event_id", eventId)
+                .gt("position", waitlistEntry.position)
+                .order("position", { ascending: true });
+
+            if (!fetchError && remainingEntries && remainingEntries.length > 0) {
+              for (const entry of remainingEntries) {
+                const { error: updateError } = await adminClient
+                  .from("waitlist")
+                  .update({ position: entry.position - 1 })
+                  .eq("id", entry.id);
+
+                if (updateError) {
+                  console.error(
+                    `Waitlist position update error for entry ${entry.id} (non-fatal):`,
+                    updateError,
+                  );
+                }
+              }
+            }
+          }
         }
       } catch (waitlistError) {
         console.error("Waitlist removal error (non-fatal):", waitlistError);

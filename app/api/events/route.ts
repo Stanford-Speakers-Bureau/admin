@@ -34,6 +34,7 @@ export async function POST(req: Request) {
     const venue = formData.get("venue") as string;
     const venue_link = formData.get("venue_link") as string;
     const release_date = formData.get("release_date") as string;
+    const ticketing_date = formData.get("ticketing_date") as string;
     const start_time_date = formData.get("start_time_date") as string;
     const doors_open = formData.get("doors_open") as string;
     const route = formData.get("route") as string;
@@ -82,6 +83,12 @@ export async function POST(req: Request) {
     if (release_date && !isValidDateString(release_date)) {
       return NextResponse.json(
         { error: "Invalid release date format" },
+        { status: 400 },
+      );
+    }
+    if (ticketing_date && !isValidDateString(ticketing_date)) {
+      return NextResponse.json(
+        { error: "Invalid ticketing date format" },
         { status: 400 },
       );
     }
@@ -184,6 +191,9 @@ export async function POST(req: Request) {
       release_date: release_date
         ? fromZonedTime(release_date, PACIFIC_TIMEZONE).toISOString()
         : null,
+      ticketing_date: ticketing_date
+        ? fromZonedTime(ticketing_date, PACIFIC_TIMEZONE).toISOString()
+        : null,
       start_time_date: start_time_date
         ? fromZonedTime(start_time_date, PACIFIC_TIMEZONE).toISOString()
         : null,
@@ -196,6 +206,27 @@ export async function POST(req: Request) {
       longitude: parseFloat(longitude),
       address: address || null,
     };
+
+    // Enforce: ticketing date must be on/after release (publish) date when both are set
+    if (eventData.release_date && eventData.ticketing_date) {
+      const publishMs = new Date(eventData.release_date as string).getTime();
+      const ticketingMs = new Date(eventData.ticketing_date as string).getTime();
+      if (Number.isNaN(publishMs) || Number.isNaN(ticketingMs)) {
+        return NextResponse.json(
+          { error: "Invalid date format" },
+          { status: 400 },
+        );
+      }
+      if (ticketingMs < publishMs) {
+        return NextResponse.json(
+          {
+            error:
+              "Ticketing date must be on or after the release (publish) date.",
+          },
+          { status: 400 },
+        );
+      }
+    }
 
     if (imgName) {
       eventData.img = imgName;
