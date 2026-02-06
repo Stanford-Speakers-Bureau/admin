@@ -166,9 +166,8 @@ function EventCardImage({ event }: EventCardImageProps) {
         alt={event.name || "Event"}
         fill
         sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-        className={`object-cover transition-opacity duration-300 ${
-          isLoading ? "opacity-0" : "opacity-100"
-        }`}
+        className={`object-cover transition-opacity duration-300 ${isLoading ? "opacity-0" : "opacity-100"
+          }`}
         onLoad={() => setIsLoading(false)}
         priority
         unoptimized
@@ -263,7 +262,7 @@ export default function AdminEventsClient({
           return;
         }
         if (ticketing.getTime() < publish.getTime()) {
-          setError("Ticketing date must be on or after the release (publish) date.");
+          setError("Ticketing date must be on or after the release date.");
           return;
         }
       }
@@ -746,7 +745,7 @@ export default function AdminEventsClient({
                       return (
                         <p className="mt-2 text-sm text-rose-400">
                           Ticketing date must be on or after the release
-                          (publish) date.
+                          date.
                         </p>
                       );
                     }
@@ -1073,11 +1072,10 @@ export default function AdminEventsClient({
                         e.stopPropagation();
                         handleToggleLive(event);
                       }}
-                      className={`w-full flex items-center justify-center gap-2 px-4 py-2 rounded text-sm font-medium transition-colors ${
-                        event.live
-                          ? "bg-red-500/20 text-red-400 hover:bg-red-500/30 border border-red-500/30"
-                          : "bg-zinc-800 text-white hover:bg-zinc-700"
-                      }`}
+                      className={`w-full flex items-center justify-center gap-2 px-4 py-2 rounded text-sm font-medium transition-colors ${event.live
+                        ? "bg-red-500/20 text-red-400 hover:bg-red-500/30 border border-red-500/30"
+                        : "bg-zinc-800 text-white hover:bg-zinc-700"
+                        }`}
                     >
                       {event.live ? (
                         <>

@@ -230,7 +230,7 @@ export async function POST(req: Request) {
       address: address || null,
     };
 
-    // Enforce: ticketing date must be on/after release (publish) date when both are set
+    // Enforce: ticketing date must be on/after release date when both are set
     if (eventData.release_date && eventData.ticketing_date) {
       const publishMs = new Date(eventData.release_date as string).getTime();
       const ticketingMs = new Date(eventData.ticketing_date as string).getTime();
@@ -244,7 +244,7 @@ export async function POST(req: Request) {
         return NextResponse.json(
           {
             error:
-              "Ticketing date must be on or after the release (publish) date.",
+              "Ticketing date must be on or after the release date.",
           },
           { status: 400 },
         );
@@ -336,11 +336,11 @@ export async function POST(req: Request) {
 
     const eventWithImage = savedEvent
       ? {
-          ...savedEvent,
-          image_url: savedEvent.img
-            ? await getSignedImageUrl(savedEvent.img, 60 * 60)
-            : null,
-        }
+        ...savedEvent,
+        image_url: savedEvent.img
+          ? await getSignedImageUrl(savedEvent.img, 60 * 60)
+          : null,
+      }
       : null;
 
     return NextResponse.json({ success: true, event: eventWithImage });
@@ -394,11 +394,11 @@ export async function PATCH(req: Request) {
 
       const eventWithImage = data
         ? {
-            ...data,
-            image_url: data.img
-              ? await getSignedImageUrl(data.img, 60 * 60)
-              : null,
-          }
+          ...data,
+          image_url: data.img
+            ? await getSignedImageUrl(data.img, 60 * 60)
+            : null,
+        }
         : null;
 
       return NextResponse.json({ success: true, event: eventWithImage });
@@ -421,11 +421,11 @@ export async function PATCH(req: Request) {
 
       const eventWithImage = data
         ? {
-            ...data,
-            image_url: data.img
-              ? await getSignedImageUrl(data.img, 60 * 60)
-              : null,
-          }
+          ...data,
+          image_url: data.img
+            ? await getSignedImageUrl(data.img, 60 * 60)
+            : null,
+        }
         : null;
 
       return NextResponse.json({ success: true, event: eventWithImage });
