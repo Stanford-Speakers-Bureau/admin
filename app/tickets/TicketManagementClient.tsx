@@ -88,6 +88,8 @@ export default function TicketManagementClient({
   const [sendingEarlyReminderId, setSendingEarlyReminderId] = useState<
     string | null
   >(null);
+  const [editingNameId, setEditingNameId] = useState<string | null>(null);
+  const [editingNameValue, setEditingNameValue] = useState("");
 
   useEffect(() => {
     if (error) {
@@ -332,6 +334,42 @@ export default function TicketManagementClient({
       );
     } finally {
       setUpdatingTicketId(null);
+    }
+  }
+
+  async function handleUpdateName(id: string, newName: string) {
+    const trimmed = newName.trim();
+    const ticket = tickets.find((t) => t.id === id);
+    // Don't update if value hasn't changed
+    if ((ticket?.name || "") === trimmed) {
+      setEditingNameId(null);
+      return;
+    }
+
+    setUpdatingTicketId(id);
+    try {
+      const response = await fetch("/api/tickets", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, action: "updateName", name: trimmed }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to update name");
+      }
+
+      const data = await response.json();
+      setTickets((prev) =>
+        prev.map((t) => (t.id === id ? (data.ticket as Ticket) : t)),
+      );
+      setSuccess("Name updated successfully!");
+    } catch (err) {
+      console.error("Error updating name:", err);
+      setError(err instanceof Error ? err.message : "Failed to update name");
+    } finally {
+      setUpdatingTicketId(null);
+      setEditingNameId(null);
     }
   }
 
@@ -1137,9 +1175,36 @@ export default function TicketManagementClient({
                       </div>
                     </td>
                     <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap">
-                      <div className="text-sm text-zinc-300 truncate max-w-[120px] sm:max-w-none">
-                        {ticket.name || "--"}
-                      </div>
+                      {editingNameId === ticket.id ? (
+                        <input
+                          type="text"
+                          value={editingNameValue}
+                          onChange={(e) => setEditingNameValue(e.target.value)}
+                          onBlur={() => handleUpdateName(ticket.id, editingNameValue)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              handleUpdateName(ticket.id, editingNameValue);
+                            } else if (e.key === "Escape") {
+                              setEditingNameId(null);
+                            }
+                          }}
+                          autoFocus
+                          disabled={updatingTicketId === ticket.id}
+                          className="w-full px-2 py-1 text-sm bg-zinc-800 border border-zinc-600 rounded text-white focus:outline-none focus:border-emerald-500/50 disabled:opacity-50"
+                          placeholder="Enter name"
+                        />
+                      ) : (
+                        <button
+                          onClick={() => {
+                            setEditingNameId(ticket.id);
+                            setEditingNameValue(ticket.name || "");
+                          }}
+                          className="text-sm text-zinc-300 truncate max-w-[120px] sm:max-w-none hover:text-white transition-colors cursor-pointer"
+                          title="Click to edit name"
+                        >
+                          {ticket.name || "--"}
+                        </button>
+                      )}
                     </td>
                     <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap">
                       <div className="text-sm text-zinc-300 truncate max-w-[120px] sm:max-w-none">

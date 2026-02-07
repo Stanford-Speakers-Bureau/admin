@@ -265,7 +265,7 @@ export async function PATCH(req: Request) {
     }
 
     const body = await req.json();
-    const { id, action, type, scanned, promo } = body;
+    const { id, action, type, scanned, promo, name } = body;
 
     // Batch reminder actions don't require a ticket ID - they use eventId from query params
     const batchActions = ["sendDayOfReminders", "sendEarlyReminders"];
@@ -279,7 +279,45 @@ export async function PATCH(req: Request) {
     const adminClient = auth.adminClient!;
 
     // Handle different actions
-    if (action === "unscan") {
+    if (action === "updateName") {
+      // Update ticket name
+      const newName = typeof name === "string" ? name.trim() || null : null;
+
+      const { data: ticket, error: updateError } = await adminClient
+        .from("tickets")
+        .update({ name: newName })
+        .eq("id", id)
+        .select(
+          `
+          id,
+          email,
+          name,
+          type,
+          created_at,
+          scanned,
+          scan_time,
+          referral,
+          event_id,
+          events (
+            id,
+            name,
+            route,
+            start_time_date
+          )
+        `,
+        )
+        .single();
+
+      if (updateError) {
+        console.error("Ticket name update error:", updateError);
+        return NextResponse.json(
+          { error: "Failed to update ticket name" },
+          { status: 500 },
+        );
+      }
+
+      return NextResponse.json({ success: true, ticket });
+    } else if (action === "unscan") {
       // Unscan the ticket: set scanned to false and clear scan-related fields
       const { data: ticket, error: updateError } = await adminClient
         .from("tickets")
@@ -1084,7 +1122,7 @@ export async function PATCH(req: Request) {
       return NextResponse.json(
         {
           error:
-            "Invalid action. Use 'unscan', 'updateType', 'updateScanned', 'resendEmail', 'sendDayOfReminders', 'sendDayOfReminder', 'sendEarlyReminders', or 'sendEarlyReminder'.",
+            "Invalid action. Use 'updateName', 'unscan', 'updateType', 'updateScanned', 'resendEmail', 'sendDayOfReminders', 'sendDayOfReminder', 'sendEarlyReminders', or 'sendEarlyReminder'.",
         },
         { status: 400 },
       );
