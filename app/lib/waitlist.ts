@@ -40,6 +40,7 @@ export async function pullFromWaitlist(
       `
       id,
       email,
+      name,
       type,
       event_id,
       events (
@@ -98,6 +99,7 @@ export async function pullFromWaitlist(
         : newTicket.events;
       await sendTicketEmail({
         email: newTicket.email,
+        name: newTicket.name || null,
         eventName: eventData?.name || "Event",
         ticketType: newTicket.type || "STANDARD",
         eventStartTime: eventData?.start_time_date || null,

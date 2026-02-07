@@ -1,7 +1,7 @@
 import type { QRCodeToBufferOptions } from "qrcode";
 import QRCode from "qrcode";
-import { PACIFIC_TIMEZONE, REFERRAL_MESSAGE } from "./constants";
-import { generateGoogleCalendarUrl, generateReferralCode } from "./utils";
+import { PACIFIC_TIMEZONE } from "./constants";
+import { generateGoogleCalendarUrl } from "./utils";
 
 // emails are so stupid
 // on ios gmail to fix: https://www.hteumeuleu.com/2021/fixing-gmail-dark-mode-css-blend-modes/
@@ -176,6 +176,7 @@ const FROM_EMAIL =
 
 type TicketEmailData = {
   email: string;
+  name?: string | null;
   eventName: string;
   ticketType: string;
   eventStartTime: string | null;
@@ -363,29 +364,32 @@ async function generateTicketEmailHTML(
 
   const formattedDate = eventStartTime
     ? new Intl.DateTimeFormat("en-US", {
-        weekday: "long",
-        year: "numeric",
-        month: "long",
-        day: "numeric",
-        hour: "numeric",
-        minute: "2-digit",
-        hour12: true,
-        timeZone: PACIFIC_TIMEZONE,
-      }).format(new Date(eventStartTime))
+      weekday: "long",
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+      timeZone: PACIFIC_TIMEZONE,
+    }).format(new Date(eventStartTime))
     : "TBA";
 
   const formattedDoorsOpen = doorsOpenTime
     ? new Intl.DateTimeFormat("en-US", {
-        hour: "numeric",
-        minute: "2-digit",
-        hour12: true,
-        timeZone: PACIFIC_TIMEZONE,
-      }).format(new Date(doorsOpenTime))
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+      timeZone: PACIFIC_TIMEZONE,
+    }).format(new Date(doorsOpenTime))
     : null;
 
   const baseUrl =
     process.env.NEXT_PUBLIC_BASE_URL || "https://stanfordspeakersbureau.com";
   const eventUrl = eventRoute ? `${baseUrl}/events/${eventRoute}` : null;
+  const cancelTicketUrl = eventRoute
+    ? `${baseUrl}/events/${eventRoute}?cancel_ticket=${ticketId}`
+    : null;
   const logoUrl = `${baseUrl}/logo.png`;
   const googleCalendarUrl = generateGoogleCalendarUrl({
     eventName: data.eventName,
@@ -396,12 +400,6 @@ async function generateTicketEmailHTML(
     ticketId: data.ticketId,
     ticketType: data.ticketType,
   });
-
-  const referralCode = generateReferralCode(data.email);
-  const referralUrl =
-    referralCode && data.eventRoute
-      ? `${baseUrl}/events/${data.eventRoute}?referral_code=${referralCode}`
-      : null;
 
   const qrImageSrc = options?.qrCid ? `cid:${options.qrCid}` : "";
   const isVIP = ticketType?.toUpperCase() === "VIP";
@@ -541,22 +539,67 @@ async function generateTicketEmailHTML(
       <td align="center" class="email-container" style="background-color: #27272a; padding: 40px 20px; max-width: 900px; width: 100%;">
         <div class="email-content" style="padding: 0; max-width: 600px; margin: 0 auto;">
           
+          <!-- Important Notice -->
+          <div style="background-color: #A80D0C; padding: 20px 24px; margin-bottom: 24px; border-radius: 8px; text-align: center;">
+            ${gmailBlendStart}
+              <h2 style="margin: 0 0 12px 0; color: #ffffff; font-size: 18px; font-weight: 700; text-transform: uppercase;"><b>Important</b></h2>
+              <div style="color: #ffffff; font-size: 15px; line-height: 1.8;">
+                <div style="margin-bottom: 8px;">
+                  <b>
+                    <span style="display: inline-block; vertical-align: middle; margin-right: 8px;">🎒</span>
+                    No bags are allowed at the venue
+                  </b>
+                </div>
+                <div style="margin-bottom: 8px;">
+                  <b>
+                    <span style="display: inline-block; vertical-align: middle; margin-right: 8px;">❌</span>
+                    Your ticket is not transferable
+                  </b>
+                </div>
+                <div>
+                  <b>
+                    <span style="display: inline-block; vertical-align: middle; margin-right: 8px;">🪪</span>
+                    A valid form of ID is required for entry
+                  </b>
+                </div>
+              </div>
+            ${gmailBlendEnd}
+          </div>
+          
           ${gmailBlendStart}
-            ${
-              isVIP
-                ? `
+            ${isVIP
+      ? `
             <p style="margin: 0 0 16px 0; color: #f4f4f5; font-size: 16px; line-height: 1.6;">
               When you arrive at the event, please use the VIP entrance.
               <br>
               We've reserved a seat for you in the front few rows.
             </p>
             `
-                : ""
-            }
+      : ""
+    }
             <p style="margin: 0 0 24px 0; color: #f4f4f5; font-size: 16px; line-height: 1.6;">
               Your ticket is enclosed below. We can't wait to see you!
             </p>
           ${gmailBlendEnd}
+          
+          ${gmailBlendStart}
+            <p style="margin: 0 0 20px 0; color: #f4f4f5; font-size: 16px; line-height: 1.6;">
+              Life happens, and we understand plans can change. If you find yourself unable to attend, please take a moment to cancel your ticket using the link below. Your thoughtfulness helps us extend the opportunity to others who are excited to attend.
+            </p>
+          ${gmailBlendEnd}
+          
+          ${cancelTicketUrl
+      ? `
+          <table role="presentation" style="width: 100%; border-collapse: collapse; margin-bottom: 24px;">
+            <tr>
+              <td align="center" class="button-wrapper" style="padding: 0;">
+                <a href="${cancelTicketUrl}" class="button button-cancel" style="display: inline-block; padding: 14px 28px; background-color: #A80D0C; color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 16px;">Cancel Ticket</a>
+              </td>
+            </tr>
+          </table>
+          `
+      : ""
+    }
           
           <!-- Event Details Card -->
           <div class="details-card" style="background-color: #18181b; padding: 24px; margin-bottom: 24px;${isVIP ? " border: 2px solid #D4AF37; border-radius: 8px; box-shadow: 0 0 15px rgba(212, 175, 55, 0.3);" : ""}">
@@ -566,6 +609,16 @@ async function generateTicketEmailHTML(
             ${gmailBlendEnd}
             
             <table role="presentation" style="width: 100%; border-collapse: collapse;">
+              ${data.name ? `
+              <tr>
+                <td class="details-label" style="padding: 8px 0; color: #a1a1aa; font-size: 14px; width: 120px; vertical-align: top;">
+                  ${gmailBlendStart}Name:${gmailBlendEnd}
+                </td>
+                <td class="details-value" style="padding: 8px 0; color: #f4f4f5; font-size: 14px; font-weight: 500;">
+                  ${gmailBlendStart}${data.name}${gmailBlendEnd}
+                </td>
+              </tr>
+              ` : ""}
               <tr>
                 <td class="details-label" style="padding: 8px 0; color: #a1a1aa; font-size: 14px; width: 120px; vertical-align: top;">
                   ${gmailBlendStart}Event:${gmailBlendEnd}
@@ -582,9 +635,8 @@ async function generateTicketEmailHTML(
                   ${gmailBlendStart}${formattedDate}${gmailBlendEnd}
                 </td>
               </tr>
-              ${
-                formattedDoorsOpen
-                  ? `
+              ${formattedDoorsOpen
+      ? `
               <tr>
                 <td class="details-label" style="padding: 8px 0; color: #a1a1aa; font-size: 14px; vertical-align: top;">
                   ${gmailBlendStart}Doors Open:${gmailBlendEnd}
@@ -594,26 +646,24 @@ async function generateTicketEmailHTML(
                 </td>
               </tr>
               `
-                  : ""
-              }
-              ${
-                eventVenue
-                  ? `
+      : ""
+    }
+              ${eventVenue
+      ? `
               <tr>
                 <td class="details-label" style="padding: 8px 0; color: #a1a1aa; font-size: 14px; vertical-align: top;">
                   ${gmailBlendStart}Location:${gmailBlendEnd}
                 </td>
                 <td class="details-value" style="padding: 8px 0; color: #f4f4f5; font-size: 14px; font-weight: 500;">
-                  ${
-                    eventVenueLink
-                      ? `<a href="${eventVenueLink}" target="_blank" rel="noopener noreferrer" style="color: #A80D0C; text-decoration: none; border-bottom: 1px solid #A80D0C;">${eventVenue}</a>`
-                      : `${gmailBlendStart}${eventVenue}${gmailBlendEnd}`
-                  }
+                  ${eventVenueLink
+        ? `<a href="${eventVenueLink}" target="_blank" rel="noopener noreferrer" style="color: #A80D0C; text-decoration: none; border-bottom: 1px solid #A80D0C;">${eventVenue}</a>`
+        : `${gmailBlendStart}${eventVenue}${gmailBlendEnd}`
+      }
                 </td>
               </tr>
               `
-                  : ""
-              }
+      : ""
+    }
               <tr>
                 <td class="details-label" style="padding: 8px 0; color: #a1a1aa; font-size: 14px; vertical-align: top;">
                   ${gmailBlendStart}Ticket Type:${gmailBlendEnd}
@@ -632,52 +682,10 @@ async function generateTicketEmailHTML(
                   ${gmailBlendStart}${ticketId}${gmailBlendEnd}
                 </td>
               </tr>
-              ${
-                referralCode && !(ticketType.toUpperCase() == "VIP")
-                  ? `
-              <tr>
-                <td class="details-label" style="padding: 8px 0; color: #a1a1aa; font-size: 14px; vertical-align: top;">
-                  ${gmailBlendStart}Referral Code:${gmailBlendEnd}
-                </td>
-                <td class="details-value" style="padding: 8px 0; color: #f4f4f5; font-size: 14px; font-weight: 500; font-family: monospace;">
-                  ${gmailBlendStart}${referralCode}${gmailBlendEnd}
-                </td>
-              </tr>
-              <tr>
-                <td class="details-label" style="padding: 8px 0; color: #a1a1aa; font-size: 14px; vertical-align: top;">
-                  ${gmailBlendStart}Referral Link:${gmailBlendEnd}
-                </td>
-                <td class="details-value" style="padding: 8px 0;">
-                  <a href="${referralUrl}" target="_blank" rel="noopener noreferrer" style="font-size: 14px; color: #A80D0C; text-decoration: none; border-bottom: 1px solid #A80D0C;">${referralUrl}</a>
-                </td>
-              </tr>
-              `
-                  : ""
-              }
             </table>
             
-            ${
-              referralCode && !(ticketType.toUpperCase() == "VIP")
-                ? `
-            <div style="margin-top: 20px; padding: 16px 0; text-align: center; border-top: 1px solid #3f3f46;">
-              ${gmailBlendStart}
-                <p style="margin: 0; color: #ffffff; font-size: 15px; font-weight: 700; line-height: 1.6;">
-                  ${REFERRAL_MESSAGE}
-                </p>
-              ${gmailBlendEnd}
-              ${gmailBlendStart}
-                <p style="margin: 8px 0 0 0; color: #71717a; font-size: 12px; line-height: 1.4;">
-                  Note: all referrals must be checked in to earn your front row seat!
-                </p>
-              ${gmailBlendEnd}
-            </div>
-            `
-                : ""
-            }
-            
-            ${
-              eventUrl
-                ? `
+            ${eventUrl
+      ? `
             <table role="presentation" style="width: 100%; border-collapse: collapse; margin-top: 20px;">
               <tr>
                 <td align="center" class="button-wrapper" style="padding: 0;">
@@ -686,13 +694,12 @@ async function generateTicketEmailHTML(
               </tr>
             </table>
             `
-                : ""
-            }
+      : ""
+    }
           </div>
           
-          ${
-            qrImageSrc
-              ? `
+          ${qrImageSrc
+      ? `
           <!-- QR Code Section -->
           <div class="qr-section" style="background-color: #18181b; padding: 24px; margin-bottom: 24px; text-align: center;${isVIP ? " border: 2px solid #D4AF37; border-radius: 8px; box-shadow: 0 0 15px rgba(212, 175, 55, 0.3);" : ""}">
             
@@ -700,25 +707,23 @@ async function generateTicketEmailHTML(
               <h2 class="qr-title" style="margin: 0 0 16px 0; color: #ffffff; font-size: 20px; font-weight: 600;">Your Ticket QR Code</h2>
             ${gmailBlendEnd}
 
-            <div class="qr-code-wrapper" style="display: inline-block; border-radius: 12px; ${
-              isVIP ? "background-color: #A80D0C; padding: 4px;" : "padding: 0;"
-            }">
+            <div class="qr-code-wrapper" style="display: inline-block; border-radius: 12px; ${isVIP ? "background-color: #A80D0C; padding: 4px;" : "padding: 0;"
+      }">
               <div style="background-color: #ffffff; padding: 16px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);">
                 <img src="${qrImageSrc}" alt="Ticket QR Code" class="qr-code-img" style="display: block; width: 350px; max-width: 100%; height: auto;" />
               </div>
             </div>
 
-            ${
-              isVIP
-                ? `
+            ${isVIP
+        ? `
             <div style="margin-top: 12px;">
               <span style="display: inline-block; padding: 6px 16px; background-color: #A80D0C; color: #ffffff; border-radius: 20px; font-size: 12px; font-weight: 700; text-transform: uppercase;">
                 VIP
               </span>
             </div>
             `
-                : ""
-            }
+        : ""
+      }
             
             <table width="100%" border="0" cellspacing="0" cellpadding="0" role="presentation" style="margin-top: 16px;">
               <tr>
@@ -743,22 +748,20 @@ async function generateTicketEmailHTML(
 
           </div>
           `
-              : ""
-          }
+      : ""
+    }
 
           ${gmailBlendStart}
             <p style="margin: 0 0 24px 0; color: #a1a1aa; font-size: 14px; line-height: 1.6;">
               Please bring a valid ID and this confirmation email to the event. We look forward to seeing you there!
             </p>
             <p style="margin: 0 0 24px 0; color: #a1a1aa; font-size: 14px; line-height: 1.6;">
-              At 8:15, we will start letting people off the waitlist and your ticket may be invalidated. If you have
-              friends without tickets, they should come and wait on the in-person waitlist.
+              If you have friends without tickets, they should come and wait on the in-person waitlist.
             </p>
           ${gmailBlendEnd}
           
-          ${
-            googleCalendarUrl
-              ? `
+          ${googleCalendarUrl
+      ? `
           <table role="presentation" style="width: 100%; border-collapse: collapse; margin-bottom: 24px;">
             <tr>
               <td align="center" class="button-wrapper" style="padding: 0;">
@@ -770,8 +773,8 @@ async function generateTicketEmailHTML(
             </tr>
           </table>
           `
-              : ""
-          }
+      : ""
+    }
         </div>
       </td>
     </tr>
@@ -814,36 +817,32 @@ function generateTicketEmailText(data: TicketEmailData): string {
 
   const formattedDate = eventStartTime
     ? new Intl.DateTimeFormat("en-US", {
-        weekday: "long",
-        year: "numeric",
-        month: "long",
-        day: "numeric",
-        hour: "numeric",
-        minute: "2-digit",
-        hour12: true,
-        timeZone: PACIFIC_TIMEZONE,
-      }).format(new Date(eventStartTime))
+      weekday: "long",
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+      timeZone: PACIFIC_TIMEZONE,
+    }).format(new Date(eventStartTime))
     : "TBA";
 
   const formattedDoorsOpen = doorsOpenTime
     ? new Intl.DateTimeFormat("en-US", {
-        hour: "numeric",
-        minute: "2-digit",
-        hour12: true,
-        timeZone: PACIFIC_TIMEZONE,
-      }).format(new Date(doorsOpenTime))
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+      timeZone: PACIFIC_TIMEZONE,
+    }).format(new Date(doorsOpenTime))
     : null;
 
-  const eventUrl = eventRoute
-    ? `${process.env.NEXT_PUBLIC_BASE_URL || "https://stanfordspeakersbureau.com"}/events/${eventRoute}`
+  const baseUrl =
+    process.env.NEXT_PUBLIC_BASE_URL || "https://stanfordspeakersbureau.com";
+  const eventUrl = eventRoute ? `${baseUrl}/events/${eventRoute}` : null;
+  const cancelTicketUrl = eventRoute
+    ? `${baseUrl}/events/${eventRoute}?cancel_ticket=${ticketId}`
     : null;
-
-  // Generate referral code from email
-  const referralCode = generateReferralCode(data.email);
-  const referralUrl =
-    referralCode && data.eventRoute
-      ? `${process.env.NEXT_PUBLIC_BASE_URL || "https://stanfordspeakersbureau.com"}/events/${data.eventRoute}?referral_code=${referralCode}`
-      : null;
 
   return `
 ${ticketType?.toUpperCase() === "VIP" ? "VIP Ticket Confirmed!" : "Ticket Confirmed!"}
@@ -851,18 +850,22 @@ ${ticketType?.toUpperCase() === "VIP" ? "VIP Ticket Confirmed!" : "Ticket Confir
 Thank you for your ticket purchase. Your ticket has been confirmed!
 
 ${ticketType?.toUpperCase() === "VIP" ? "We've reserved a seat for you in the front few rows. When you arrive at the event, please use the VIP entrance.\n\n" : ""}Event Details:
-- Event: ${eventName || "Event"}
+${data.name ? `- Name: ${data.name}\n` : ""}- Event: ${eventName || "Event"}
 - Date & Time: ${formattedDate}
 ${formattedDoorsOpen ? `- Doors Open: ${formattedDoorsOpen}` : ""}- Ticket Type: ${ticketType || "STANDARD"}
 - Ticket ID: ${ticketId}
 ${eventUrl ? `- Event URL: ${eventUrl}` : ""}
 
-${referralCode && !(ticketType.toUpperCase() == "VIP") ? `- Your Referral Code: ${referralCode}` : ""}
-${referralUrl && !(ticketType.toUpperCase() == "VIP") ? `- Your Referral Link: ${referralUrl}` : ""}
-${REFERRAL_MESSAGE}
+IMPORTANT:
+- No bags are allowed at the venue
+- Your ticket is not transferable
+- A valid form of ID is required for entry.
 
-Please bring a valid ID and this confirmation email to the event. We look forward to seeing you there!
-At 8:15, we will start letting people off the waitlist and your ticket may be invalidated. If you have friends without tickets, they should come and wait on the in-person waitlist.
+Life happens, and we understand plans can change. If you find yourself unable to attend, please take a moment to cancel your ticket using the link below. Your thoughtfulness helps us extend the opportunity to others who are excited to attend.
+
+${cancelTicketUrl ? `Cancel Ticket: ${cancelTicketUrl}` : ""}
+
+Please bring a valid ID and this confirmation email to the event. We look forward to seeing you there! If you have friends without tickets, they should come and wait on the in-person waitlist.
 
 Stanford Speakers Bureau
 If you have any questions, please contact us at ${FROM_EMAIL}
@@ -891,24 +894,24 @@ async function generateDayOfReminderEmailHTML(
 
   const formattedDate = eventStartTime
     ? new Intl.DateTimeFormat("en-US", {
-        weekday: "long",
-        year: "numeric",
-        month: "long",
-        day: "numeric",
-        hour: "numeric",
-        minute: "2-digit",
-        hour12: true,
-        timeZone: PACIFIC_TIMEZONE,
-      }).format(new Date(eventStartTime))
+      weekday: "long",
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+      timeZone: PACIFIC_TIMEZONE,
+    }).format(new Date(eventStartTime))
     : "TBA";
 
   const formattedDoorsOpen = doorsOpenTime
     ? new Intl.DateTimeFormat("en-US", {
-        hour: "numeric",
-        minute: "2-digit",
-        hour12: true,
-        timeZone: PACIFIC_TIMEZONE,
-      }).format(new Date(doorsOpenTime))
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+      timeZone: PACIFIC_TIMEZONE,
+    }).format(new Date(doorsOpenTime))
     : null;
 
   const baseUrl =
@@ -927,12 +930,6 @@ async function generateDayOfReminderEmailHTML(
     ticketId: data.ticketId,
     ticketType: data.ticketType,
   });
-
-  const referralCode = generateReferralCode(data.email);
-  const referralUrl =
-    referralCode && data.eventRoute
-      ? `${baseUrl}/events/${data.eventRoute}?referral_code=${referralCode}`
-      : null;
 
   const qrImageSrc = options?.qrCid ? `cid:${options.qrCid}` : "";
   const isVIP = ticketType?.toUpperCase() === "VIP";
@@ -1077,35 +1074,54 @@ async function generateDayOfReminderEmailHTML(
       <td align="center" class="email-container" style="background-color: #27272a; padding: 40px 20px; max-width: 900px; width: 100%;">
         <div class="email-content" style="padding: 0; max-width: 600px; margin: 0 auto;">
           
+          <!-- Important Notice -->
+          <div style="background-color: #A80D0C; padding: 20px 24px; margin-bottom: 24px; border-radius: 8px; text-align: center;">
+            ${gmailBlendStart}
+              <h2 style="margin: 0 0 12px 0; color: #ffffff; font-size: 18px; font-weight: 700; text-transform: uppercase;"><b>Important</b></h2>
+              <div style="color: #ffffff; font-size: 15px; line-height: 1.8;">
+                <div style="margin-bottom: 8px;">
+                  <b>
+                    <span style="display: inline-block; vertical-align: middle; margin-right: 8px;">🎒</span>
+                    No bags are allowed at the venue
+                  </b>
+                </div>
+                <div style="margin-bottom: 8px;">
+                  <b>
+                    <span style="display: inline-block; vertical-align: middle; margin-right: 8px;">❌</span>
+                    Your ticket is not transferable
+                  </b>
+                </div>
+                <div style="margin-bottom: 8px;">
+                  <b>
+                    <span style="display: inline-block; vertical-align: middle; margin-right: 8px;">🪪</span>
+                    A valid form of ID is required for entry
+                  </b>
+                </div>
+                <div style="margin-bottom: 8px;">
+                  For ADA accommodations, please email <a href="mailto:${FROM_EMAIL}" style="color: #ffffff; text-decoration: underline;">${FROM_EMAIL}</a>
+                </div>
+                <div>
+                  If you have friends without tickets, they should come and wait on the in-person waitlist
+                </div>
+              </div>
+            ${gmailBlendEnd}
+          </div>
+          
           ${gmailBlendStart}
-            ${
-              isVIP
-                ? `
+            ${isVIP
+      ? `
             <p style="margin: 0 0 16px 0; color: #f4f4f5; font-size: 16px; line-height: 1.6;">
               When you arrive at the event, please use the VIP entrance.
               <br>
               We've reserved a seat for you in the front few rows.
             </p>
             `
-                : ""
-            }
+      : ""
+    }
             <p style="margin: 0 0 24px 0; color: #f4f4f5; font-size: 16px; line-height: 1.6;">
-              We're so excited to see you tonight! As a reminder, doors open at ${formattedDoorsOpen || "7:30 PM"}, and your ticket is only valid until 8:15. Late entry is not permitted. For security reasons, no bags will be permitted at the event.
+              We're so excited to see you tonight! As a reminder, doors open at ${formattedDoorsOpen || "7:30 PM"}. Late entry is not permitted. For security reasons, no bags will be permitted at the event.
             </p>
           ${gmailBlendEnd}
-          
-          <!-- Important Reminders Card -->
-          <div style="background-color: #A80D0C; padding: 20px 24px; margin-bottom: 24px; border-radius: 8px;">
-            ${gmailBlendStart}
-              <h2 style="margin: 0 0 12px 0; color: #ffffff; font-size: 18px; font-weight: 700; text-transform: uppercase;">Important Reminders</h2>
-              <ul style="margin: 0; padding: 0 0 0 20px; color: #ffffff; font-size: 15px; line-height: 1.8;">
-                <li style="margin-bottom: 8px;"><strong>No bags are allowed</strong> at the venue</li>
-                <li>For ADA accommodations, please email <a href="mailto:${FROM_EMAIL}" style="color: #ffffff; text-decoration: underline;">${FROM_EMAIL}</a></li>
-                <li>At 8:15, we will start letting people off the waitlist and your ticket may be invalidated</li>
-                <li>If you have friends without tickets, they should come and wait on the in-person waitlist</li>
-              </ul>
-            ${gmailBlendEnd}
-          </div>
           
           ${gmailBlendStart}
             <p style="margin: 0 0 20px 0; color: #f4f4f5; font-size: 16px; line-height: 1.6;">
@@ -1113,9 +1129,8 @@ async function generateDayOfReminderEmailHTML(
             </p>
           ${gmailBlendEnd}
           
-          ${
-            cancelTicketUrl
-              ? `
+          ${cancelTicketUrl
+      ? `
           <table role="presentation" style="width: 100%; border-collapse: collapse; margin-bottom: 24px;">
             <tr>
               <td align="center" class="button-wrapper" style="padding: 0;">
@@ -1124,8 +1139,8 @@ async function generateDayOfReminderEmailHTML(
             </tr>
           </table>
           `
-              : ""
-          }
+      : ""
+    }
           
           <!-- Event Details Card -->
           <div class="details-card" style="background-color: #18181b; padding: 24px; margin-bottom: 24px;${isVIP ? " border: 2px solid #D4AF37; border-radius: 8px; box-shadow: 0 0 15px rgba(212, 175, 55, 0.3);" : ""}">
@@ -1135,6 +1150,16 @@ async function generateDayOfReminderEmailHTML(
             ${gmailBlendEnd}
             
             <table role="presentation" style="width: 100%; border-collapse: collapse;">
+              ${data.name ? `
+              <tr>
+                <td class="details-label" style="padding: 8px 0; color: #a1a1aa; font-size: 14px; width: 120px; vertical-align: top;">
+                  ${gmailBlendStart}Name:${gmailBlendEnd}
+                </td>
+                <td class="details-value" style="padding: 8px 0; color: #f4f4f5; font-size: 14px; font-weight: 500;">
+                  ${gmailBlendStart}${data.name}${gmailBlendEnd}
+                </td>
+              </tr>
+              ` : ""}
               <tr>
                 <td class="details-label" style="padding: 8px 0; color: #a1a1aa; font-size: 14px; width: 120px; vertical-align: top;">
                   ${gmailBlendStart}Event:${gmailBlendEnd}
@@ -1151,9 +1176,8 @@ async function generateDayOfReminderEmailHTML(
                   ${gmailBlendStart}${formattedDate}${gmailBlendEnd}
                 </td>
               </tr>
-              ${
-                formattedDoorsOpen
-                  ? `
+              ${formattedDoorsOpen
+      ? `
               <tr>
                 <td class="details-label" style="padding: 8px 0; color: #a1a1aa; font-size: 14px; vertical-align: top;">
                   ${gmailBlendStart}Doors Open:${gmailBlendEnd}
@@ -1163,26 +1187,24 @@ async function generateDayOfReminderEmailHTML(
                 </td>
               </tr>
               `
-                  : ""
-              }
-              ${
-                eventVenue
-                  ? `
+      : ""
+    }
+              ${eventVenue
+      ? `
               <tr>
                 <td class="details-label" style="padding: 8px 0; color: #a1a1aa; font-size: 14px; vertical-align: top;">
                   ${gmailBlendStart}Location:${gmailBlendEnd}
                 </td>
                 <td class="details-value" style="padding: 8px 0; color: #f4f4f5; font-size: 14px; font-weight: 500;">
-                  ${
-                    eventVenueLink
-                      ? `<a href="${eventVenueLink}" target="_blank" rel="noopener noreferrer" style="color: #A80D0C; text-decoration: none; border-bottom: 1px solid #A80D0C;">${eventVenue}</a>`
-                      : `${gmailBlendStart}${eventVenue}${gmailBlendEnd}`
-                  }
+                  ${eventVenueLink
+        ? `<a href="${eventVenueLink}" target="_blank" rel="noopener noreferrer" style="color: #A80D0C; text-decoration: none; border-bottom: 1px solid #A80D0C;">${eventVenue}</a>`
+        : `${gmailBlendStart}${eventVenue}${gmailBlendEnd}`
+      }
                 </td>
               </tr>
               `
-                  : ""
-              }
+      : ""
+    }
               <tr>
                 <td class="details-label" style="padding: 8px 0; color: #a1a1aa; font-size: 14px; vertical-align: top;">
                   ${gmailBlendStart}Ticket Type:${gmailBlendEnd}
@@ -1201,33 +1223,10 @@ async function generateDayOfReminderEmailHTML(
                   ${gmailBlendStart}${ticketId}${gmailBlendEnd}
                 </td>
               </tr>
-              ${
-                referralCode && !(ticketType.toUpperCase() == "VIP")
-                  ? `
-              <tr>
-                <td class="details-label" style="padding: 8px 0; color: #a1a1aa; font-size: 14px; vertical-align: top;">
-                  ${gmailBlendStart}Referral Code:${gmailBlendEnd}
-                </td>
-                <td class="details-value" style="padding: 8px 0; color: #f4f4f5; font-size: 14px; font-weight: 500; font-family: monospace;">
-                  ${gmailBlendStart}${referralCode}${gmailBlendEnd}
-                </td>
-              </tr>
-              <tr>
-                <td class="details-label" style="padding: 8px 0; color: #a1a1aa; font-size: 14px; vertical-align: top;">
-                  ${gmailBlendStart}Referral Link:${gmailBlendEnd}
-                </td>
-                <td class="details-value" style="padding: 8px 0;">
-                  <a href="${referralUrl}" target="_blank" rel="noopener noreferrer" style="font-size: 14px; color: #A80D0C; text-decoration: none; border-bottom: 1px solid #A80D0C;">${referralUrl}</a>
-                </td>
-              </tr>
-              `
-                  : ""
-              }
             </table>
             
-            ${
-              eventUrl
-                ? `
+            ${eventUrl
+      ? `
             <table role="presentation" style="width: 100%; border-collapse: collapse; margin-top: 20px;">
               <tr>
                 <td align="center" class="button-wrapper" style="padding: 0;">
@@ -1236,13 +1235,12 @@ async function generateDayOfReminderEmailHTML(
               </tr>
             </table>
             `
-                : ""
-            }
+      : ""
+    }
           </div>
           
-          ${
-            qrImageSrc
-              ? `
+          ${qrImageSrc
+      ? `
           <!-- QR Code Section -->
           <div class="qr-section" style="background-color: #18181b; padding: 24px; margin-bottom: 24px; text-align: center;${isVIP ? " border: 2px solid #D4AF37; border-radius: 8px; box-shadow: 0 0 15px rgba(212, 175, 55, 0.3);" : ""}">
             
@@ -1250,25 +1248,23 @@ async function generateDayOfReminderEmailHTML(
               <h2 class="qr-title" style="margin: 0 0 16px 0; color: #ffffff; font-size: 20px; font-weight: 600;">Your Ticket QR Code</h2>
             ${gmailBlendEnd}
 
-            <div class="qr-code-wrapper" style="display: inline-block; border-radius: 12px; ${
-              isVIP ? "background-color: #A80D0C; padding: 4px;" : "padding: 0;"
-            }">
+            <div class="qr-code-wrapper" style="display: inline-block; border-radius: 12px; ${isVIP ? "background-color: #A80D0C; padding: 4px;" : "padding: 0;"
+      }">
               <div style="background-color: #ffffff; padding: 16px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);">
                 <img src="${qrImageSrc}" alt="Ticket QR Code" class="qr-code-img" style="display: block; width: 350px; max-width: 100%; height: auto;" />
               </div>
             </div>
 
-            ${
-              isVIP
-                ? `
+            ${isVIP
+        ? `
             <div style="margin-top: 12px;">
               <span style="display: inline-block; padding: 6px 16px; background-color: #A80D0C; color: #ffffff; border-radius: 20px; font-size: 12px; font-weight: 700; text-transform: uppercase;">
                 VIP
               </span>
             </div>
             `
-                : ""
-            }
+        : ""
+      }
             
             <table width="100%" border="0" cellspacing="0" cellpadding="0" role="presentation" style="margin-top: 16px;">
               <tr>
@@ -1293,8 +1289,8 @@ async function generateDayOfReminderEmailHTML(
 
           </div>
           `
-              : ""
-          }
+      : ""
+    }
 
           ${gmailBlendStart}
             <p style="margin: 0 0 24px 0; color: #a1a1aa; font-size: 14px; line-height: 1.6;">
@@ -1302,9 +1298,8 @@ async function generateDayOfReminderEmailHTML(
             </p>
           ${gmailBlendEnd}
           
-          ${
-            googleCalendarUrl
-              ? `
+          ${googleCalendarUrl
+      ? `
           <table role="presentation" style="width: 100%; border-collapse: collapse; margin-bottom: 24px;">
             <tr>
               <td align="center" class="button-wrapper" style="padding: 0;">
@@ -1316,8 +1311,8 @@ async function generateDayOfReminderEmailHTML(
             </tr>
           </table>
           `
-              : ""
-          }
+      : ""
+    }
         </div>
       </td>
     </tr>
@@ -1362,24 +1357,24 @@ function generateDayOfReminderEmailText(
 
   const formattedDate = eventStartTime
     ? new Intl.DateTimeFormat("en-US", {
-        weekday: "long",
-        year: "numeric",
-        month: "long",
-        day: "numeric",
-        hour: "numeric",
-        minute: "2-digit",
-        hour12: true,
-        timeZone: PACIFIC_TIMEZONE,
-      }).format(new Date(eventStartTime))
+      weekday: "long",
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+      timeZone: PACIFIC_TIMEZONE,
+    }).format(new Date(eventStartTime))
     : "TBA";
 
   const formattedDoorsOpen = doorsOpenTime
     ? new Intl.DateTimeFormat("en-US", {
-        hour: "numeric",
-        minute: "2-digit",
-        hour12: true,
-        timeZone: PACIFIC_TIMEZONE,
-      }).format(new Date(doorsOpenTime))
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+      timeZone: PACIFIC_TIMEZONE,
+    }).format(new Date(doorsOpenTime))
     : null;
 
   const baseUrl =
@@ -1389,37 +1384,26 @@ function generateDayOfReminderEmailText(
     ? `${baseUrl}/events/${eventRoute}?cancel_ticket=${ticketId}`
     : null;
 
-  // Generate referral code from email
-  const referralCode = generateReferralCode(data.email);
-  const referralUrl =
-    referralCode && data.eventRoute
-      ? `${baseUrl}/events/${data.eventRoute}?referral_code=${referralCode}`
-      : null;
-
   return `
 ${eventName || "Event"} is TODAY${formattedDoorsOpen ? ` - Doors at ${formattedDoorsOpen}` : ""}!
 
-${ticketType?.toUpperCase() === "VIP" ? "We've reserved a seat for you in the front few rows. When you arrive at the event, please use the VIP entrance.\n\n" : ""}We're so excited to see you tonight! As a reminder, doors open at ${formattedDoorsOpen || "7:30 PM"}, and your ticket is only valid until 8:15. Late entry is not permitted. For security reasons, no bags will be permitted at the event.
+${ticketType?.toUpperCase() === "VIP" ? "We've reserved a seat for you in the front few rows. When you arrive at the event, please use the VIP entrance.\n\n" : ""}We're so excited to see you tonight! As a reminder, doors open at ${formattedDoorsOpen || "7:30 PM"}. Late entry is not permitted. For security reasons, no bags will be permitted at the event.
 
-IMPORTANT REMINDERS:
+IMPORTANT:
 - No bags are allowed at the venue
-- For ADA accommodations, please email ${FROM_EMAIL}
-- At 8:15, we will start letting people off the waitlist and your ticket may be invalidated
-- If you have friends without tickets, they should come and wait on the in-person waitlist
+- Your ticket is not transferable
+- A valid form of ID is required for entry.
 
 Life happens, and we understand plans can change. If you find yourself unable to attend, please take a moment to cancel your ticket using the link below. Your thoughtfulness helps us extend the opportunity to others who are excited to attend.
 
 ${cancelTicketUrl ? `Cancel Ticket: ${cancelTicketUrl}` : ""}
 
 Event Details:
-- Event: ${eventName || "Event"}
+${data.name ? `- Name: ${data.name}\n` : ""}- Event: ${eventName || "Event"}
 - Date & Time: ${formattedDate}
 ${formattedDoorsOpen ? `- Doors Open: ${formattedDoorsOpen}\n` : ""}- Ticket Type: ${ticketType || "STANDARD"}
 - Ticket ID: ${ticketId}
 ${eventUrl ? `- Event URL: ${eventUrl}` : ""}
-
-${referralCode && !(ticketType?.toUpperCase() == "VIP") ? `- Your Referral Code: ${referralCode}` : ""}
-${referralUrl && !(ticketType?.toUpperCase() == "VIP") ? `- Your Referral Link: ${referralUrl}` : ""}
 
 Please bring a valid ID and this confirmation email to the event. We look forward to seeing you there!
 
@@ -1449,11 +1433,11 @@ export async function sendDayOfReminderEmail(
 
   const formattedDoorsOpen = data.doorsOpenTime
     ? new Intl.DateTimeFormat("en-US", {
-        hour: "numeric",
-        minute: "2-digit",
-        hour12: true,
-        timeZone: PACIFIC_TIMEZONE,
-      }).format(new Date(data.doorsOpenTime))
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+      timeZone: PACIFIC_TIMEZONE,
+    }).format(new Date(data.doorsOpenTime))
     : null;
 
   const subject = data.eventName
@@ -1588,24 +1572,24 @@ async function generateEarlyReminderEmailHTML(
 
   const formattedDate = eventStartTime
     ? new Intl.DateTimeFormat("en-US", {
-        weekday: "long",
-        year: "numeric",
-        month: "long",
-        day: "numeric",
-        hour: "numeric",
-        minute: "2-digit",
-        hour12: true,
-        timeZone: PACIFIC_TIMEZONE,
-      }).format(new Date(eventStartTime))
+      weekday: "long",
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+      timeZone: PACIFIC_TIMEZONE,
+    }).format(new Date(eventStartTime))
     : "TBA";
 
   const formattedDoorsOpen = doorsOpenTime
     ? new Intl.DateTimeFormat("en-US", {
-        hour: "numeric",
-        minute: "2-digit",
-        hour12: true,
-        timeZone: PACIFIC_TIMEZONE,
-      }).format(new Date(doorsOpenTime))
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+      timeZone: PACIFIC_TIMEZONE,
+    }).format(new Date(doorsOpenTime))
     : "7:30 PM";
 
   const baseUrl =
@@ -1624,12 +1608,6 @@ async function generateEarlyReminderEmailHTML(
     ticketId: data.ticketId,
     ticketType: data.ticketType,
   });
-
-  const referralCode = generateReferralCode(data.email);
-  const referralUrl =
-    referralCode && data.eventRoute
-      ? `${baseUrl}/events/${data.eventRoute}?referral_code=${referralCode}`
-      : null;
 
   const qrImageSrc = options?.qrCid ? `cid:${options.qrCid}` : "";
   const isVIP = ticketType?.toUpperCase() === "VIP";
@@ -1777,42 +1755,66 @@ async function generateEarlyReminderEmailHTML(
       <td align="center" class="email-container" style="background-color: #27272a; padding: 40px 20px; max-width: 900px; width: 100%;">
         <div class="email-content" style="padding: 0; max-width: 600px; margin: 0 auto;">
           
+          <!-- Important Notice -->
+          <div style="background-color: #A80D0C; padding: 20px 24px; margin-bottom: 24px; border-radius: 8px; text-align: center;">
+            ${gmailBlendStart}
+              <h2 style="margin: 0 0 12px 0; color: #ffffff; font-size: 18px; font-weight: 700; text-transform: uppercase;"><b>Important</b></h2>
+              <div style="color: #ffffff; font-size: 15px; line-height: 1.8;">
+                <div style="margin-bottom: 8px;">
+                  <b>
+                    <span style="display: inline-block; vertical-align: middle; margin-right: 8px;">🎒</span>
+                    No bags are allowed at the venue
+                  </b>
+                </div>
+                <div style="margin-bottom: 8px;">
+                  <b>
+                    <span style="display: inline-block; vertical-align: middle; margin-right: 8px;">❌</span>
+                    Your ticket is not transferable
+                  </b>
+                </div>
+                <div>
+                  <b>
+                    <span style="display: inline-block; vertical-align: middle; margin-right: 8px;">🪪</span>
+                    A valid form of ID is required for entry
+                  </b>
+                </div>
+              </div>
+            ${gmailBlendEnd}
+          </div>
+          
           <!-- Early Reminder Card -->
           <div class="reminder-card" style="background-color: #18181b; padding: 24px; margin-bottom: 24px; border-radius: 8px;">
-            ${
-              promo
-                ? `
+            ${promo
+      ? `
             ${gmailBlendStart}
               <p style="margin: 0 0 16px 0; color: #f4f4f5; font-size: 16px; line-height: 1.6;">
                 ${promo.description}
               </p>
             ${gmailBlendEnd}
-            ${
-              promo.day || promo.location || promo.time
-                ? `
+            ${promo.day || promo.location || promo.time
+        ? `
             <table role="presentation" style="width: 100%; border-collapse: collapse; margin-bottom: 16px;">
               ${promo.day ? `<tr><td style="padding: 4px 0; font-size: 16px;">🗓️ ${promo.day}</td></tr>` : ""}
               ${promo.location ? `<tr><td style="padding: 4px 0; font-size: 16px;">📍 ${promo.location}</td></tr>` : ""}
               ${promo.time ? `<tr><td style="padding: 4px 0; font-size: 16px;">🕔 ${promo.time}</td></tr>` : ""}
             </table>
             `
-                : ""
-            }
+        : ""
+      }
             `
-                : ""
-            }
+      : ""
+    }
             ${gmailBlendStart}
               <p style="margin: 0 0 16px 0; color: #f4f4f5; font-size: 16px; line-height: 1.6;">
-                ${promo ? "Not interested? No worries, we're" : "We're"} still excited to welcome you this ${formattedDate.includes("Friday") ? "Friday" : formattedDate.split(",")[0]}! As a reminder, doors open at ${formattedDoorsOpen}, and your ticket is only valid until 8:15. Late entry is not permitted. For security reasons, no bags will be permitted at the event.
+                ${promo ? "Not interested? No worries, we're" : "We're"} so excited to welcome you this ${formattedDate.includes("Friday") ? "Friday" : formattedDate.split(",")[0]}! As a reminder, doors open at ${formattedDoorsOpen}. Late entry is not permitted. For security reasons, no bags will be permitted at the event.
               </p>
               <p style="margin: 0 0 20px 0; color: #f4f4f5; font-size: 16px; line-height: 1.6;">
                 Life happens, and we understand plans can change. If you find yourself unable to attend, please take a moment to cancel your ticket using the link below. Your thoughtfulness helps us extend the opportunity to others who are excited to attend.
               </p>
             ${gmailBlendEnd}
             
-            ${
-              cancelTicketUrl
-                ? `
+            ${cancelTicketUrl
+      ? `
             <table role="presentation" style="width: 100%; border-collapse: collapse; margin-top: 20px;">
               <tr>
                 <td align="center" class="button-wrapper" style="padding: 0;">
@@ -1821,8 +1823,8 @@ async function generateEarlyReminderEmailHTML(
               </tr>
             </table>
             `
-                : ""
-            }
+      : ""
+    }
           </div>
           
           <!-- Event Details Card -->
@@ -1833,6 +1835,16 @@ async function generateEarlyReminderEmailHTML(
             ${gmailBlendEnd}
             
             <table role="presentation" style="width: 100%; border-collapse: collapse;">
+              ${data.name ? `
+              <tr>
+                <td class="details-label" style="padding: 8px 0; color: #a1a1aa; font-size: 14px; width: 120px; vertical-align: top;">
+                  ${gmailBlendStart}Name:${gmailBlendEnd}
+                </td>
+                <td class="details-value" style="padding: 8px 0; color: #f4f4f5; font-size: 14px; font-weight: 500;">
+                  ${gmailBlendStart}${data.name}${gmailBlendEnd}
+                </td>
+              </tr>
+              ` : ""}
               <tr>
                 <td class="details-label" style="padding: 8px 0; color: #a1a1aa; font-size: 14px; width: 120px; vertical-align: top;">
                   ${gmailBlendStart}Event:${gmailBlendEnd}
@@ -1849,9 +1861,8 @@ async function generateEarlyReminderEmailHTML(
                   ${gmailBlendStart}${formattedDate}${gmailBlendEnd}
                 </td>
               </tr>
-              ${
-                formattedDoorsOpen
-                  ? `
+              ${formattedDoorsOpen
+      ? `
               <tr>
                 <td class="details-label" style="padding: 8px 0; color: #a1a1aa; font-size: 14px; vertical-align: top;">
                   ${gmailBlendStart}Doors Open:${gmailBlendEnd}
@@ -1861,26 +1872,24 @@ async function generateEarlyReminderEmailHTML(
                 </td>
               </tr>
               `
-                  : ""
-              }
-              ${
-                eventVenue
-                  ? `
+      : ""
+    }
+              ${eventVenue
+      ? `
               <tr>
                 <td class="details-label" style="padding: 8px 0; color: #a1a1aa; font-size: 14px; vertical-align: top;">
                   ${gmailBlendStart}Location:${gmailBlendEnd}
                 </td>
                 <td class="details-value" style="padding: 8px 0; color: #f4f4f5; font-size: 14px; font-weight: 500;">
-                  ${
-                    eventVenueLink
-                      ? `<a href="${eventVenueLink}" target="_blank" rel="noopener noreferrer" style="color: #A80D0C; text-decoration: none; border-bottom: 1px solid #A80D0C;">${eventVenue}</a>`
-                      : `${gmailBlendStart}${eventVenue}${gmailBlendEnd}`
-                  }
+                  ${eventVenueLink
+        ? `<a href="${eventVenueLink}" target="_blank" rel="noopener noreferrer" style="color: #A80D0C; text-decoration: none; border-bottom: 1px solid #A80D0C;">${eventVenue}</a>`
+        : `${gmailBlendStart}${eventVenue}${gmailBlendEnd}`
+      }
                 </td>
               </tr>
               `
-                  : ""
-              }
+      : ""
+    }
               <tr>
                 <td class="details-label" style="padding: 8px 0; color: #a1a1aa; font-size: 14px; vertical-align: top;">
                   ${gmailBlendStart}Ticket Type:${gmailBlendEnd}
@@ -1899,25 +1908,10 @@ async function generateEarlyReminderEmailHTML(
                   ${gmailBlendStart}${ticketId}${gmailBlendEnd}
                 </td>
               </tr>
-              ${
-                referralCode && !(ticketType.toUpperCase() == "VIP")
-                  ? `
-              <tr>
-                <td class="details-label" style="padding: 8px 0; color: #a1a1aa; font-size: 14px; vertical-align: top;">
-                  ${gmailBlendStart}Referral Code:${gmailBlendEnd}
-                </td>
-                <td class="details-value" style="padding: 8px 0; color: #f4f4f5; font-size: 14px; font-weight: 500; font-family: monospace;">
-                  ${gmailBlendStart}${referralCode}${gmailBlendEnd}
-                </td>
-              </tr>
-              `
-                  : ""
-              }
             </table>
             
-            ${
-              eventUrl
-                ? `
+            ${eventUrl
+      ? `
             <table role="presentation" style="width: 100%; border-collapse: collapse; margin-top: 20px;">
               <tr>
                 <td align="center" class="button-wrapper" style="padding: 0;">
@@ -1926,13 +1920,12 @@ async function generateEarlyReminderEmailHTML(
               </tr>
             </table>
             `
-                : ""
-            }
+      : ""
+    }
           </div>
           
-          ${
-            qrImageSrc
-              ? `
+          ${qrImageSrc
+      ? `
           <!-- QR Code Section -->
           <div class="qr-section" style="background-color: #18181b; padding: 24px; margin-bottom: 24px; text-align: center;${isVIP ? " border: 2px solid #D4AF37; border-radius: 8px; box-shadow: 0 0 15px rgba(212, 175, 55, 0.3);" : ""}">
             
@@ -1940,25 +1933,23 @@ async function generateEarlyReminderEmailHTML(
               <h2 class="qr-title" style="margin: 0 0 16px 0; color: #ffffff; font-size: 20px; font-weight: 600;">Your Ticket QR Code</h2>
             ${gmailBlendEnd}
 
-            <div class="qr-code-wrapper" style="display: inline-block; border-radius: 12px; ${
-              isVIP ? "background-color: #A80D0C; padding: 4px;" : "padding: 0;"
-            }">
+            <div class="qr-code-wrapper" style="display: inline-block; border-radius: 12px; ${isVIP ? "background-color: #A80D0C; padding: 4px;" : "padding: 0;"
+      }">
               <div style="background-color: #ffffff; padding: 16px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);">
                 <img src="${qrImageSrc}" alt="Ticket QR Code" class="qr-code-img" style="display: block; width: 350px; max-width: 100%; height: auto;" />
               </div>
             </div>
 
-            ${
-              isVIP
-                ? `
+            ${isVIP
+        ? `
             <div style="margin-top: 12px;">
               <span style="display: inline-block; padding: 6px 16px; background-color: #A80D0C; color: #ffffff; border-radius: 20px; font-size: 12px; font-weight: 700; text-transform: uppercase;">
                 VIP
               </span>
             </div>
             `
-                : ""
-            }
+        : ""
+      }
             
             <table width="100%" border="0" cellspacing="0" cellpadding="0" role="presentation" style="margin-top: 16px;">
               <tr>
@@ -1983,18 +1974,17 @@ async function generateEarlyReminderEmailHTML(
 
           </div>
           `
-              : ""
-          }
+      : ""
+    }
 
           ${gmailBlendStart}
             <p style="margin: 0 0 24px 0; color: #a1a1aa; font-size: 14px; line-height: 1.6;">
-              Please bring your Stanford ID card and this confirmation email to the event. We look forward to seeing you there!
+              Please bring your ID card and this confirmation email to the event. We look forward to seeing you there!
             </p>
           ${gmailBlendEnd}
           
-          ${
-            googleCalendarUrl
-              ? `
+          ${googleCalendarUrl
+      ? `
           <table role="presentation" style="width: 100%; border-collapse: collapse; margin-bottom: 24px;">
             <tr>
               <td align="center" class="button-wrapper" style="padding: 0;">
@@ -2006,8 +1996,8 @@ async function generateEarlyReminderEmailHTML(
             </tr>
           </table>
           `
-              : ""
-          }
+      : ""
+    }
         </div>
       </td>
     </tr>
@@ -2062,24 +2052,24 @@ function generateEarlyReminderEmailText(
 
   const formattedDate = eventStartTime
     ? new Intl.DateTimeFormat("en-US", {
-        weekday: "long",
-        year: "numeric",
-        month: "long",
-        day: "numeric",
-        hour: "numeric",
-        minute: "2-digit",
-        hour12: true,
-        timeZone: PACIFIC_TIMEZONE,
-      }).format(new Date(eventStartTime))
+      weekday: "long",
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+      timeZone: PACIFIC_TIMEZONE,
+    }).format(new Date(eventStartTime))
     : "TBA";
 
   const formattedDoorsOpen = doorsOpenTime
     ? new Intl.DateTimeFormat("en-US", {
-        hour: "numeric",
-        minute: "2-digit",
-        hour12: true,
-        timeZone: PACIFIC_TIMEZONE,
-      }).format(new Date(doorsOpenTime))
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+      timeZone: PACIFIC_TIMEZONE,
+    }).format(new Date(doorsOpenTime))
     : "7:30 PM";
 
   const baseUrl =
@@ -2088,9 +2078,6 @@ function generateEarlyReminderEmailText(
   const cancelTicketUrl = eventRoute
     ? `${baseUrl}/events/${eventRoute}?cancel_ticket=${ticketId}`
     : null;
-
-  // Generate referral code from email
-  const referralCode = generateReferralCode(data.email);
 
   // Build promo section if present
   const promoSection = promo
@@ -2106,21 +2093,25 @@ ${promo.time ? `🕔 ${promo.time}` : ""}
   return `
 ${eventName} is this ${formattedDate.includes("Friday") ? "Friday" : formattedDate.split(",")[0]}!${promo?.title ? ` ${promo.title}` : ""}
 ${promoSection}
-${promo ? "Not interested? No worries, we're" : "We're"} still excited to welcome you this ${formattedDate.includes("Friday") ? "Friday" : formattedDate.split(",")[0]}! As a reminder, doors open at ${formattedDoorsOpen}, and your ticket is only valid until 8:15. Late entry is not permitted. For security reasons, no bags will be permitted at the event.
+${promo ? "Not interested? No worries, we're" : "We're"} so excited to welcome you this ${formattedDate.includes("Friday") ? "Friday" : formattedDate.split(",")[0]}! As a reminder, doors open at ${formattedDoorsOpen}. Late entry is not permitted. For security reasons, no bags will be permitted at the event.
 
 Life happens, and we understand plans can change. If you find yourself unable to attend, please take a moment to cancel your ticket using the link below. Your thoughtfulness helps us extend the opportunity to others who are excited to attend.
 
 ${cancelTicketUrl ? `Cancel Ticket: ${cancelTicketUrl}` : ""}
 
+IMPORTANT:
+- No bags are allowed at the venue
+- Your ticket is not transferable
+- A valid form of ID is required for entry.
+
 Event Details:
-- Event: ${eventName || "Event"}
+${data.name ? `- Name: ${data.name}\n` : ""}- Event: ${eventName || "Event"}
 - Date & Time: ${formattedDate}
 ${formattedDoorsOpen ? `- Doors Open: ${formattedDoorsOpen}` : ""}- Ticket Type: ${ticketType || "STANDARD"}
 - Ticket ID: ${ticketId}
 ${eventUrl ? `- Event URL: ${eventUrl}` : ""}
-${referralCode && !(ticketType?.toUpperCase() == "VIP") ? `- Referral Code: ${referralCode}` : ""}
 
-Please bring your Stanford ID card and this confirmation email to the event. We look forward to seeing you there!
+Please bring a valid form of ID and this confirmation email to the event. We look forward to seeing you there!
 
 Stanford Speakers Bureau
 If you have any questions, please contact us at ${FROM_EMAIL}
@@ -2157,19 +2148,19 @@ export async function sendEarlyReminderEmail(
 
   const formattedDoorsOpen = data.doorsOpenTime
     ? new Intl.DateTimeFormat("en-US", {
-        hour: "numeric",
-        minute: "2-digit",
-        hour12: true,
-        timeZone: PACIFIC_TIMEZONE,
-      }).format(new Date(data.doorsOpenTime))
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+      timeZone: PACIFIC_TIMEZONE,
+    }).format(new Date(data.doorsOpenTime))
     : "7:30 PM";
 
   // Format day of week from event start time
   const dayOfWeek = data.eventStartTime
     ? new Intl.DateTimeFormat("en-US", {
-        weekday: "long",
-        timeZone: "America/Los_Angeles",
-      }).format(new Date(data.eventStartTime))
+      weekday: "long",
+      timeZone: "America/Los_Angeles",
+    }).format(new Date(data.eventStartTime))
     : "Friday";
 
   const subject = data.eventName
@@ -2300,15 +2291,15 @@ async function generateWaitlistClosedEmailHTML(
 
   const formattedDate = eventStartTime
     ? new Intl.DateTimeFormat("en-US", {
-        weekday: "long",
-        year: "numeric",
-        month: "long",
-        day: "numeric",
-        hour: "numeric",
-        minute: "2-digit",
-        hour12: true,
-        timeZone: PACIFIC_TIMEZONE,
-      }).format(new Date(eventStartTime))
+      weekday: "long",
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+      timeZone: PACIFIC_TIMEZONE,
+    }).format(new Date(eventStartTime))
     : "TBA";
 
   const baseUrl =
@@ -2449,24 +2440,22 @@ async function generateWaitlistClosedEmailHTML(
                   ${gmailBlendStart}${formattedDate}${gmailBlendEnd}
                 </td>
               </tr>
-              ${
-                eventVenue
-                  ? `
+              ${eventVenue
+      ? `
               <tr>
                 <td class="details-label" style="padding: 8px 0; color: #a1a1aa; font-size: 14px; vertical-align: top;">
                   ${gmailBlendStart}Location:${gmailBlendEnd}
                 </td>
                 <td class="details-value" style="padding: 8px 0; color: #f4f4f5; font-size: 14px; font-weight: 500;">
-                  ${
-                    eventVenueLink
-                      ? `<a href="${eventVenueLink}" target="_blank" rel="noopener noreferrer" style="color: #A80D0C; text-decoration: none; border-bottom: 1px solid #A80D0C;">${eventVenue}</a>`
-                      : `${gmailBlendStart}${eventVenue}${gmailBlendEnd}`
-                  }
+                  ${eventVenueLink
+        ? `<a href="${eventVenueLink}" target="_blank" rel="noopener noreferrer" style="color: #A80D0C; text-decoration: none; border-bottom: 1px solid #A80D0C;">${eventVenue}</a>`
+        : `${gmailBlendStart}${eventVenue}${gmailBlendEnd}`
+      }
                 </td>
               </tr>
               `
-                  : ""
-              }
+      : ""
+    }
             </table>
           </div>
         </div>
@@ -2508,15 +2497,15 @@ function generateWaitlistClosedEmailText(data: WaitlistClosedEmailData): string 
 
   const formattedDate = eventStartTime
     ? new Intl.DateTimeFormat("en-US", {
-        weekday: "long",
-        year: "numeric",
-        month: "long",
-        day: "numeric",
-        hour: "numeric",
-        minute: "2-digit",
-        hour12: true,
-        timeZone: PACIFIC_TIMEZONE,
-      }).format(new Date(eventStartTime))
+      weekday: "long",
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+      timeZone: PACIFIC_TIMEZONE,
+    }).format(new Date(eventStartTime))
     : "TBA";
 
   return `

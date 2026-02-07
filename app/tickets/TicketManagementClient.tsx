@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 export type Ticket = {
   id: string;
   email: string;
+  name: string | null;
   type: string | null;
   created_at: string;
   scanned: boolean;
@@ -70,6 +71,7 @@ export default function TicketManagementClient({
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [showAddForm, setShowAddForm] = useState(false);
+  const [newTicketName, setNewTicketName] = useState("");
   const [newTicketEmail, setNewTicketEmail] = useState("");
   const [newTicketEventId, setNewTicketEventId] = useState("");
   const [newTicketType, setNewTicketType] = useState("VIP");
@@ -477,14 +479,6 @@ export default function TicketManagementClient({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "sendEarlyReminders",
-          promo: {
-            title: "Want a front row seat?",
-            description:
-              "We're hosting a Hasan Minhaj lookalike contest! It's your ticket to a front row seat at the show!",
-            day: "This Thursday",
-            location: "White Plaza",
-            time: "5 PM",
-          },
         }),
       });
 
@@ -529,14 +523,6 @@ export default function TicketManagementClient({
         body: JSON.stringify({
           id,
           action: "sendEarlyReminder",
-          promo: {
-            title: "Want a front row seat?",
-            description:
-              "We're hosting a Hasan Minhaj lookalike contest! It's your ticket to a front row seat at the show!",
-            day: "This Thursday",
-            location: "White Plaza",
-            time: "5 PM",
-          },
         }),
       });
 
@@ -602,6 +588,7 @@ export default function TicketManagementClient({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             email: email.toLowerCase(),
+            name: newTicketName.trim() || null,
             eventId: newTicketEventId,
             type: newTicketType,
           }),
@@ -636,10 +623,10 @@ export default function TicketManagementClient({
         setVipCount((prev) => prev + successCount);
       }
       setSuccess(
-        `Successfully created ${successCount} ticket(s)${
-          errors.length > 0 ? ` (${errors.length} failed)` : ""
+        `Successfully created ${successCount} ticket(s)${errors.length > 0 ? ` (${errors.length} failed)` : ""
         }`,
       );
+      setNewTicketName("");
       setNewTicketEmail("");
       setNewTicketEventId("");
       setNewTicketType("VIP");
@@ -897,6 +884,18 @@ export default function TicketManagementClient({
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-zinc-300 mb-2">
+                  Name (optional)
+                </label>
+                <input
+                  type="text"
+                  value={newTicketName}
+                  onChange={(e) => setNewTicketName(e.target.value)}
+                  placeholder="Attendee name"
+                  className="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-zinc-300 mb-2">
                   Email
                 </label>
                 <input
@@ -972,6 +971,7 @@ export default function TicketManagementClient({
                 type="button"
                 onClick={() => {
                   setShowAddForm(false);
+                  setNewTicketName("");
                   setNewTicketEmail("");
                   setNewTicketEventId("");
                   setNewTicketType("VIP");
@@ -1106,6 +1106,9 @@ export default function TicketManagementClient({
                     Event
                   </th>
                   <th className="px-3 sm:px-6 py-3 sm:py-4 text-left text-xs font-medium text-zinc-400 uppercase tracking-wider">
+                    Name
+                  </th>
+                  <th className="px-3 sm:px-6 py-3 sm:py-4 text-left text-xs font-medium text-zinc-400 uppercase tracking-wider">
                     Email
                   </th>
                   <th className="px-3 sm:px-6 py-3 sm:py-4 text-left text-xs font-medium text-zinc-400 uppercase tracking-wider">
@@ -1135,6 +1138,11 @@ export default function TicketManagementClient({
                     </td>
                     <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap">
                       <div className="text-sm text-zinc-300 truncate max-w-[120px] sm:max-w-none">
+                        {ticket.name || "--"}
+                      </div>
+                    </td>
+                    <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap">
+                      <div className="text-sm text-zinc-300 truncate max-w-[120px] sm:max-w-none">
                         {ticket.email}
                       </div>
                     </td>
@@ -1147,11 +1155,10 @@ export default function TicketManagementClient({
                           }
                         }}
                         disabled={updatingTicketId === ticket.id}
-                        className={`px-2 py-1 text-xs font-medium rounded-lg bg-zinc-800 border border-zinc-700 text-white focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 disabled:opacity-50 disabled:cursor-not-allowed ${
-                          ticket.type === "VIP"
-                            ? "bg-blue-500/20 text-blue-400 border-blue-500/30"
-                            : ""
-                        }`}
+                        className={`px-2 py-1 text-xs font-medium rounded-lg bg-zinc-800 border border-zinc-700 text-white focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 disabled:opacity-50 disabled:cursor-not-allowed ${ticket.type === "VIP"
+                          ? "bg-blue-500/20 text-blue-400 border-blue-500/30"
+                          : ""
+                          }`}
                       >
                         <option value="VIP">VIP</option>
                         <option value="STANDARD">STANDARD</option>
@@ -1172,11 +1179,10 @@ export default function TicketManagementClient({
                           }
                         }}
                         disabled={updatingTicketId === ticket.id}
-                        className={`px-2 py-1 text-xs font-medium rounded-lg bg-zinc-800 border border-zinc-700 text-white focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 disabled:opacity-50 disabled:cursor-not-allowed ${
-                          ticket.scanned
-                            ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/30"
-                            : ""
-                        }`}
+                        className={`px-2 py-1 text-xs font-medium rounded-lg bg-zinc-800 border border-zinc-700 text-white focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 disabled:opacity-50 disabled:cursor-not-allowed ${ticket.scanned
+                          ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/30"
+                          : ""
+                          }`}
                       >
                         <option value="scanned">Scanned</option>
                         <option value="not-scanned">Not Scanned</option>
