@@ -35,6 +35,7 @@ export async function GET(req: Request) {
         `
         id,
         email,
+        name,
         type,
         created_at,
         scanned,
@@ -264,7 +265,7 @@ export async function PATCH(req: Request) {
     }
 
     const body = await req.json();
-    const { id, action, type, scanned, promo } = body;
+    const { id, action, type, scanned, promo, name } = body;
 
     // Batch reminder actions don't require a ticket ID - they use eventId from query params
     const batchActions = ["sendDayOfReminders", "sendEarlyReminders"];
@@ -278,7 +279,45 @@ export async function PATCH(req: Request) {
     const adminClient = auth.adminClient!;
 
     // Handle different actions
-    if (action === "unscan") {
+    if (action === "updateName") {
+      // Update ticket name
+      const newName = typeof name === "string" ? name.trim() || null : null;
+
+      const { data: ticket, error: updateError } = await adminClient
+        .from("tickets")
+        .update({ name: newName })
+        .eq("id", id)
+        .select(
+          `
+          id,
+          email,
+          name,
+          type,
+          created_at,
+          scanned,
+          scan_time,
+          referral,
+          event_id,
+          events (
+            id,
+            name,
+            route,
+            start_time_date
+          )
+        `,
+        )
+        .single();
+
+      if (updateError) {
+        console.error("Ticket name update error:", updateError);
+        return NextResponse.json(
+          { error: "Failed to update ticket name" },
+          { status: 500 },
+        );
+      }
+
+      return NextResponse.json({ success: true, ticket });
+    } else if (action === "unscan") {
       // Unscan the ticket: set scanned to false and clear scan-related fields
       const { data: ticket, error: updateError } = await adminClient
         .from("tickets")
@@ -293,6 +332,7 @@ export async function PATCH(req: Request) {
           `
           id,
           email,
+          name,
           type,
           created_at,
           scanned,
@@ -380,6 +420,7 @@ export async function PATCH(req: Request) {
           `
           id,
           email,
+          name,
           type,
           created_at,
           scanned,
@@ -415,6 +456,7 @@ export async function PATCH(req: Request) {
             : ticket.events;
           await sendTicketEmail({
             email: ticket.email,
+            name: ticket.name || null,
             eventName: event?.name || "Event",
             ticketType: ticket.type || "STANDARD",
             eventStartTime: event?.start_time_date || null,
@@ -445,26 +487,28 @@ export async function PATCH(req: Request) {
             const { data: waitlistEntry, error: waitlistFetchError } =
               await adminClient
                 .from("waitlist")
-                .select("id, email")
+                .select("id, email, name")
                 .eq("event_id", ticket.event_id)
                 .order("position", { ascending: true })
                 .limit(1)
                 .single();
 
             if (!waitlistFetchError && waitlistEntry) {
-              // Create a STANDARD ticket for the waitlist person
+              // Create a STANDARD ticket for the waitlist person (transfer name from waitlist)
               const { data: newTicket, error: ticketCreateError } =
-                  await adminClient
-                    .from("tickets")
-                    .insert({
-                      event_id: ticket.event_id,
-                      email: waitlistEntry.email,
-                      type: "STANDARD",
-                    })
+                await adminClient
+                  .from("tickets")
+                  .insert({
+                    event_id: ticket.event_id,
+                    email: waitlistEntry.email,
+                    name: waitlistEntry.name ?? null,
+                    type: "STANDARD",
+                  })
                   .select(
                     `
                   id,
                   email,
+                  name,
                   type,
                   event_id,
                   events (
@@ -501,6 +545,7 @@ export async function PATCH(req: Request) {
                     : newTicket.events;
                   await sendTicketEmail({
                     email: newTicket.email,
+                    name: newTicket.name || null,
                     eventName: eventData?.name || "Event",
                     ticketType: newTicket.type || "STANDARD",
                     eventStartTime: eventData?.start_time_date || null,
@@ -563,6 +608,7 @@ export async function PATCH(req: Request) {
           `
           id,
           email,
+          name,
           type,
           created_at,
           scanned,
@@ -607,6 +653,7 @@ export async function PATCH(req: Request) {
           `
           id,
           email,
+          name,
           type,
           created_at,
           scanned,
@@ -642,6 +689,7 @@ export async function PATCH(req: Request) {
           : ticket.events;
         await sendTicketEmail({
           email: ticket.email,
+          name: ticket.name || null,
           eventName: event?.name || "Event",
           ticketType: ticket.type || "STANDARD",
           eventStartTime: event?.start_time_date || null,
@@ -692,7 +740,7 @@ export async function PATCH(req: Request) {
       // Fetch all tickets for this event (both VIP and STANDARD)
       const { data: tickets, error: ticketsError } = await adminClient
         .from("tickets")
-        .select("id, email, type")
+        .select("id, email, name, type")
         .eq("event_id", eventId);
 
       if (ticketsError) {
@@ -728,6 +776,7 @@ export async function PATCH(req: Request) {
         const batchPromises = batch.map((ticket) =>
           sendDayOfReminderEmail({
             email: ticket.email,
+            name: ticket.name || null,
             eventName: event.name || "Event",
             ticketType: ticket.type || "STANDARD",
             eventStartTime: event.start_time_date || null,
@@ -809,6 +858,7 @@ export async function PATCH(req: Request) {
           `
           id,
           email,
+          name,
           type,
           event_id,
           events (
@@ -841,6 +891,7 @@ export async function PATCH(req: Request) {
       try {
         await sendDayOfReminderEmail({
           email: ticket.email,
+          name: ticket.name || null,
           eventName: event?.name || "Event",
           ticketType: ticket.type || "STANDARD",
           eventStartTime: event?.start_time_date || null,
@@ -892,7 +943,7 @@ export async function PATCH(req: Request) {
       // Fetch all tickets for this event (both VIP and STANDARD)
       const { data: tickets, error: ticketsError } = await adminClient
         .from("tickets")
-        .select("id, email, type")
+        .select("id, email, name, type")
         .eq("event_id", eventId);
 
       if (ticketsError) {
@@ -928,6 +979,7 @@ export async function PATCH(req: Request) {
         const batchPromises = batch.map((ticket) =>
           sendEarlyReminderEmail({
             email: ticket.email,
+            name: ticket.name || null,
             eventName: event.name || "Event",
             ticketType: ticket.type || "STANDARD",
             eventStartTime: event.start_time_date || null,
@@ -1010,6 +1062,7 @@ export async function PATCH(req: Request) {
           `
           id,
           email,
+          name,
           type,
           event_id,
           events (
@@ -1042,6 +1095,7 @@ export async function PATCH(req: Request) {
       try {
         await sendEarlyReminderEmail({
           email: ticket.email,
+          name: ticket.name || null,
           eventName: event?.name || "Event",
           ticketType: ticket.type || "STANDARD",
           eventStartTime: event?.start_time_date || null,
@@ -1069,7 +1123,7 @@ export async function PATCH(req: Request) {
       return NextResponse.json(
         {
           error:
-            "Invalid action. Use 'unscan', 'updateType', 'updateScanned', 'resendEmail', 'sendDayOfReminders', 'sendDayOfReminder', 'sendEarlyReminders', or 'sendEarlyReminder'.",
+            "Invalid action. Use 'updateName', 'unscan', 'updateType', 'updateScanned', 'resendEmail', 'sendDayOfReminders', 'sendDayOfReminder', 'sendEarlyReminders', or 'sendEarlyReminder'.",
         },
         { status: 400 },
       );
@@ -1091,7 +1145,7 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json();
-    const { email, eventId, type } = body;
+    const { email, eventId, type, name } = body;
 
     if (!email || typeof email !== "string") {
       return NextResponse.json({ error: "Email is required" }, { status: 400 });
@@ -1175,15 +1229,16 @@ export async function POST(req: Request) {
         }
       }
 
-      // Update the existing ticket's type
+      // Update the existing ticket's type (and name if provided)
       const { data: updatedTicket, error: updateError } = await adminClient
         .from("tickets")
-        .update({ type: newType })
+        .update({ type: newType, ...(name ? { name } : {}) })
         .eq("id", existingTicket.id)
         .select(
           `
           id,
           email,
+          name,
           type,
           created_at,
           scanned,
@@ -1241,6 +1296,7 @@ export async function POST(req: Request) {
             : updatedTicket.events;
           await sendTicketEmail({
             email: updatedTicket.email,
+            name: updatedTicket.name || null,
             eventName: eventData?.name || "Event",
             ticketType: updatedTicket.type || "VIP",
             eventStartTime: eventData?.start_time_date || null,
@@ -1282,12 +1338,14 @@ export async function POST(req: Request) {
       .insert({
         event_id: eventId,
         email: email,
+        name: name || null,
         type: type || "VIP", // Admin-created tickets default to VIP type
       })
       .select(
         `
         id,
         email,
+        name,
         type,
         created_at,
         scanned,
@@ -1345,6 +1403,7 @@ export async function POST(req: Request) {
           : ticket.events;
         await sendTicketEmail({
           email: ticket.email,
+          name: ticket.name || null,
           eventName: event?.name || "Event",
           ticketType: ticket.type || "VIP",
           eventStartTime: event?.start_time_date || null,
