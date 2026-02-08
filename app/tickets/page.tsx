@@ -35,7 +35,7 @@ async function getEvents() {
 
     const { data: events, error } = await client
       .from("events")
-      .select("id, name")
+      .select("id, name, start_time_date")
       .order("start_time_date", { ascending: false });
 
     if (error) {
