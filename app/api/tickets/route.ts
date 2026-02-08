@@ -487,22 +487,23 @@ export async function PATCH(req: Request) {
             const { data: waitlistEntry, error: waitlistFetchError } =
               await adminClient
                 .from("waitlist")
-                .select("id, email")
+                .select("id, email, name")
                 .eq("event_id", ticket.event_id)
                 .order("position", { ascending: true })
                 .limit(1)
                 .single();
 
             if (!waitlistFetchError && waitlistEntry) {
-              // Create a STANDARD ticket for the waitlist person
+              // Create a STANDARD ticket for the waitlist person (transfer name from waitlist)
               const { data: newTicket, error: ticketCreateError } =
-                  await adminClient
-                    .from("tickets")
-                    .insert({
-                      event_id: ticket.event_id,
-                      email: waitlistEntry.email,
-                      type: "STANDARD",
-                    })
+                await adminClient
+                  .from("tickets")
+                  .insert({
+                    event_id: ticket.event_id,
+                    email: waitlistEntry.email,
+                    name: waitlistEntry.name ?? null,
+                    type: "STANDARD",
+                  })
                   .select(
                     `
                   id,
