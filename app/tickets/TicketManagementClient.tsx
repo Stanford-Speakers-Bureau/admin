@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 export type Ticket = {
   id: string;
   email: string;
+  name: string | null;
   type: string | null;
   created_at: string;
   scanned: boolean;
@@ -19,6 +20,8 @@ export type Ticket = {
   } | null;
 };
 
+type TicketRow = { name: string; email: string };
+
 type TicketManagementClientProps = {
   initialTickets: Ticket[];
   initialTotal: number;
@@ -27,7 +30,11 @@ type TicketManagementClientProps = {
   initialFilteredCount: number;
   initialStandardCount: number;
   initialVipCount: number;
-  initialEvents: { id: string; name: string | null }[];
+  initialEvents: {
+    id: string;
+    name: string | null;
+    start_time_date: string | null;
+  }[];
 };
 
 function formatDate(dateString: string | null): string {
@@ -45,6 +52,20 @@ function formatDate(dateString: string | null): string {
   }).format(date);
 }
 
+function getNextEventId(
+  events: { id: string; start_time_date: string | null }[],
+): string {
+  if (!events.length) return "";
+  const now = new Date().toISOString();
+  const sorted = [...events].sort((a, b) => {
+    const aVal = a.start_time_date ?? "";
+    const bVal = b.start_time_date ?? "";
+    return aVal.localeCompare(bVal);
+  });
+  const next = sorted.find((e) => (e.start_time_date ?? "") >= now);
+  return next?.id ?? sorted[0]?.id ?? "";
+}
+
 export default function TicketManagementClient({
   initialTickets,
   initialTotal,
@@ -55,6 +76,7 @@ export default function TicketManagementClient({
   initialVipCount,
   initialEvents,
 }: TicketManagementClientProps) {
+  const defaultEventId = getNextEventId(initialEvents);
   const [tickets, setTickets] = useState<Ticket[]>(initialTickets);
   const [total, setTotal] = useState(initialTotal);
   const [scannedCount, setScannedCount] = useState(initialScannedCount);
@@ -62,7 +84,7 @@ export default function TicketManagementClient({
   const [filteredCount, setFilteredCount] = useState(initialFilteredCount);
   const [standardCount, setStandardCount] = useState(initialStandardCount);
   const [vipCount, setVipCount] = useState(initialVipCount);
-  const [selectedEventId, setSelectedEventId] = useState<string>("");
+  const [selectedEventId, setSelectedEventId] = useState<string>(defaultEventId);
   const [searchEmail, setSearchEmail] = useState("");
   const [ticketTypeFilter, setTicketTypeFilter] = useState<string>("");
   const [scannedFilter, setScannedFilter] = useState<string>("");
@@ -70,8 +92,10 @@ export default function TicketManagementClient({
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [showAddForm, setShowAddForm] = useState(false);
-  const [newTicketEmail, setNewTicketEmail] = useState("");
-  const [newTicketEventId, setNewTicketEventId] = useState("");
+  const [newTicketRows, setNewTicketRows] = useState<TicketRow[]>([
+    { name: "", email: "" },
+  ]);
+  const [newTicketEventId, setNewTicketEventId] = useState(defaultEventId);
   const [newTicketType, setNewTicketType] = useState("VIP");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [offset, setOffset] = useState(0);
@@ -86,6 +110,8 @@ export default function TicketManagementClient({
   const [sendingEarlyReminderId, setSendingEarlyReminderId] = useState<
     string | null
   >(null);
+  const [editingNameId, setEditingNameId] = useState<string | null>(null);
+  const [editingNameValue, setEditingNameValue] = useState("");
 
   useEffect(() => {
     if (error) {
@@ -333,6 +359,42 @@ export default function TicketManagementClient({
     }
   }
 
+  async function handleUpdateName(id: string, newName: string) {
+    const trimmed = newName.trim();
+    const ticket = tickets.find((t) => t.id === id);
+    // Don't update if value hasn't changed
+    if ((ticket?.name || "") === trimmed) {
+      setEditingNameId(null);
+      return;
+    }
+
+    setUpdatingTicketId(id);
+    try {
+      const response = await fetch("/api/tickets", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, action: "updateName", name: trimmed }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to update name");
+      }
+
+      const data = await response.json();
+      setTickets((prev) =>
+        prev.map((t) => (t.id === id ? (data.ticket as Ticket) : t)),
+      );
+      setSuccess("Name updated successfully!");
+    } catch (err) {
+      console.error("Error updating name:", err);
+      setError(err instanceof Error ? err.message : "Failed to update name");
+    } finally {
+      setUpdatingTicketId(null);
+      setEditingNameId(null);
+    }
+  }
+
   async function handleResendEmail(id: string) {
     if (
       !confirm(
@@ -477,14 +539,6 @@ export default function TicketManagementClient({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "sendEarlyReminders",
-          promo: {
-            title: "Want a front row seat?",
-            description:
-              "We're hosting a Hasan Minhaj lookalike contest! It's your ticket to a front row seat at the show!",
-            day: "This Thursday",
-            location: "White Plaza",
-            time: "5 PM",
-          },
         }),
       });
 
@@ -529,14 +583,6 @@ export default function TicketManagementClient({
         body: JSON.stringify({
           id,
           action: "sendEarlyReminder",
-          promo: {
-            title: "Want a front row seat?",
-            description:
-              "We're hosting a Hasan Minhaj lookalike contest! It's your ticket to a front row seat at the show!",
-            day: "This Thursday",
-            location: "White Plaza",
-            time: "5 PM",
-          },
         }),
       });
 
@@ -560,8 +606,15 @@ export default function TicketManagementClient({
   async function handleAddTicket(e: React.FormEvent) {
     e.preventDefault();
 
-    if (!newTicketEmail.trim()) {
-      setError("Please enter an email address");
+    const rowsWithEmail = newTicketRows.filter((row) => row.email.trim());
+    if (rowsWithEmail.length === 0) {
+      setError("Please enter at least one email address");
+      return;
+    }
+
+    const rowsMissingName = rowsWithEmail.filter((row) => !row.name.trim());
+    if (rowsMissingName.length > 0) {
+      setError("Name is required for each ticket.");
       return;
     }
 
@@ -570,38 +623,37 @@ export default function TicketManagementClient({
       return;
     }
 
+    const rowsToSubmit = newTicketRows.filter(
+      (row) => row.email.trim() && row.name.trim(),
+    );
+    const invalidRows = rowsToSubmit.filter(
+      (row) => !row.email.includes("@") || !row.email.includes("."),
+    );
+    if (invalidRows.length > 0) {
+      setError(
+        `Invalid email(s): ${invalidRows.map((r) => r.email).join(", ")}`,
+      );
+      return;
+    }
+
     setIsSubmitting(true);
     setError(null);
     setSuccess(null);
-
-    // Parse comma-separated emails
-    const emails = newTicketEmail
-      .split(",")
-      .map((e) => e.trim())
-      .filter((e) => e);
-
-    const invalidEmails = emails.filter(
-      (e) => !e.includes("@") || !e.includes("."),
-    );
-
-    if (invalidEmails.length > 0) {
-      setError(`Invalid email(s): ${invalidEmails.join(", ")}`);
-      setIsSubmitting(false);
-      return;
-    }
 
     let successCount = 0;
     const errors: string[] = [];
     const createdTickets: Ticket[] = [];
 
-    // Create tickets for each email
-    for (const email of emails) {
+    for (const row of rowsToSubmit) {
+      const email = row.email.trim().toLowerCase();
+      const name = row.name.trim();
       try {
         const response = await fetch("/api/tickets", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            email: email.toLowerCase(),
+            email,
+            name,
             eventId: newTicketEventId,
             type: newTicketType,
           }),
@@ -627,20 +679,16 @@ export default function TicketManagementClient({
     if (successCount > 0) {
       setTickets((prev) => [...createdTickets, ...prev]);
       setTotal((prev) => prev + successCount);
-      // New tickets are always unscanned
       setUnscannedCount((prev) => prev + successCount);
-      // Update ticket type counts based on the type of tickets created
       if (newTicketType === "STANDARD") {
         setStandardCount((prev) => prev + successCount);
       } else {
         setVipCount((prev) => prev + successCount);
       }
       setSuccess(
-        `Successfully created ${successCount} ticket(s)${
-          errors.length > 0 ? ` (${errors.length} failed)` : ""
-        }`,
+        `Successfully created ${successCount} ticket(s)${errors.length > 0 ? ` (${errors.length} failed)` : ""}`,
       );
-      setNewTicketEmail("");
+      setNewTicketRows([{ name: "", email: "" }]);
       setNewTicketEventId("");
       setNewTicketType("VIP");
       if (errors.length === 0) {
@@ -892,25 +940,13 @@ export default function TicketManagementClient({
       {/* Add Ticket Form */}
       {showAddForm && (
         <div className="mb-6 bg-zinc-900 rounded-2xl border border-zinc-800 p-6">
-          <h2 className="text-xl font-bold text-white mb-4">Add VIP Ticket</h2>
+          <h2 className="text-xl font-bold text-white mb-4">Add Tickets</h2>
+          <p className="text-sm text-zinc-400 mb-4">
+            Each row is one ticket. Name and email are required.
+          </p>
           <form onSubmit={handleAddTicket} className="space-y-4">
+            {/* Shared: Event + Type */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-zinc-300 mb-2">
-                  Email
-                </label>
-                <input
-                  type="text"
-                  value={newTicketEmail}
-                  onChange={(e) => setNewTicketEmail(e.target.value)}
-                  placeholder="user@example.com or user1@example.com, user2@example.com"
-                  className="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50"
-                  required
-                />
-                <p className="mt-1 text-xs text-zinc-500">
-                  Enter a single email or multiple emails separated by commas
-                </p>
-              </div>
               <div>
                 <label className="block text-sm font-medium text-zinc-300 mb-2">
                   Event
@@ -943,11 +979,110 @@ export default function TicketManagementClient({
                 </select>
               </div>
             </div>
+
+            {/* Rows: Name + Email per ticket */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium text-zinc-300">
+                  Attendees (one per row)
+                </span>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setNewTicketRows((prev) => [...prev, { name: "", email: "" }])
+                  }
+                  className="text-sm text-emerald-400 hover:text-emerald-300 font-medium flex items-center gap-1"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                  Add row
+                </button>
+              </div>
+              <div className="rounded-xl border border-zinc-700 overflow-hidden">
+                <table className="w-full text-left">
+                  <thead>
+                    <tr className="bg-zinc-800/80 border-b border-zinc-700">
+                      <th className="px-4 py-3 text-xs font-medium text-zinc-400 uppercase tracking-wider w-[40%]">
+                        Name
+                      </th>
+                      <th className="px-4 py-3 text-xs font-medium text-zinc-400 uppercase tracking-wider">
+                        Email
+                      </th>
+                      <th className="w-12" />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {newTicketRows.map((row, index) => (
+                      <tr
+                        key={index}
+                        className="border-b border-zinc-800 last:border-0 bg-zinc-800/30"
+                      >
+                        <td className="px-4 py-2">
+                          <input
+                            type="text"
+                            value={row.name}
+                            onChange={(e) => {
+                              setNewTicketRows((prev) => {
+                                const next = [...prev];
+                                next[index] = { ...next[index], name: e.target.value };
+                                return next;
+                              });
+                            }}
+                            placeholder="Attendee name"
+                            className="w-full px-3 py-2 bg-zinc-800 border border-zinc-600 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 text-sm"
+                          />
+                        </td>
+                        <td className="px-4 py-2">
+                          <input
+                            type="email"
+                            value={row.email}
+                            onChange={(e) => {
+                              setNewTicketRows((prev) => {
+                                const next = [...prev];
+                                next[index] = { ...next[index], email: e.target.value };
+                                return next;
+                              });
+                            }}
+                            placeholder="email@example.com"
+                            className="w-full px-3 py-2 bg-zinc-800 border border-zinc-600 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 text-sm"
+                          />
+                        </td>
+                        <td className="px-2 py-2">
+                          {newTicketRows.length > 1 ? (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setNewTicketRows((prev) =>
+                                  prev.filter((_, i) => i !== index)
+                                )
+                              }
+                              className="p-1.5 text-zinc-400 hover:text-red-400 rounded-lg hover:bg-zinc-700 transition-colors"
+                              title="Remove row"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                              </svg>
+                            </button>
+                          ) : null}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
             <div className="flex items-center gap-4 pt-4 border-t border-zinc-800">
               <button
                 type="submit"
-                disabled={isSubmitting}
-                className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-emerald-500 to-teal-500 text-white rounded-xl font-medium hover:opacity-90 transition-opacity disabled:opacity-50"
+                disabled={
+                  isSubmitting ||
+                  !newTicketRows.some(
+                    (r) => r.email.trim() && r.name.trim()
+                  )
+                }
+                className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-emerald-500 to-teal-500 text-white rounded-xl font-medium hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isSubmitting ? (
                   <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
@@ -966,13 +1101,17 @@ export default function TicketManagementClient({
                     />
                   </svg>
                 )}
-                Create Ticket
+                Create{" "}
+                {newTicketRows.filter(
+                  (r) => r.email.trim() && r.name.trim()
+                ).length || 0}{" "}
+                ticket(s)
               </button>
               <button
                 type="button"
                 onClick={() => {
                   setShowAddForm(false);
-                  setNewTicketEmail("");
+                  setNewTicketRows([{ name: "", email: "" }]);
                   setNewTicketEventId("");
                   setNewTicketType("VIP");
                 }}
@@ -1106,6 +1245,9 @@ export default function TicketManagementClient({
                     Event
                   </th>
                   <th className="px-3 sm:px-6 py-3 sm:py-4 text-left text-xs font-medium text-zinc-400 uppercase tracking-wider">
+                    Name
+                  </th>
+                  <th className="px-3 sm:px-6 py-3 sm:py-4 text-left text-xs font-medium text-zinc-400 uppercase tracking-wider">
                     Email
                   </th>
                   <th className="px-3 sm:px-6 py-3 sm:py-4 text-left text-xs font-medium text-zinc-400 uppercase tracking-wider">
@@ -1134,6 +1276,38 @@ export default function TicketManagementClient({
                       </div>
                     </td>
                     <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap">
+                      {editingNameId === ticket.id ? (
+                        <input
+                          type="text"
+                          value={editingNameValue}
+                          onChange={(e) => setEditingNameValue(e.target.value)}
+                          onBlur={() => handleUpdateName(ticket.id, editingNameValue)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              handleUpdateName(ticket.id, editingNameValue);
+                            } else if (e.key === "Escape") {
+                              setEditingNameId(null);
+                            }
+                          }}
+                          autoFocus
+                          disabled={updatingTicketId === ticket.id}
+                          className="w-full px-2 py-1 text-sm bg-zinc-800 border border-zinc-600 rounded text-white focus:outline-none focus:border-emerald-500/50 disabled:opacity-50"
+                          placeholder="Enter name"
+                        />
+                      ) : (
+                        <button
+                          onClick={() => {
+                            setEditingNameId(ticket.id);
+                            setEditingNameValue(ticket.name || "");
+                          }}
+                          className="text-sm text-zinc-300 truncate max-w-[120px] sm:max-w-none hover:text-white transition-colors cursor-pointer"
+                          title="Click to edit name"
+                        >
+                          {ticket.name || "--"}
+                        </button>
+                      )}
+                    </td>
+                    <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap">
                       <div className="text-sm text-zinc-300 truncate max-w-[120px] sm:max-w-none">
                         {ticket.email}
                       </div>
@@ -1147,11 +1321,10 @@ export default function TicketManagementClient({
                           }
                         }}
                         disabled={updatingTicketId === ticket.id}
-                        className={`px-2 py-1 text-xs font-medium rounded-lg bg-zinc-800 border border-zinc-700 text-white focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 disabled:opacity-50 disabled:cursor-not-allowed ${
-                          ticket.type === "VIP"
-                            ? "bg-blue-500/20 text-blue-400 border-blue-500/30"
-                            : ""
-                        }`}
+                        className={`px-2 py-1 text-xs font-medium rounded-lg bg-zinc-800 border border-zinc-700 text-white focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 disabled:opacity-50 disabled:cursor-not-allowed ${ticket.type === "VIP"
+                          ? "bg-blue-500/20 text-blue-400 border-blue-500/30"
+                          : ""
+                          }`}
                       >
                         <option value="VIP">VIP</option>
                         <option value="STANDARD">STANDARD</option>
@@ -1172,11 +1345,10 @@ export default function TicketManagementClient({
                           }
                         }}
                         disabled={updatingTicketId === ticket.id}
-                        className={`px-2 py-1 text-xs font-medium rounded-lg bg-zinc-800 border border-zinc-700 text-white focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 disabled:opacity-50 disabled:cursor-not-allowed ${
-                          ticket.scanned
-                            ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/30"
-                            : ""
-                        }`}
+                        className={`px-2 py-1 text-xs font-medium rounded-lg bg-zinc-800 border border-zinc-700 text-white focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 disabled:opacity-50 disabled:cursor-not-allowed ${ticket.scanned
+                          ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/30"
+                          : ""
+                          }`}
                       >
                         <option value="scanned">Scanned</option>
                         <option value="not-scanned">Not Scanned</option>

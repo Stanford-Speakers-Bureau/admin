@@ -19,20 +19,21 @@ export async function pullFromWaitlist(
   // Get the first person on the waitlist for this event
   const { data: waitlistEntries, error: waitlistFetchError } = await adminClient
     .from("waitlist")
-    .select("id, email")
+    .select("id, email, name")
     .eq("event_id", eventId)
     .order("position", { ascending: true })
     .limit(maxToPull);
 
   if (waitlistFetchError || !waitlistEntries?.length) return 0;
 
-  // Create a STANDARD ticket for the waitlist person
+  // Create a STANDARD ticket for the waitlist person (transfer name from waitlist)
   const { data: newTickets, error: ticketCreateError } = await adminClient
     .from("tickets")
     .insert(
       waitlistEntries.map((entry) => ({
         event_id: eventId,
         email: entry.email,
+        name: entry.name ?? null,
         type: "STANDARD",
       })),
     )
@@ -40,6 +41,7 @@ export async function pullFromWaitlist(
       `
       id,
       email,
+      name,
       type,
       event_id,
       events (
@@ -98,6 +100,7 @@ export async function pullFromWaitlist(
         : newTicket.events;
       await sendTicketEmail({
         email: newTicket.email,
+        name: newTicket.name || null,
         eventName: eventData?.name || "Event",
         ticketType: newTicket.type || "STANDARD",
         eventStartTime: eventData?.start_time_date || null,
