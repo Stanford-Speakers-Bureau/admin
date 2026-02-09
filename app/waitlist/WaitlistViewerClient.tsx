@@ -431,7 +431,7 @@ export default function WaitlistViewerClient({
               <div className="space-y-4 mb-6">
                 <div>
                   <label className="block text-sm font-medium text-zinc-300 mb-2">
-                    Waitlist Open Time
+                    In-Person Waitlist Open Time
                   </label>
                   <input
                     type="text"
@@ -734,7 +734,7 @@ export default function WaitlistViewerClient({
             <div className="space-y-4 mb-6">
               <div>
                 <label className="block text-sm font-medium text-zinc-300 mb-2">
-                  Waitlist Open Time
+                  In-Person Waitlist Open Time
                 </label>
                 <input
                   type="text"
