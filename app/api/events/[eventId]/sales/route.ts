@@ -22,10 +22,10 @@ export async function GET(
 
     const adminClient = auth.adminClient!;
 
-    // Get event details to determine time range
+    // Get event details
     const { data: event, error: eventError } = await adminClient
       .from("events")
-      .select("release_date, start_time_date")
+      .select("release_date, start_time_date, capacity")
       .eq("id", eventId)
       .single();
 
@@ -33,17 +33,8 @@ export async function GET(
       return NextResponse.json({ error: "Event not found" }, { status: 404 });
     }
 
-    // Determine time range
-    const startDate = event.release_date
-      ? new Date(event.release_date)
-      : new Date(); // If no release date, use current time
-    const endDate = event.start_time_date
-      ? new Date(event.start_time_date)
-      : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // Default to 7 days from now
-
-    // Get all tickets for this event with created_at timestamps
-    // Fetch all tickets using pagination to avoid Supabase's default 1000 row limit
-    const allTickets: { created_at: string }[] = [];
+    // Fetch all tickets with created_at and type
+    const allTickets: { created_at: string; type: string | null }[] = [];
     const pageSize = 1000;
     let page = 0;
     let hasMore = true;
@@ -51,7 +42,7 @@ export async function GET(
     while (hasMore) {
       const { data: tickets, error: ticketsError } = await adminClient
         .from("tickets")
-        .select("created_at")
+        .select("created_at, type")
         .eq("event_id", eventId)
         .order("created_at", { ascending: true })
         .range(page * pageSize, (page + 1) * pageSize - 1);
@@ -73,54 +64,36 @@ export async function GET(
       }
     }
 
-    const tickets = allTickets;
+    const totalTickets = allTickets.length;
+    const vipCount = allTickets.filter((t) => t.type === "VIP").length;
+    const standardCount = totalTickets - vipCount;
 
-    // Always use 1-hour intervals
-    const intervalHours = 1;
+    // Milestones
+    const capacity = event.capacity || 0;
+    const milestones = [25, 50, 75, 100].map((pct) => {
+      const target = Math.ceil((capacity * pct) / 100);
+      const reached = totalTickets >= target;
+      return {
+        percent: pct,
+        reached,
+        ticketNumber: target,
+        reachedAt:
+          reached && allTickets.length >= target
+            ? allTickets[target - 1].created_at
+            : null,
+      };
+    });
 
-    // Create intervals
-    const intervals: { time: string; count: number; cumulative: number }[] = [];
-    let currentTime = new Date(startDate);
-    let cumulativeCount = 0;
-
-    while (currentTime < endDate) {
-      const intervalEnd = new Date(
-        currentTime.getTime() + intervalHours * 60 * 60 * 1000,
-      );
-      const intervalEndTime = intervalEnd > endDate ? endDate : intervalEnd;
-
-      // Count tickets in this interval
-      const intervalCount =
-        tickets?.filter((ticket) => {
-          const ticketTime = new Date(ticket.created_at);
-          return ticketTime >= currentTime && ticketTime < intervalEndTime;
-        }).length || 0;
-
-      cumulativeCount += intervalCount;
-
-      intervals.push({
-        time: currentTime.toISOString(),
-        count: intervalCount,
-        cumulative: cumulativeCount,
-      });
-
-      currentTime = intervalEnd;
-    }
-
-    // Ensure we have at least one data point
-    if (intervals.length === 0) {
-      intervals.push({
-        time: startDate.toISOString(),
-        count: 0,
-        cumulative: 0,
-      });
-    }
+    // Send raw timestamps for client-side bucketing (just the ISO strings)
+    const timestamps = allTickets.map((t) => t.created_at);
 
     return NextResponse.json({
-      data: intervals,
-      startDate: startDate.toISOString(),
-      endDate: endDate.toISOString(),
-      totalTickets: tickets?.length || 0,
+      timestamps,
+      totalTickets,
+      capacity,
+      vipCount,
+      standardCount,
+      milestones,
     });
   } catch (error) {
     console.error("Ticket sales fetch error:", error);
