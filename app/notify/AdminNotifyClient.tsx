@@ -6,6 +6,8 @@ export type EventWithNotifications = {
   id: string;
   name: string | null;
   start_time_date: string | null;
+  route?: string | null;
+  ticketing_date?: string | null;
   notifications: {
     id: string;
     email: string;
@@ -17,12 +19,34 @@ type AdminNotifyClientProps = {
   initialEvents: EventWithNotifications[];
 };
 
+/** Returns a duration from now to ticketing_date for "available in approximately X" (e.g. "2 hours", "1 day"). */
+function approxDurationUntil(ticketingDate: string): string {
+  const d = new Date(ticketingDate);
+  if (Number.isNaN(d.getTime())) return "";
+  const now = Date.now();
+  const ms = d.getTime() - now;
+  if (ms <= 0) return "a moment"; // already passed
+  const minutes = Math.round(ms / (60 * 1000));
+  const hours = Math.round(ms / (60 * 60 * 1000));
+  const days = Math.round(ms / (24 * 60 * 60 * 1000));
+  if (minutes < 60) return minutes <= 1 ? "1 minute" : `${minutes} minutes`;
+  if (hours < 24) return hours === 1 ? "1 hour" : `${hours} hours`;
+  return days === 1 ? "1 day" : `${days} days`;
+}
+
 export default function AdminNotifyClient({
   initialEvents,
 }: AdminNotifyClientProps) {
   const [events, setEvents] = useState<EventWithNotifications[]>(initialEvents);
   const [expandedEvent, setExpandedEvent] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
+  const [sendEmailEventId, setSendEmailEventId] = useState<string | null>(null);
+  const [sendEmailSingleEmail, setSendEmailSingleEmail] = useState<string | null>(null);
+  const [sendVariant, setSendVariant] = useState<"now" | "in">("now");
+  const [sendApproxTime, setSendApproxTime] = useState("");
+  const [isSendingNotify, setIsSendingNotify] = useState(false);
+  const [notifySuccess, setNotifySuccess] = useState<string | null>(null);
+  const [notifyError, setNotifyError] = useState<string | null>(null);
 
   function exportToCSV(event: EventWithNotifications) {
     const csv = [
@@ -39,6 +63,78 @@ export default function AdminNotifyClient({
     a.download = `${event.name || "event"}-notifications.csv`;
     a.click();
     URL.revokeObjectURL(url);
+  }
+
+  function openSendEmailModal(event: EventWithNotifications, singleEmail?: string) {
+    setSendEmailEventId(event.id);
+    setSendEmailSingleEmail(singleEmail ?? null);
+    setSendVariant("now");
+    setSendApproxTime(
+      event.ticketing_date ? approxDurationUntil(event.ticketing_date) : "",
+    );
+    setNotifySuccess(null);
+    setNotifyError(null);
+  }
+
+  function closeSendEmailModal() {
+    setSendEmailEventId(null);
+    setSendEmailSingleEmail(null);
+    setSendApproxTime("");
+    setNotifyError(null);
+  }
+
+  async function handleSendNotifyEmails() {
+    if (!sendEmailEventId) return;
+    if (sendVariant === "in" && !sendApproxTime.trim()) {
+      setNotifyError("Please enter when tickets will be available.");
+      return;
+    }
+    const event = events.find((e) => e.id === sendEmailEventId);
+    const eventName = event?.name || "this event";
+    const recipientCount = sendEmailSingleEmail ? 1 : (event?.notifications.length ?? 0);
+    if (recipientCount === 0) {
+      setNotifyError("No recipients to send to.");
+      return;
+    }
+    const confirmMessage = sendEmailSingleEmail
+      ? `Send "${sendVariant === "now" ? "Tickets available now" : `Tickets available in ${sendApproxTime.trim()}`}" email to ${sendEmailSingleEmail} for ${eventName}?`
+      : `Send "${sendVariant === "now" ? "Tickets available now" : `Tickets available in ${sendApproxTime.trim()}`}" email to all ${recipientCount} people on the list for ${eventName}?`;
+    if (!confirm(confirmMessage)) return;
+
+    setIsSendingNotify(true);
+    setNotifyError(null);
+    setNotifySuccess(null);
+
+    try {
+      const res = await fetch("/api/notify/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          eventId: sendEmailEventId,
+          variant: sendVariant,
+          ...(sendVariant === "in" && { approxTimeUntilAvailable: sendApproxTime.trim() }),
+          ...(sendEmailSingleEmail && { singleEmail: sendEmailSingleEmail }),
+        }),
+      });
+      const data = (await res.json()) as { error?: string; sent?: number; failed?: number };
+
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to send emails");
+      }
+      const { sent = 0, failed = 0 } = data;
+      setNotifySuccess(
+        sendEmailSingleEmail
+          ? "Email sent."
+          : `Emails sent: ${sent} sent, ${failed} failed.`,
+      );
+      if (sent > 0 && failed === 0) {
+        setTimeout(closeSendEmailModal, 1500);
+      }
+    } catch (err) {
+      setNotifyError(err instanceof Error ? err.message : "Failed to send emails");
+    } finally {
+      setIsSendingNotify(false);
+    }
   }
 
   const filteredEvents = events.filter((event) => {
@@ -185,28 +281,52 @@ export default function AdminNotifyClient({
                 </div>
                 <div className="flex items-center gap-3">
                   {event.notifications.length > 0 && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        exportToCSV(event);
-                      }}
-                      className="flex items-center gap-2 px-3 py-1.5 bg-zinc-800 text-zinc-300 rounded text-sm hover:bg-zinc-700 transition-colors"
-                    >
-                      <svg
-                        className="w-4 h-4"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
+                    <>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openSendEmailModal(event);
+                        }}
+                        className="flex items-center gap-2 px-3 py-1.5 bg-rose-500/20 text-rose-400 border border-rose-500/30 rounded text-sm hover:bg-rose-500/30 transition-colors"
                       >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
-                        />
-                      </svg>
-                      Export CSV
-                    </button>
+                        <svg
+                          className="w-4 h-4"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
+                          />
+                        </svg>
+                        Send email
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          exportToCSV(event);
+                        }}
+                        className="flex items-center gap-2 px-3 py-1.5 bg-zinc-800 text-zinc-300 rounded text-sm hover:bg-zinc-700 transition-colors"
+                      >
+                        <svg
+                          className="w-4 h-4"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+                          />
+                        </svg>
+                        Export CSV
+                      </button>
+                    </>
                   )}
                   <svg
                     className={`w-5 h-5 text-zinc-500 transition-transform ${
@@ -234,6 +354,7 @@ export default function AdminNotifyClient({
                         <tr>
                           <th className="pb-3 font-medium">Email</th>
                           <th className="pb-3 font-medium">Signed Up</th>
+                          <th className="pb-3 font-medium w-20 text-right">Actions</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-zinc-800/50">
@@ -246,6 +367,31 @@ export default function AdminNotifyClient({
                               {new Date(
                                 notification.created_at,
                               ).toLocaleString()}
+                            </td>
+                            <td className="py-3 text-right">
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  openSendEmailModal(event, notification.email);
+                                }}
+                                className="text-blue-400 hover:text-blue-300 transition-colors"
+                                title="Send email to this person"
+                              >
+                                <svg
+                                  className="w-5 h-5 inline"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  viewBox="0 0 24 24"
+                                >
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
+                                  />
+                                </svg>
+                              </button>
                             </td>
                           </tr>
                         ))}
@@ -290,6 +436,103 @@ export default function AdminNotifyClient({
           </div>
         </div>
       )}
+
+      {/* Send email modal */}
+      {sendEmailEventId && (() => {
+        const event = events.find((e) => e.id === sendEmailEventId);
+        return (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) closeSendEmailModal();
+            }}
+          >
+            <div
+              className="bg-zinc-900 border border-zinc-800 rounded-xl shadow-xl max-w-md w-full p-6"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h3 className="text-lg font-semibold text-white mb-1">
+                Send email
+              </h3>
+              <p className="text-zinc-500 text-sm mb-4">
+                {event?.name || "Event"}
+                {sendEmailSingleEmail ? (
+                  <> → {sendEmailSingleEmail}</>
+                ) : (
+                  <> → all {event?.notifications.length ?? 0} on list</>
+                )}
+              </p>
+              <div className="space-y-3 mb-4">
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="variant"
+                    checked={sendVariant === "now"}
+                    onChange={() => setSendVariant("now")}
+                    className="rounded-full border-zinc-600 text-rose-500 focus:ring-rose-500"
+                  />
+                  <span className="text-white">Tickets available now</span>
+                </label>
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="variant"
+                    checked={sendVariant === "in"}
+                    onChange={() => setSendVariant("in")}
+                    className="rounded-full border-zinc-600 text-rose-500 focus:ring-rose-500"
+                  />
+                  <span className="text-white">
+                    Tickets available in (approx time)
+                  </span>
+                </label>
+                {sendVariant === "in" && (
+                  <input
+                    type="text"
+                    value={sendApproxTime}
+                    onChange={(e) => setSendApproxTime(e.target.value)}
+                    placeholder="e.g. 2 hours, or Mon Feb 17 at 10am PT"
+                    className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:border-rose-500/50 text-sm ml-6"
+                  />
+                )}
+              </div>
+              {notifyError && (
+                <p className="text-rose-400 text-sm mb-3">{notifyError}</p>
+              )}
+              {notifySuccess && (
+                <p className="text-emerald-400 text-sm mb-3">{notifySuccess}</p>
+              )}
+              <div className="flex gap-3 justify-end">
+                <button
+                  type="button"
+                  onClick={closeSendEmailModal}
+                  disabled={isSendingNotify}
+                  className="px-4 py-2 rounded-lg border border-zinc-600 text-zinc-300 hover:bg-zinc-800 disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSendNotifyEmails}
+                  disabled={
+                    isSendingNotify ||
+                    (sendVariant === "in" && !sendApproxTime.trim())
+                  }
+                  className="px-4 py-2 rounded-lg bg-rose-500 text-white hover:bg-rose-600 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                >
+                  {isSendingNotify ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      Sending…
+                    </>
+                  ) : (
+                    "Send"
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
