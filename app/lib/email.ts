@@ -1,6 +1,6 @@
 import type { QRCodeToBufferOptions } from "qrcode";
 import QRCode from "qrcode";
-import { PACIFIC_TIMEZONE } from "./constants";
+import { IMPORTANT_NOTICE_ITEMS, PACIFIC_TIMEZONE } from "./constants";
 import { generateGoogleCalendarUrl } from "./utils";
 
 // emails are so stupid
@@ -173,6 +173,67 @@ async function sendRawEmailViaSES(rawMessage: string): Promise<void> {
 
 const FROM_EMAIL =
   process.env.SES_FROM_EMAIL || "hello@stanfordspeakersbureau.com";
+
+/**
+ * Generates the HTML for the "Important" notice block used in email templates.
+ * Accepts optional extra HTML strings to append after the base items.
+ * When eventPageUrl is provided, adds "Additional Terms and Conditions" line below the notice.
+ */
+function getImportantNoticeHTML(
+  gmailBlendStart: string,
+  gmailBlendEnd: string,
+  extraItems?: string[],
+  eventPageUrl?: string | null,
+): string {
+  const allItems = [
+    ...IMPORTANT_NOTICE_ITEMS.map(
+      (item) =>
+        `<b>
+                    <span style="display: inline-block; vertical-align: middle; margin-right: 8px;">${item.emoji}</span>
+                    ${item.text}
+                  </b>`,
+    ),
+    ...(extraItems || []),
+  ];
+
+  const itemsHTML = allItems
+    .map((content, i) => {
+      const marginStyle =
+        i < allItems.length - 1 ? ' style="margin-bottom: 8px;"' : "";
+      return `<div${marginStyle}>
+                  ${content}
+                </div>`;
+    })
+    .join("\n                ");
+
+  const termsLine =
+    eventPageUrl &&
+    `<div style="margin: -8px 0 24px 0; color: #f4f4f5; font-size: 14px; line-height: 1.6;">
+              Additional Terms and Conditions can be found <a href="${eventPageUrl}" style="color: #fbbf24; text-decoration: underline;">here</a>.
+            </div>`;
+
+  return `<!-- Important Notice -->
+          <div style="background-color: #A80D0C; padding: 20px 24px; margin-bottom: 24px; border-radius: 8px; text-align: center;">
+            ${gmailBlendStart}
+              <h2 style="margin: 0 0 12px 0; color: #ffffff; font-size: 18px; font-weight: 700; text-transform: uppercase;"><b>Important</b></h2>
+              <div style="color: #ffffff; font-size: 15px; line-height: 1.8;">
+                ${itemsHTML}
+              </div>
+            ${gmailBlendEnd}
+          </div>${termsLine || ""}`;
+}
+
+/**
+ * Generates the plain text version of the "Important" notice for email templates.
+ * When eventPageUrl is provided, adds "Additional Terms and Conditions" line below the notice.
+ */
+function getImportantNoticeText(eventPageUrl?: string | null): string {
+  const base = `IMPORTANT:\n${IMPORTANT_NOTICE_ITEMS.map((item) => `- ${item.text}`).join("\n")}`;
+  if (eventPageUrl) {
+    return `${base}\n\nAdditional Terms and Conditions can be found here: ${eventPageUrl}`;
+  }
+  return base;
+}
 
 type TicketEmailData = {
   email: string;
@@ -459,6 +520,10 @@ async function generateTicketEmailHTML(
       background-color: #A80D0C !important; 
       background-image: linear-gradient(180deg, #A80D0C, #A80D0D) !important;
     }
+    u + .body .qr-code-wrapper-vip { 
+      background-color: #D4AF37 !important; 
+      background-image: linear-gradient(180deg, #D4AF37, #D4A017) !important;
+    }
     u + .body .ticket-type-vip { 
       background-color: #A80D0C !important; 
       background-image: linear-gradient(#A80D0C, #A80D0D) !important;
@@ -539,32 +604,7 @@ async function generateTicketEmailHTML(
       <td align="center" class="email-container" style="background-color: #27272a; padding: 40px 20px; max-width: 900px; width: 100%;">
         <div class="email-content" style="padding: 0; max-width: 600px; margin: 0 auto;">
           
-          <!-- Important Notice -->
-          <div style="background-color: #A80D0C; padding: 20px 24px; margin-bottom: 24px; border-radius: 8px; text-align: center;">
-            ${gmailBlendStart}
-              <h2 style="margin: 0 0 12px 0; color: #ffffff; font-size: 18px; font-weight: 700; text-transform: uppercase;"><b>Important</b></h2>
-              <div style="color: #ffffff; font-size: 15px; line-height: 1.8;">
-                <div style="margin-bottom: 8px;">
-                  <b>
-                    <span style="display: inline-block; vertical-align: middle; margin-right: 8px;">🎒</span>
-                    No bags are allowed at the venue
-                  </b>
-                </div>
-                <div style="margin-bottom: 8px;">
-                  <b>
-                    <span style="display: inline-block; vertical-align: middle; margin-right: 8px;">❌</span>
-                    Your ticket is not transferable
-                  </b>
-                </div>
-                <div>
-                  <b>
-                    <span style="display: inline-block; vertical-align: middle; margin-right: 8px;">🪪</span>
-                    A valid form of ID is required for entry
-                  </b>
-                </div>
-              </div>
-            ${gmailBlendEnd}
-          </div>
+          ${getImportantNoticeHTML(gmailBlendStart, gmailBlendEnd, undefined, eventUrl)}
           
           ${gmailBlendStart}
             ${isVIP
@@ -707,7 +747,7 @@ async function generateTicketEmailHTML(
               <h2 class="qr-title" style="margin: 0 0 16px 0; color: #ffffff; font-size: 20px; font-weight: 600;">Your Ticket QR Code</h2>
             ${gmailBlendEnd}
 
-            <div class="qr-code-wrapper" style="display: inline-block; border-radius: 12px; ${isVIP ? "background-color: #A80D0C; padding: 4px;" : "padding: 0;"
+            <div class="qr-code-wrapper${isVIP ? " qr-code-wrapper-vip" : ""}" style="display: inline-block; border-radius: 12px; ${isVIP ? "background-color: #D4AF37; padding: 4px;" : "padding: 0;"
       }">
               <div style="background-color: #ffffff; padding: 16px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);">
                 <img src="${qrImageSrc}" alt="Ticket QR Code" class="qr-code-img" style="display: block; width: 350px; max-width: 100%; height: auto;" />
@@ -717,7 +757,7 @@ async function generateTicketEmailHTML(
             ${isVIP
         ? `
             <div style="margin-top: 12px;">
-              <span style="display: inline-block; padding: 6px 16px; background-color: #A80D0C; color: #ffffff; border-radius: 20px; font-size: 12px; font-weight: 700; text-transform: uppercase;">
+              <span style="display: inline-block; padding: 6px 16px; background-color: #D4AF37; color: #1a1a1a; border-radius: 20px; font-size: 12px; font-weight: 700; text-transform: uppercase;">
                 VIP
               </span>
             </div>
@@ -787,10 +827,7 @@ async function generateTicketEmailHTML(
             Stanford Speakers Bureau
           </p>
           <p style="margin: 0; color: #71717a; font-size: 12px;">
-            If you have any questions, please contact us at <a href="mailto:${FROM_EMAIL}" style="color: #a1a1aa; text-decoration: none;">${FROM_EMAIL}</a>
-          </p>
-          <p style="margin: 8px 0 0 0; color: #71717a; font-size: 12px;">
-            For ADA accommodations, please email <a href="mailto:${FROM_EMAIL}" style="color: #a1a1aa; text-decoration: none;">${FROM_EMAIL}</a>
+            For ADA accommodations or other questions, please email <a href="mailto:${FROM_EMAIL}" style="color: #a1a1aa; text-decoration: none;">${FROM_EMAIL}</a>
           </p>
         ${gmailBlendEnd}
       </td>
@@ -856,10 +893,7 @@ ${formattedDoorsOpen ? `- Doors Open: ${formattedDoorsOpen}` : ""}- Ticket Type:
 - Ticket ID: ${ticketId}
 ${eventUrl ? `- Event URL: ${eventUrl}` : ""}
 
-IMPORTANT:
-- No bags are allowed at the venue
-- Your ticket is not transferable
-- A valid form of ID is required for entry.
+${getImportantNoticeText(eventUrl)}
 
 Life happens, and we understand plans can change. If you find yourself unable to attend, please take a moment to cancel your ticket using the link below. Your thoughtfulness helps us extend the opportunity to others who are excited to attend.
 
@@ -868,14 +902,13 @@ ${cancelTicketUrl ? `Cancel Ticket: ${cancelTicketUrl}` : ""}
 Please bring a valid ID and this confirmation email to the event. We look forward to seeing you there! If you have friends without tickets, they should come and wait on the in-person waitlist.
 
 Stanford Speakers Bureau
-If you have any questions, please contact us at ${FROM_EMAIL}
-For ADA accommodations, please email ${FROM_EMAIL}
+For ADA accommodations or other questions, please email ${FROM_EMAIL}
   `.trim();
 }
 
 /**
  * Generate HTML email content for day-of reminder
- * Includes the full ticket email plus "no bags" and ADA accommodations reminders
+ * Includes the full ticket email plus "no bags" reminders
  */
 async function generateDayOfReminderEmailHTML(
   data: TicketEmailData & { doorsOpenTime?: string | null },
@@ -989,6 +1022,10 @@ async function generateDayOfReminderEmailHTML(
       background-color: #A80D0C !important; 
       background-image: linear-gradient(180deg, #A80D0C, #A80D0D) !important;
     }
+    u + .body .qr-code-wrapper-vip { 
+      background-color: #D4AF37 !important; 
+      background-image: linear-gradient(180deg, #D4AF37, #D4A017) !important;
+    }
     u + .body .ticket-type-vip { 
       background-color: #A80D0C !important; 
       background-image: linear-gradient(#A80D0C, #A80D0D) !important;
@@ -1074,38 +1111,9 @@ async function generateDayOfReminderEmailHTML(
       <td align="center" class="email-container" style="background-color: #27272a; padding: 40px 20px; max-width: 900px; width: 100%;">
         <div class="email-content" style="padding: 0; max-width: 600px; margin: 0 auto;">
           
-          <!-- Important Notice -->
-          <div style="background-color: #A80D0C; padding: 20px 24px; margin-bottom: 24px; border-radius: 8px; text-align: center;">
-            ${gmailBlendStart}
-              <h2 style="margin: 0 0 12px 0; color: #ffffff; font-size: 18px; font-weight: 700; text-transform: uppercase;"><b>Important</b></h2>
-              <div style="color: #ffffff; font-size: 15px; line-height: 1.8;">
-                <div style="margin-bottom: 8px;">
-                  <b>
-                    <span style="display: inline-block; vertical-align: middle; margin-right: 8px;">🎒</span>
-                    No bags are allowed at the venue
-                  </b>
-                </div>
-                <div style="margin-bottom: 8px;">
-                  <b>
-                    <span style="display: inline-block; vertical-align: middle; margin-right: 8px;">❌</span>
-                    Your ticket is not transferable
-                  </b>
-                </div>
-                <div style="margin-bottom: 8px;">
-                  <b>
-                    <span style="display: inline-block; vertical-align: middle; margin-right: 8px;">🪪</span>
-                    A valid form of ID is required for entry
-                  </b>
-                </div>
-                <div style="margin-bottom: 8px;">
-                  For ADA accommodations, please email <a href="mailto:${FROM_EMAIL}" style="color: #ffffff; text-decoration: underline;">${FROM_EMAIL}</a>
-                </div>
-                <div>
-                  If you have friends without tickets, they should come and wait on the in-person waitlist
-                </div>
-              </div>
-            ${gmailBlendEnd}
-          </div>
+          ${getImportantNoticeHTML(gmailBlendStart, gmailBlendEnd, [
+            `If you have friends without tickets, they should come and wait on the in-person waitlist`,
+          ], eventUrl)}
           
           ${gmailBlendStart}
             ${isVIP
@@ -1248,7 +1256,7 @@ async function generateDayOfReminderEmailHTML(
               <h2 class="qr-title" style="margin: 0 0 16px 0; color: #ffffff; font-size: 20px; font-weight: 600;">Your Ticket QR Code</h2>
             ${gmailBlendEnd}
 
-            <div class="qr-code-wrapper" style="display: inline-block; border-radius: 12px; ${isVIP ? "background-color: #A80D0C; padding: 4px;" : "padding: 0;"
+            <div class="qr-code-wrapper${isVIP ? " qr-code-wrapper-vip" : ""}" style="display: inline-block; border-radius: 12px; ${isVIP ? "background-color: #D4AF37; padding: 4px;" : "padding: 0;"
       }">
               <div style="background-color: #ffffff; padding: 16px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);">
                 <img src="${qrImageSrc}" alt="Ticket QR Code" class="qr-code-img" style="display: block; width: 350px; max-width: 100%; height: auto;" />
@@ -1258,7 +1266,7 @@ async function generateDayOfReminderEmailHTML(
             ${isVIP
         ? `
             <div style="margin-top: 12px;">
-              <span style="display: inline-block; padding: 6px 16px; background-color: #A80D0C; color: #ffffff; border-radius: 20px; font-size: 12px; font-weight: 700; text-transform: uppercase;">
+              <span style="display: inline-block; padding: 6px 16px; background-color: #D4AF37; color: #1a1a1a; border-radius: 20px; font-size: 12px; font-weight: 700; text-transform: uppercase;">
                 VIP
               </span>
             </div>
@@ -1325,10 +1333,7 @@ async function generateDayOfReminderEmailHTML(
             Stanford Speakers Bureau
           </p>
           <p style="margin: 0; color: #71717a; font-size: 12px;">
-            If you have any questions, please contact us at <a href="mailto:${FROM_EMAIL}" style="color: #a1a1aa; text-decoration: none;">${FROM_EMAIL}</a>
-          </p>
-          <p style="margin: 8px 0 0 0; color: #71717a; font-size: 12px;">
-            For ADA accommodations, please email <a href="mailto:${FROM_EMAIL}" style="color: #a1a1aa; text-decoration: none;">${FROM_EMAIL}</a>
+            For ADA accommodations or other questions, please email <a href="mailto:${FROM_EMAIL}" style="color: #a1a1aa; text-decoration: none;">${FROM_EMAIL}</a>
           </p>
         ${gmailBlendEnd}
       </td>
@@ -1389,10 +1394,7 @@ ${eventName || "Event"} is TODAY${formattedDoorsOpen ? ` - Doors at ${formattedD
 
 ${ticketType?.toUpperCase() === "VIP" ? "We've reserved a seat for you in the front few rows. When you arrive at the event, please use the VIP entrance.\n\n" : ""}We're so excited to see you tonight! As a reminder, doors open at ${formattedDoorsOpen || "7:30 PM"}. Late entry is not permitted. For security reasons, no bags will be permitted at the event.
 
-IMPORTANT:
-- No bags are allowed at the venue
-- Your ticket is not transferable
-- A valid form of ID is required for entry.
+${getImportantNoticeText(eventUrl)}
 
 Life happens, and we understand plans can change. If you find yourself unable to attend, please take a moment to cancel your ticket using the link below. Your thoughtfulness helps us extend the opportunity to others who are excited to attend.
 
@@ -1408,7 +1410,7 @@ ${eventUrl ? `- Event URL: ${eventUrl}` : ""}
 Please bring a valid ID and this confirmation email to the event. We look forward to seeing you there!
 
 Stanford Speakers Bureau
-If you have any questions, please contact us at ${FROM_EMAIL}
+For ADA accommodations or other questions, please email ${FROM_EMAIL}
   `.trim();
 }
 
@@ -1418,7 +1420,7 @@ type DayOfReminderEmailData = TicketEmailData & {
 
 /**
  * Send day-of reminder email via AWS SES
- * Includes the full ticket email plus "no bags" and ADA accommodations reminders
+ * Includes the full ticket email plus "no bags" reminders
  */
 export async function sendDayOfReminderEmail(
   data: DayOfReminderEmailData,
@@ -1668,6 +1670,10 @@ async function generateEarlyReminderEmailHTML(
       background-color: #A80D0C !important; 
       background-image: linear-gradient(180deg, #A80D0C, #A80D0D) !important;
     }
+    u + .body .qr-code-wrapper-vip { 
+      background-color: #D4AF37 !important; 
+      background-image: linear-gradient(180deg, #D4AF37, #D4A017) !important;
+    }
     u + .body .ticket-type-vip { 
       background-color: #A80D0C !important; 
       background-image: linear-gradient(#A80D0C, #A80D0D) !important;
@@ -1755,32 +1761,7 @@ async function generateEarlyReminderEmailHTML(
       <td align="center" class="email-container" style="background-color: #27272a; padding: 40px 20px; max-width: 900px; width: 100%;">
         <div class="email-content" style="padding: 0; max-width: 600px; margin: 0 auto;">
           
-          <!-- Important Notice -->
-          <div style="background-color: #A80D0C; padding: 20px 24px; margin-bottom: 24px; border-radius: 8px; text-align: center;">
-            ${gmailBlendStart}
-              <h2 style="margin: 0 0 12px 0; color: #ffffff; font-size: 18px; font-weight: 700; text-transform: uppercase;"><b>Important</b></h2>
-              <div style="color: #ffffff; font-size: 15px; line-height: 1.8;">
-                <div style="margin-bottom: 8px;">
-                  <b>
-                    <span style="display: inline-block; vertical-align: middle; margin-right: 8px;">🎒</span>
-                    No bags are allowed at the venue
-                  </b>
-                </div>
-                <div style="margin-bottom: 8px;">
-                  <b>
-                    <span style="display: inline-block; vertical-align: middle; margin-right: 8px;">❌</span>
-                    Your ticket is not transferable
-                  </b>
-                </div>
-                <div>
-                  <b>
-                    <span style="display: inline-block; vertical-align: middle; margin-right: 8px;">🪪</span>
-                    A valid form of ID is required for entry
-                  </b>
-                </div>
-              </div>
-            ${gmailBlendEnd}
-          </div>
+          ${getImportantNoticeHTML(gmailBlendStart, gmailBlendEnd, undefined, eventUrl)}
           
           <!-- Early Reminder Card -->
           <div class="reminder-card" style="background-color: #18181b; padding: 24px; margin-bottom: 24px; border-radius: 8px;">
@@ -1933,7 +1914,7 @@ async function generateEarlyReminderEmailHTML(
               <h2 class="qr-title" style="margin: 0 0 16px 0; color: #ffffff; font-size: 20px; font-weight: 600;">Your Ticket QR Code</h2>
             ${gmailBlendEnd}
 
-            <div class="qr-code-wrapper" style="display: inline-block; border-radius: 12px; ${isVIP ? "background-color: #A80D0C; padding: 4px;" : "padding: 0;"
+            <div class="qr-code-wrapper${isVIP ? " qr-code-wrapper-vip" : ""}" style="display: inline-block; border-radius: 12px; ${isVIP ? "background-color: #D4AF37; padding: 4px;" : "padding: 0;"
       }">
               <div style="background-color: #ffffff; padding: 16px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);">
                 <img src="${qrImageSrc}" alt="Ticket QR Code" class="qr-code-img" style="display: block; width: 350px; max-width: 100%; height: auto;" />
@@ -1943,7 +1924,7 @@ async function generateEarlyReminderEmailHTML(
             ${isVIP
         ? `
             <div style="margin-top: 12px;">
-              <span style="display: inline-block; padding: 6px 16px; background-color: #A80D0C; color: #ffffff; border-radius: 20px; font-size: 12px; font-weight: 700; text-transform: uppercase;">
+              <span style="display: inline-block; padding: 6px 16px; background-color: #D4AF37; color: #1a1a1a; border-radius: 20px; font-size: 12px; font-weight: 700; text-transform: uppercase;">
                 VIP
               </span>
             </div>
@@ -2010,10 +1991,7 @@ async function generateEarlyReminderEmailHTML(
             Stanford Speakers Bureau
           </p>
           <p style="margin: 0; color: #71717a; font-size: 12px;">
-            If you have any questions, please contact us at <a href="mailto:${FROM_EMAIL}" style="color: #a1a1aa; text-decoration: none;">${FROM_EMAIL}</a>
-          </p>
-          <p style="margin: 8px 0 0 0; color: #71717a; font-size: 12px;">
-            For ADA accommodations, please email <a href="mailto:${FROM_EMAIL}" style="color: #a1a1aa; text-decoration: none;">${FROM_EMAIL}</a>
+            For ADA accommodations or other questions, please email <a href="mailto:${FROM_EMAIL}" style="color: #a1a1aa; text-decoration: none;">${FROM_EMAIL}</a>
           </p>
         ${gmailBlendEnd}
       </td>
@@ -2099,10 +2077,7 @@ Life happens, and we understand plans can change. If you find yourself unable to
 
 ${cancelTicketUrl ? `Cancel Ticket: ${cancelTicketUrl}` : ""}
 
-IMPORTANT:
-- No bags are allowed at the venue
-- Your ticket is not transferable
-- A valid form of ID is required for entry.
+${getImportantNoticeText(eventUrl)}
 
 Event Details:
 ${data.name ? `- Name: ${data.name}\n` : ""}- Event: ${eventName || "Event"}
@@ -2114,8 +2089,7 @@ ${eventUrl ? `- Event URL: ${eventUrl}` : ""}
 Please bring a valid form of ID and this confirmation email to the event. We look forward to seeing you there!
 
 Stanford Speakers Bureau
-If you have any questions, please contact us at ${FROM_EMAIL}
-For ADA accommodations, please email ${FROM_EMAIL}
+For ADA accommodations or other questions, please email ${FROM_EMAIL}
   `.trim();
 }
 
@@ -2470,7 +2444,7 @@ async function generateWaitlistClosedEmailHTML(
             Stanford Speakers Bureau
           </p>
           <p style="margin: 0; color: #71717a; font-size: 12px;">
-            If you have any questions, please contact us at <a href="mailto:${FROM_EMAIL}" style="color: #a1a1aa; text-decoration: none;">${FROM_EMAIL}</a>
+            For ADA accommodations or other questions, please email <a href="mailto:${FROM_EMAIL}" style="color: #a1a1aa; text-decoration: none;">${FROM_EMAIL}</a>
           </p>
         ${gmailBlendEnd}
       </td>
@@ -2521,7 +2495,7 @@ Event Details:
 ${eventVenue ? `- Location: ${eventVenue}${eventVenueLink ? ` (${eventVenueLink})` : ""}` : ""}
 
 Stanford Speakers Bureau
-If you have any questions, please contact us at ${FROM_EMAIL}
+For ADA accommodations or other questions, please email ${FROM_EMAIL}
   `.trim();
 }
 
