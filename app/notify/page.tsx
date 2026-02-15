@@ -18,7 +18,7 @@ async function getInitialNotifications(): Promise<EventWithNotifications[]> {
     ] = await Promise.all([
       client
         .from("events")
-        .select("id, name, start_time_date")
+        .select("id, name, start_time_date, route, ticketing_date")
         .order("start_time_date", { ascending: false }),
       client
         .from("notify")

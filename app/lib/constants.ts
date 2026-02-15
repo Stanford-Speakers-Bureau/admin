@@ -22,11 +22,19 @@ export const SUGGEST_MESSAGES = {
 export const BANNER_MESSAGES = {
   NOTIFY_MESSAGE: "GET EARLY ACCESS TO OUR NEXT SPEAKER!!",
   EVENT_MESSAGE: " is coming to Stanford!",
-  COUNTDOWN_REVEAL_MESSAGE: "Speaker Name & Ticket Reveal in",
+  EVENT_MESSAGE_PLURAL: " are coming to Stanford!",
+  COUNTDOWN_REVEAL_MESSAGE: "Speaker Reveal in",
+  COUNTDOWN_TICKETS_MESSAGE: "FREE Tickets Go Live in",
   COUNTDOWN_EVENT_MESSAGE: "Event starts in",
 };
 
 export const PACIFIC_TIMEZONE = "America/Los_Angeles";
+
+export const IMPORTANT_NOTICE_ITEMS = [
+  { emoji: "🎒", text: "No bags are allowed at the venue" },
+  { emoji: "❌", text: "Your ticket is not transferable" },
+  { emoji: "🪪", text: "A valid form of ID is required for entry" },
+] as const;
 
 export const REFERRAL_MESSAGE = "Refer 10 people to earn a front row seat!";
 

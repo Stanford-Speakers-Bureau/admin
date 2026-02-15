@@ -1271,7 +1271,7 @@ export default function TicketManagementClient({
                     className="hover:bg-zinc-800/30 transition-colors"
                   >
                     <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap">
-                      <div className="text-sm font-medium text-white truncate max-w-[120px] sm:max-w-none">
+                      <div className="text-sm font-medium text-white truncate max-w-[120px]">
                         {ticket.events?.name || "Unknown Event"}
                       </div>
                     </td>
