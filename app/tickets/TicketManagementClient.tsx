@@ -110,6 +110,9 @@ export default function TicketManagementClient({
   const [sendingEarlyReminderId, setSendingEarlyReminderId] = useState<
     string | null
   >(null);
+  const [massEmailType, setMassEmailType] = useState<"early" | "day-of">(
+    "early",
+  );
   const [editingNameId, setEditingNameId] = useState<string | null>(null);
   const [editingNameValue, setEditingNameValue] = useState("");
 
@@ -513,6 +516,14 @@ export default function TicketManagementClient({
     }
   }
 
+  async function handleSendMassEmail() {
+    if (massEmailType === "early") {
+      await handleSendEarlyReminders();
+    } else {
+      await handleSendDayOfReminders();
+    }
+  }
+
   async function handleSendEarlyReminders() {
     if (!selectedEventId) {
       setError("Please select an event first");
@@ -759,66 +770,62 @@ export default function TicketManagementClient({
           </div>
         </div>
         <div className="flex items-center gap-3">
-          <button
-            onClick={handleSendEarlyReminders}
-            disabled={
-              !selectedEventId ||
-              isSendingEarlyReminders ||
-              total === 0 ||
-              isSendingReminders
-            }
-            className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-blue-500 to-indigo-500 text-white rounded-xl font-medium hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
-            title="Send early reminder emails to all ticket holders"
-          >
-            {isSendingEarlyReminders ? (
-              <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-            ) : (
-              <svg
-                className="w-5 h-5"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
-                />
-              </svg>
-            )}
-            Send Early Reminders
-          </button>
-          <button
-            onClick={handleSendDayOfReminders}
-            disabled={
-              !selectedEventId ||
-              isSendingReminders ||
-              total === 0 ||
-              isSendingEarlyReminders
-            }
-            className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded-xl font-medium hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
-            title="Send day-of reminder emails to all ticket holders"
-          >
-            {isSendingReminders ? (
-              <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-            ) : (
-              <svg
-                className="w-5 h-5"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"
-                />
-              </svg>
-            )}
-            Send Day-of Reminders
-          </button>
+          <div className="flex items-stretch rounded-xl overflow-hidden border border-zinc-600 bg-zinc-800/80 shadow-sm">
+            <select
+              value={massEmailType}
+              onChange={(e) =>
+                setMassEmailType(e.target.value as "early" | "day-of")
+              }
+              disabled={
+                isSendingEarlyReminders ||
+                isSendingReminders ||
+                !selectedEventId ||
+                total === 0
+              }
+              className="pl-4 pr-8 py-2.5 bg-transparent text-zinc-200 font-medium border-0 focus:ring-0 focus:outline-none cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed appearance-none bg-[length:1rem_1rem] bg-[right_0.75rem_center] bg-no-repeat"
+              style={{
+                backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%239ca3af' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e")`,
+              }}
+              aria-label="Email type"
+            >
+              <option value="early">Early reminders</option>
+              <option value="day-of">Day-of reminders</option>
+            </select>
+            <button
+              onClick={handleSendMassEmail}
+              disabled={
+                !selectedEventId ||
+                total === 0 ||
+                isSendingEarlyReminders ||
+                isSendingReminders
+              }
+              className="flex items-center gap-2 px-4 py-2.5 bg-zinc-600 text-white font-medium hover:bg-zinc-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed border-l border-zinc-600"
+              title={
+                massEmailType === "early"
+                  ? "Send early reminder emails to all ticket holders"
+                  : "Send day-of reminder emails to all ticket holders"
+              }
+            >
+              {(isSendingEarlyReminders || isSendingReminders) ? (
+                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <svg
+                  className="w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
+                  />
+                </svg>
+              )}
+              Send
+            </button>
+          </div>
           <button
             onClick={() => fetchTickets()}
             disabled={isLoading}
