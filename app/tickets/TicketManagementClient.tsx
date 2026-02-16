@@ -85,7 +85,7 @@ export default function TicketManagementClient({
   const [standardCount, setStandardCount] = useState(initialStandardCount);
   const [vipCount, setVipCount] = useState(initialVipCount);
   const [selectedEventId, setSelectedEventId] = useState<string>(defaultEventId);
-  const [searchEmail, setSearchEmail] = useState("");
+  const [search, setSearch] = useState("");
   const [ticketTypeFilter, setTicketTypeFilter] = useState<string>("");
   const [scannedFilter, setScannedFilter] = useState<string>("");
   const [isLoading, setIsLoading] = useState(false);
@@ -156,8 +156,8 @@ export default function TicketManagementClient({
         params.append("eventId", selectedEventId);
       }
 
-      if (searchEmail.trim()) {
-        params.append("email", searchEmail.trim());
+      if (search.trim()) {
+        params.append("search", search.trim());
       }
 
       if (ticketTypeFilter) {
@@ -195,14 +195,14 @@ export default function TicketManagementClient({
     fetchTickets();
   }, [selectedEventId, offset, ticketTypeFilter, scannedFilter]);
 
-  // Debounced email search
+  // Debounced search
   useEffect(() => {
     const timer = setTimeout(() => {
       setOffset(0);
       fetchTickets();
     }, 300);
     return () => clearTimeout(timer);
-  }, [searchEmail]);
+  }, [search]);
 
   async function handleDelete(id: string) {
     if (!confirm("Are you sure you want to delete this ticket?")) return;
@@ -718,8 +718,8 @@ export default function TicketManagementClient({
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
-        <div>
+      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-8">
+        <div className="min-w-0">
           <h1 className="text-2xl sm:text-3xl font-bold text-white font-serif mb-2">
             Ticket Management
           </h1>
@@ -758,7 +758,7 @@ export default function TicketManagementClient({
                 </div>
               </>
             )}
-            {(searchEmail || ticketTypeFilter || scannedFilter) &&
+            {(search || ticketTypeFilter || scannedFilter) &&
               selectedEventId && (
                 <div className="flex items-center gap-2">
                   <span className="text-zinc-400">Matching Filters:</span>
@@ -769,7 +769,7 @@ export default function TicketManagementClient({
               )}
           </div>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3 shrink-0">
           <div className="flex items-stretch rounded-xl overflow-hidden border border-zinc-600 bg-zinc-800/80 shadow-sm">
             <select
               value={massEmailType}
@@ -1155,13 +1155,13 @@ export default function TicketManagementClient({
         </div>
         <div>
           <label className="block text-sm font-medium text-zinc-300 mb-2">
-            Search by Email
+            Search by Name or Email
           </label>
           <input
             type="text"
-            value={searchEmail}
-            onChange={(e) => setSearchEmail(e.target.value)}
-            placeholder="Search email..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search name or email..."
             disabled={!selectedEventId}
             className="w-full px-4 py-3 bg-zinc-900 border border-zinc-800 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 disabled:opacity-50 disabled:cursor-not-allowed"
           />
@@ -1237,7 +1237,7 @@ export default function TicketManagementClient({
           <p className="text-zinc-600 text-sm">
             {!selectedEventId
               ? "Choose an event from the filter above"
-              : searchEmail || ticketTypeFilter || scannedFilter
+              : search || ticketTypeFilter || scannedFilter
                 ? "Try adjusting your filters"
                 : "Create your first ticket to get started"}
           </p>
@@ -1248,25 +1248,25 @@ export default function TicketManagementClient({
             <table className="w-full">
               <thead className="bg-zinc-800/50 border-b border-zinc-800">
                 <tr>
-                  <th className="px-3 sm:px-6 py-3 sm:py-4 text-left text-xs font-medium text-zinc-400 uppercase tracking-wider">
+                  <th className="px-3 sm:px-4 py-3 sm:py-4 text-left text-xs font-medium text-zinc-400 uppercase tracking-wider whitespace-nowrap">
                     Event
                   </th>
-                  <th className="px-3 sm:px-6 py-3 sm:py-4 text-left text-xs font-medium text-zinc-400 uppercase tracking-wider">
+                  <th className="px-3 sm:px-4 py-3 sm:py-4 text-left text-xs font-medium text-zinc-400 uppercase tracking-wider whitespace-nowrap">
                     Name
                   </th>
-                  <th className="px-3 sm:px-6 py-3 sm:py-4 text-left text-xs font-medium text-zinc-400 uppercase tracking-wider">
+                  <th className="px-3 sm:px-4 py-3 sm:py-4 text-left text-xs font-medium text-zinc-400 uppercase tracking-wider whitespace-nowrap">
                     Email
                   </th>
-                  <th className="px-3 sm:px-6 py-3 sm:py-4 text-left text-xs font-medium text-zinc-400 uppercase tracking-wider">
+                  <th className="px-3 sm:px-4 py-3 sm:py-4 text-left text-xs font-medium text-zinc-400 uppercase tracking-wider whitespace-nowrap">
                     Type
                   </th>
-                  <th className="hidden md:table-cell px-3 sm:px-6 py-3 sm:py-4 text-left text-xs font-medium text-zinc-400 uppercase tracking-wider">
+                  <th className="hidden lg:table-cell px-3 sm:px-4 py-3 sm:py-4 text-left text-xs font-medium text-zinc-400 uppercase tracking-wider whitespace-nowrap">
                     Created
                   </th>
-                  <th className="px-3 sm:px-6 py-3 sm:py-4 text-left text-xs font-medium text-zinc-400 uppercase tracking-wider">
+                  <th className="px-3 sm:px-4 py-3 sm:py-4 text-left text-xs font-medium text-zinc-400 uppercase tracking-wider whitespace-nowrap">
                     Status
                   </th>
-                  <th className="px-3 sm:px-6 py-3 sm:py-4 text-left text-xs font-medium text-zinc-400 uppercase tracking-wider">
+                  <th className="px-3 sm:px-4 py-3 sm:py-4 text-left text-xs font-medium text-zinc-400 uppercase tracking-wider whitespace-nowrap">
                     Actions
                   </th>
                 </tr>
@@ -1277,12 +1277,12 @@ export default function TicketManagementClient({
                     key={ticket.id}
                     className="hover:bg-zinc-800/30 transition-colors"
                   >
-                    <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap">
-                      <div className="text-sm font-medium text-white truncate max-w-[120px]">
+                    <td className="px-3 sm:px-4 py-3 sm:py-4 whitespace-nowrap max-w-[160px]">
+                      <div className="text-sm font-medium text-white truncate" title={ticket.events?.name || "Unknown Event"}>
                         {ticket.events?.name || "Unknown Event"}
                       </div>
                     </td>
-                    <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap">
+                    <td className="px-3 sm:px-4 py-3 sm:py-4 whitespace-nowrap">
                       {editingNameId === ticket.id ? (
                         <input
                           type="text"
@@ -1307,19 +1307,19 @@ export default function TicketManagementClient({
                             setEditingNameId(ticket.id);
                             setEditingNameValue(ticket.name || "");
                           }}
-                          className="text-sm text-zinc-300 truncate max-w-[120px] sm:max-w-none hover:text-white transition-colors cursor-pointer"
+                          className="text-sm text-zinc-300 hover:text-white transition-colors cursor-pointer"
                           title="Click to edit name"
                         >
                           {ticket.name || "--"}
                         </button>
                       )}
                     </td>
-                    <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap">
-                      <div className="text-sm text-zinc-300 truncate max-w-[120px] sm:max-w-none">
+                    <td className="px-3 sm:px-4 py-3 sm:py-4 whitespace-nowrap">
+                      <div className="text-sm text-zinc-300">
                         {ticket.email}
                       </div>
                     </td>
-                    <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap">
+                    <td className="px-3 sm:px-4 py-3 sm:py-4 whitespace-nowrap">
                       <select
                         value={ticket.type || "STANDARD"}
                         onChange={(e) => {
@@ -1337,12 +1337,12 @@ export default function TicketManagementClient({
                         <option value="STANDARD">STANDARD</option>
                       </select>
                     </td>
-                    <td className="hidden md:table-cell px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap">
+                    <td className="hidden lg:table-cell px-3 sm:px-4 py-3 sm:py-4 whitespace-nowrap">
                       <div className="text-sm text-zinc-400">
                         {formatDate(ticket.created_at)}
                       </div>
                     </td>
-                    <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap">
+                    <td className="px-3 sm:px-4 py-3 sm:py-4 whitespace-nowrap">
                       <select
                         value={ticket.scanned ? "scanned" : "not-scanned"}
                         onChange={(e) => {
@@ -1361,8 +1361,8 @@ export default function TicketManagementClient({
                         <option value="not-scanned">Not Scanned</option>
                       </select>
                     </td>
-                    <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap">
-                      <div className="flex items-center gap-2">
+                    <td className="px-3 sm:px-4 py-3 sm:py-4 whitespace-nowrap">
+                      <div className="flex items-center gap-1.5">
                         <button
                           onClick={() => handleResendEmail(ticket.id)}
                           disabled={resendingEmailId === ticket.id}
