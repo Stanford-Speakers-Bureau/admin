@@ -1201,41 +1201,12 @@ export default function AdminEventsClient({
               </button>
             </div>
 
-            <div className="flex-1 flex flex-col min-h-0 p-6 space-y-6 overflow-hidden">
-              {/* Event Details */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm flex-shrink-0">
-                <div>
-                  <span className="text-zinc-400">Capacity:</span>
-                  <span className="text-white ml-2 font-medium">
-                    {viewingEvent.capacity}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-zinc-400">Tickets Sold:</span>
-                  <span className="text-white ml-2 font-medium">
-                    {viewingEvent.tickets ?? viewingEvent.reserved ?? 0}
-                  </span>
-                </div>
-                {viewingEvent.venue && (
-                  <div className="col-span-2">
-                    <span className="text-zinc-400">Venue:</span>
-                    <span className="text-white ml-2 font-medium">
-                      {viewingEvent.venue}
-                    </span>
-                  </div>
-                )}
-                {viewingEvent.address && (
-                  <div className="col-span-2">
-                    <span className="text-zinc-400">Address:</span>
-                    <span className="text-white ml-2 font-medium">
-                      {viewingEvent.address}
-                    </span>
-                  </div>
-                )}
-              </div>
-
-              {/* Ticket Sales Graph */}
-              <TicketSalesGraph eventId={viewingEvent.id} />
+            <div className="flex-1 flex flex-col min-h-0 p-6 space-y-6 overflow-y-auto">
+              {/* Ticket Sales Insights */}
+              <TicketSalesGraph
+                eventId={viewingEvent.id}
+                capacity={viewingEvent.capacity}
+              />
 
               {/* Action Buttons */}
               <div className="flex items-center gap-3 pt-4 border-t border-zinc-800 flex-shrink-0">
