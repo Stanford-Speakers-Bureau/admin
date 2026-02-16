@@ -38,7 +38,7 @@ export async function GET(req: Request) {
       // Get waitlist for this event
       const { data: waitlist, error: waitlistError } = await adminClient
         .from("waitlist")
-        .select("id, email, referral, position, created_at")
+        .select("id, email, name, referral, position, created_at")
         .eq("event_id", eventId)
         .order("position", { ascending: true });
 
@@ -68,6 +68,7 @@ export async function GET(req: Request) {
         `
         id,
         email,
+        name,
         referral,
         position,
         created_at,
@@ -108,6 +109,7 @@ export async function GET(req: Request) {
         waitlist: Array<{
           id: string;
           email: string;
+          name: string | null;
           referral: string | null;
           position: number;
           created_at: string;
@@ -156,6 +158,7 @@ export async function GET(req: Request) {
       groupedByEvent[eventId].waitlist.push({
         id: entry.id,
         email: entry.email,
+        name: entry.name,
         referral: entry.referral,
         position: entry.position,
         created_at: entry.created_at,

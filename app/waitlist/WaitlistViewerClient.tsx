@@ -6,6 +6,7 @@ import { PACIFIC_TIMEZONE } from "@/app/lib/constants";
 type WaitlistEntry = {
   id: string;
   email: string;
+  name: string | null;
   referral: string | null;
   position: number;
   created_at: string;
@@ -376,6 +377,9 @@ export default function WaitlistViewerClient({
                             Position
                           </th>
                           <th className="text-left px-6 py-3 text-xs font-medium text-zinc-400 uppercase tracking-wider">
+                            Name
+                          </th>
+                          <th className="text-left px-6 py-3 text-xs font-medium text-zinc-400 uppercase tracking-wider">
                             Email
                           </th>
                           <th className="text-left px-6 py-3 text-xs font-medium text-zinc-400 uppercase tracking-wider">
@@ -396,6 +400,9 @@ export default function WaitlistViewerClient({
                               <span className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-zinc-800 text-white font-semibold text-sm">
                                 {index + 1}
                               </span>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-white">
+                              {entry.name || "—"}
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-white font-medium">
                               {entry.email}
@@ -682,6 +689,9 @@ export default function WaitlistViewerClient({
                     Position
                   </th>
                   <th className="text-left px-6 py-3 text-xs font-medium text-zinc-400 uppercase tracking-wider">
+                    Name
+                  </th>
+                  <th className="text-left px-6 py-3 text-xs font-medium text-zinc-400 uppercase tracking-wider">
                     Email
                   </th>
                   <th className="text-left px-6 py-3 text-xs font-medium text-zinc-400 uppercase tracking-wider">
@@ -702,6 +712,9 @@ export default function WaitlistViewerClient({
                       <span className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-zinc-800 text-white font-semibold text-sm">
                         {index + 1}
                       </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-white">
+                      {entry.name || "—"}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-white font-medium">
                       {entry.email}
