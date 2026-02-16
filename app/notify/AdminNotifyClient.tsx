@@ -8,10 +8,12 @@ export type EventWithNotifications = {
   start_time_date: string | null;
   route?: string | null;
   ticketing_date?: string | null;
+  ticketingOpen?: boolean;
   notifications: {
     id: string;
     email: string;
     created_at: string;
+    hasTicket?: boolean;
   }[];
 };
 
@@ -42,7 +44,7 @@ export default function AdminNotifyClient({
   const [searchTerm, setSearchTerm] = useState("");
   const [sendEmailEventId, setSendEmailEventId] = useState<string | null>(null);
   const [sendEmailSingleEmail, setSendEmailSingleEmail] = useState<string | null>(null);
-  const [sendVariant, setSendVariant] = useState<"now" | "in">("now");
+  const [sendVariant, setSendVariant] = useState<"now" | "in" | "claim">("now");
   const [sendApproxTime, setSendApproxTime] = useState("");
   const [isSendingNotify, setIsSendingNotify] = useState(false);
   const [notifySuccess, setNotifySuccess] = useState<string | null>(null);
@@ -68,7 +70,7 @@ export default function AdminNotifyClient({
   function openSendEmailModal(event: EventWithNotifications, singleEmail?: string) {
     setSendEmailEventId(event.id);
     setSendEmailSingleEmail(singleEmail ?? null);
-    setSendVariant("now");
+    setSendVariant(event.ticketingOpen ? "claim" : "now");
     setSendApproxTime(
       event.ticketing_date ? approxDurationUntil(event.ticketing_date) : "",
     );
@@ -91,14 +93,34 @@ export default function AdminNotifyClient({
     }
     const event = events.find((e) => e.id === sendEmailEventId);
     const eventName = event?.name || "this event";
-    const recipientCount = sendEmailSingleEmail ? 1 : (event?.notifications.length ?? 0);
+
+    // For "claim" mass email, count only people without tickets
+    let recipientCount: number;
+    if (sendEmailSingleEmail) {
+      recipientCount = 1;
+    } else if (sendVariant === "claim") {
+      recipientCount = event?.notifications.filter((n) => !n.hasTicket).length ?? 0;
+    } else {
+      recipientCount = event?.notifications.length ?? 0;
+    }
     if (recipientCount === 0) {
-      setNotifyError("No recipients to send to.");
+      setNotifyError(
+        sendVariant === "claim"
+          ? "No recipients without tickets to send to."
+          : "No recipients to send to.",
+      );
       return;
     }
+
+    const variantLabel =
+      sendVariant === "claim"
+        ? "Claim your ticket"
+        : sendVariant === "now"
+          ? "Tickets available now"
+          : `Tickets available in ${sendApproxTime.trim()}`;
     const confirmMessage = sendEmailSingleEmail
-      ? `Send "${sendVariant === "now" ? "Tickets available now" : `Tickets available in ${sendApproxTime.trim()}`}" email to ${sendEmailSingleEmail} for ${eventName}?`
-      : `Send "${sendVariant === "now" ? "Tickets available now" : `Tickets available in ${sendApproxTime.trim()}`}" email to all ${recipientCount} people on the list for ${eventName}?`;
+      ? `Send "${variantLabel}" email to ${sendEmailSingleEmail} for ${eventName}?`
+      : `Send "${variantLabel}" email to ${recipientCount} ${sendVariant === "claim" ? "people without tickets" : "people on the list"} for ${eventName}?`;
     if (!confirm(confirmMessage)) return;
 
     setIsSendingNotify(true);
@@ -116,19 +138,25 @@ export default function AdminNotifyClient({
           ...(sendEmailSingleEmail && { singleEmail: sendEmailSingleEmail }),
         }),
       });
-      const data = (await res.json()) as { error?: string; sent?: number; failed?: number };
+      const data = (await res.json()) as { error?: string; sent?: number; failed?: number; skipped?: number };
 
       if (!res.ok) {
         throw new Error(data.error || "Failed to send emails");
       }
-      const { sent = 0, failed = 0 } = data;
-      setNotifySuccess(
-        sendEmailSingleEmail
-          ? "Email sent."
-          : `Emails sent: ${sent} sent, ${failed} failed.`,
-      );
-      if (sent > 0 && failed === 0) {
-        setTimeout(closeSendEmailModal, 1500);
+      const { sent = 0, failed = 0, skipped = 0 } = data;
+      const skippedMsg = skipped > 0 ? `, ${skipped} skipped (already have ticket)` : "";
+      if (sendEmailSingleEmail) {
+        if (failed > 0) {
+          setNotifyError("Failed to send email.");
+        } else {
+          setNotifySuccess("Email sent.");
+          setTimeout(closeSendEmailModal, 1500);
+        }
+      } else {
+        setNotifySuccess(`Emails sent: ${sent} sent, ${failed} failed${skippedMsg}.`);
+        if (sent > 0 && failed === 0) {
+          setTimeout(closeSendEmailModal, 1500);
+        }
       }
     } catch (err) {
       setNotifyError(err instanceof Error ? err.message : "Failed to send emails");
@@ -277,6 +305,24 @@ export default function AdminNotifyClient({
                       </svg>
                       {event.notifications.length} signups
                     </span>
+                    {event.ticketingOpen && (
+                      <span className="flex items-center gap-1.5 text-amber-400">
+                        <svg
+                          className="w-4 h-4"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 110 4v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 110-4V7a2 2 0 00-2-2H5z"
+                          />
+                        </svg>
+                        {event.notifications.filter((n) => !n.hasTicket).length} without ticket
+                      </span>
+                    )}
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
@@ -348,11 +394,14 @@ export default function AdminNotifyClient({
 
               {expandedEvent === event.id && event.notifications.length > 0 && (
                 <div className="border-t border-zinc-800 p-4">
-                  <div className="max-h-64 overflow-y-auto">
+                  <div className="max-h-96 overflow-y-auto">
                     <table className="w-full">
                       <thead className="text-left text-sm text-zinc-500 border-b border-zinc-800">
                         <tr>
                           <th className="pb-3 font-medium">Email</th>
+                          {event.ticketingOpen && (
+                            <th className="pb-3 font-medium">Ticket</th>
+                          )}
                           <th className="pb-3 font-medium">Signed Up</th>
                           <th className="pb-3 font-medium w-20 text-right">Actions</th>
                         </tr>
@@ -363,35 +412,53 @@ export default function AdminNotifyClient({
                             <td className="py-3 text-white">
                               {notification.email}
                             </td>
+                            {event.ticketingOpen && (
+                              <td className="py-3">
+                                {notification.hasTicket ? (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                    </svg>
+                                    Has ticket
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                                    No ticket
+                                  </span>
+                                )}
+                              </td>
+                            )}
                             <td className="py-3 text-zinc-500">
                               {new Date(
                                 notification.created_at,
                               ).toLocaleString()}
                             </td>
                             <td className="py-3 text-right">
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  openSendEmailModal(event, notification.email);
-                                }}
-                                className="text-blue-400 hover:text-blue-300 transition-colors"
-                                title="Send email to this person"
-                              >
-                                <svg
-                                  className="w-5 h-5 inline"
-                                  fill="none"
-                                  stroke="currentColor"
-                                  viewBox="0 0 24 24"
+                              {!(event.ticketingOpen && notification.hasTicket) && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    openSendEmailModal(event, notification.email);
+                                  }}
+                                  className="text-blue-400 hover:text-blue-300 transition-colors"
+                                  title="Send email to this person"
                                 >
-                                  <path
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    strokeWidth={2}
-                                    d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
-                                  />
-                                </svg>
-                              </button>
+                                  <svg
+                                    className="w-5 h-5 inline"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    viewBox="0 0 24 24"
+                                  >
+                                    <path
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      strokeWidth={2}
+                                      d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
+                                    />
+                                  </svg>
+                                </button>
+                              )}
                             </td>
                           </tr>
                         ))}
@@ -457,12 +524,41 @@ export default function AdminNotifyClient({
               <p className="text-zinc-500 text-sm mb-4">
                 {event?.name || "Event"}
                 {sendEmailSingleEmail ? (
-                  <> → {sendEmailSingleEmail}</>
+                  <> &rarr; {sendEmailSingleEmail}</>
                 ) : (
-                  <> → all {event?.notifications.length ?? 0} on list</>
+                  <> &rarr; all {event?.notifications.length ?? 0} on list</>
                 )}
               </p>
               <div className="space-y-3 mb-4">
+                {event?.ticketingOpen && !sendEmailSingleEmail && (
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="variant"
+                      checked={sendVariant === "claim"}
+                      onChange={() => setSendVariant("claim")}
+                      className="rounded-full border-zinc-600 text-rose-500 focus:ring-rose-500"
+                    />
+                    <div>
+                      <span className="text-white">Claim your ticket</span>
+                      <p className="text-xs text-zinc-500 mt-0.5">
+                        Only sent to {event?.notifications.filter((n) => !n.hasTicket).length ?? 0} people without tickets
+                      </p>
+                    </div>
+                  </label>
+                )}
+                {event?.ticketingOpen && sendEmailSingleEmail && (
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="variant"
+                      checked={sendVariant === "claim"}
+                      onChange={() => setSendVariant("claim")}
+                      className="rounded-full border-zinc-600 text-rose-500 focus:ring-rose-500"
+                    />
+                    <span className="text-white">Claim your ticket</span>
+                  </label>
+                )}
                 <label className="flex items-center gap-3 cursor-pointer">
                   <input
                     type="radio"

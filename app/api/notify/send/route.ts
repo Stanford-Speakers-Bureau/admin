@@ -3,6 +3,7 @@ import { verifyAdminRequest } from "@/app/lib/supabase";
 import {
   sendTicketsAvailableNowEmail,
   sendTicketsAvailableInEmail,
+  sendClaimTicketEmail,
 } from "@/app/lib/email";
 
 export async function POST(req: Request) {
@@ -14,7 +15,7 @@ export async function POST(req: Request) {
 
     let body: {
       eventId?: string;
-      variant?: "now" | "in";
+      variant?: "now" | "in" | "claim";
       approxTimeUntilAvailable?: string;
       singleEmail?: string;
     };
@@ -32,9 +33,9 @@ export async function POST(req: Request) {
         { status: 400 },
       );
     }
-    if (!variant || (variant !== "now" && variant !== "in")) {
+    if (!variant || (variant !== "now" && variant !== "in" && variant !== "claim")) {
       return NextResponse.json(
-        { error: 'variant must be "now" or "in"' },
+        { error: 'variant must be "now", "in", or "claim"' },
         { status: 400 },
       );
     }
@@ -69,6 +70,7 @@ export async function POST(req: Request) {
     const eventStartTime = event.start_time_date ?? null;
 
     let emails: string[];
+    let skipped = 0;
     if (singleEmail && typeof singleEmail === "string") {
       const email = singleEmail.trim().toLowerCase();
       if (!email) {
@@ -91,12 +93,36 @@ export async function POST(req: Request) {
           { status: 500 },
         );
       }
-      emails = [...new Set((notifications || []).map((n: { email: string }) => n.email.toLowerCase()))];
+      const allEmails = [...new Set((notifications || []).map((n: { email: string }) => n.email.toLowerCase()))];
+
+      // For "claim" variant, filter out people who already have tickets
+      if (variant === "claim") {
+        const { data: tickets, error: ticketsError } = await adminClient
+          .from("tickets")
+          .select("email")
+          .eq("event_id", eventId);
+
+        if (ticketsError) {
+          console.error("Tickets fetch error:", ticketsError);
+          return NextResponse.json(
+            { error: "Failed to check existing tickets" },
+            { status: 500 },
+          );
+        }
+
+        const ticketEmails = new Set(
+          (tickets || []).map((t: { email: string }) => t.email.toLowerCase()),
+        );
+        emails = allEmails.filter((e) => !ticketEmails.has(e));
+        skipped = allEmails.length - emails.length;
+      } else {
+        emails = allEmails;
+      }
     }
 
     if (emails.length === 0) {
       return NextResponse.json(
-        { error: "No recipients to send to", sent: 0, failed: 0 },
+        { sent: 0, failed: 0, skipped },
         { status: 200 },
       );
     }
@@ -104,7 +130,7 @@ export async function POST(req: Request) {
     // Send emails in batches to avoid memory overflow
     // Rate limit: max 14 emails per second (matches ticket reminder batching)
     const BATCH_SIZE = 14;
-    const MIN_BATCH_DURATION_MS = 1000; // Ensure at least 1 second per batch
+    const MIN_BATCH_DURATION_MS = 1000;
     const results: PromiseSettledResult<{
       success: boolean;
       email: string;
@@ -117,20 +143,27 @@ export async function POST(req: Request) {
       const batchStartTime = Date.now();
       const batch = emails.slice(i, i + BATCH_SIZE);
       const batchPromises = batch.map((email) =>
-        (variant === "now"
-          ? sendTicketsAvailableNowEmail({
+        (variant === "claim"
+          ? sendClaimTicketEmail({
               email,
               eventName,
               eventRoute,
               eventStartTime,
             })
-          : sendTicketsAvailableInEmail({
-              email,
-              eventName,
-              eventRoute,
-              eventStartTime,
-              approxTimeUntilAvailable: approxTime,
-            })
+          : variant === "now"
+            ? sendTicketsAvailableNowEmail({
+                email,
+                eventName,
+                eventRoute,
+                eventStartTime,
+              })
+            : sendTicketsAvailableInEmail({
+                email,
+                eventName,
+                eventRoute,
+                eventStartTime,
+                approxTimeUntilAvailable: approxTime,
+              })
         ).then(
           () => ({ success: true, email }),
           (error) => ({ success: false, email, error }),
@@ -163,7 +196,7 @@ export async function POST(req: Request) {
       }
     }
 
-    return NextResponse.json({ sent, failed });
+    return NextResponse.json({ sent, failed, skipped });
   } catch (err) {
     console.error("Notify send error:", err);
     return NextResponse.json(

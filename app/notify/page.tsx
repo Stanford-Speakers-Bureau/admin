@@ -33,12 +33,54 @@ async function getInitialNotifications(): Promise<EventWithNotifications[]> {
       console.error("Notifications fetch error:", notifyError);
     }
 
+    // Fetch ALL ticket rows (Supabase caps at 1000 per query)
+    const allTickets: { email: string; event_id: string }[] = [];
+    const PAGE_SIZE = 1000;
+    let ticketOffset = 0;
+    let hasMore = true;
+    while (hasMore) {
+      const { data: page, error: ticketsError } = await client
+        .from("tickets")
+        .select("email, event_id")
+        .range(ticketOffset, ticketOffset + PAGE_SIZE - 1);
+
+      if (ticketsError) {
+        console.error("Tickets fetch error:", ticketsError);
+        break;
+      }
+      if (page && page.length > 0) {
+        allTickets.push(...page);
+        ticketOffset += page.length;
+        hasMore = page.length === PAGE_SIZE;
+      } else {
+        hasMore = false;
+      }
+    }
+
+    // Build a set of "email|event_id" for quick lookup
+    const ticketSet = new Set(
+      allTickets.map((t) => `${t.email.toLowerCase()}|${t.event_id}`),
+    );
+
+    const now = new Date().toISOString();
+
     const eventsWithNotifications =
-      events?.map((event: any) => ({
-        ...event,
-        notifications:
-          notifications?.filter((n: any) => n.speaker_id === event.id) || [],
-      })) || [];
+      events?.map((event: any) => {
+        const ticketingOpen = event.ticketing_date && event.ticketing_date <= now;
+        return {
+          ...event,
+          ticketingOpen: !!ticketingOpen,
+          notifications:
+            (notifications?.filter((n: any) => n.speaker_id === event.id) || []).map(
+              (n: any) => ({
+                ...n,
+                hasTicket: ticketingOpen
+                  ? ticketSet.has(`${n.email.toLowerCase()}|${event.id}`)
+                  : false,
+              }),
+            ),
+        };
+      }) || [];
 
     return eventsWithNotifications as EventWithNotifications[];
   } catch (error) {

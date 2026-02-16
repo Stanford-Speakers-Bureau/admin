@@ -2732,6 +2732,187 @@ export async function sendTicketsAvailableInEmail(
   console.log(`Tickets available in email sent to ${data.email}`);
 }
 
+/** Data for "claim your ticket" email to notify list signups */
+export type ClaimTicketEmailData = {
+  email: string;
+  eventName: string;
+  eventRoute: string | null;
+  eventStartTime: string | null;
+};
+
+function generateClaimTicketEmailText(data: ClaimTicketEmailData): string {
+  const eventUrl = getNotifyEventUrl(data.eventRoute);
+  const formattedDate = formatNotifyDate(data.eventStartTime);
+  return `
+${data.eventName} -- tickets are live!
+
+Thanks for signing up for notifications. Tickets to ${data.eventName} are now available, and we have one set aside for you. Head to the event page to get yours.
+
+Get your ticket: ${eventUrl}
+
+Event Details:
+- Event: ${data.eventName}
+- Date & Time: ${formattedDate}
+
+Tickets are first-come, first-served, so don't wait!
+
+Stanford Speakers Bureau
+For questions, please email ${FROM_EMAIL}
+  `.trim();
+}
+
+async function generateClaimTicketEmailHTML(
+  data: ClaimTicketEmailData,
+): Promise<string> {
+  const eventUrl = getNotifyEventUrl(data.eventRoute);
+  const formattedDate = formatNotifyDate(data.eventStartTime);
+  const logoUrl = `${baseUrl}/logo.png`;
+  const gmailBlendStart = `<span class="gmail-blend-screen"><span class="gmail-blend-difference">`;
+  const gmailBlendEnd = `</span></span>`;
+
+  return `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="color-scheme" content="light dark">
+  <meta name="supported-color-schemes" content="light dark">
+  <title>Tickets are LIVE!</title>
+  ${generateNotifyEmailStyles()}
+</head>
+<body class="body" style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #18181b; color: #f4f4f5;">
+
+  <table role="presentation" style="width: 100%; border-collapse: collapse; background-color: #27272a;">
+
+    <!-- Header -->
+    <tr>
+      <td align="center" class="email-header" style="background: linear-gradient(135deg, #A80D0C 0%, #C11211 100%); padding: 40px 30px; text-align: center;">
+        <div style="margin-bottom: 20px;">
+          <img src="${logoUrl}" alt="Stanford Speakers Bureau Logo" class="logo" style="width: 60px; height: 60px; margin: 0 auto; display: block;" />
+        </div>
+        ${gmailBlendStart}
+          <h2 class="header-subtitle" style="margin: 0 0 12px 0; color: #ffffff; font-size: 24px; font-weight: 600; letter-spacing: 0.5px;">Stanford Speakers Bureau</h2>
+          <h1 class="header-title" style="margin: 0; color: #ffffff; font-size: 28px; font-weight: 700;">Tickets are LIVE!</h1>
+        ${gmailBlendEnd}
+      </td>
+    </tr>
+
+    <!-- Content -->
+    <tr>
+      <td align="center" class="email-container" style="background-color: #27272a; padding: 40px 20px; max-width: 900px; width: 100%;">
+        <div class="email-content" style="padding: 0; max-width: 600px; margin: 0 auto;">
+
+          ${gmailBlendStart}
+            <p style="margin: 0 0 16px 0; color: #f4f4f5; font-size: 18px; line-height: 1.6; font-weight: 600;">
+              Tickets to ${data.eventName} are now available.
+            </p>
+            <p style="margin: 0 0 24px 0; color: #a1a1aa; font-size: 16px; line-height: 1.6;">
+              Thanks for signing up for notifications &mdash; we have a ticket set aside for you. Head to the event page to get yours!
+            </p>
+          ${gmailBlendEnd}
+
+          <!-- CTA Button -->
+          <table role="presentation" style="width: 100%; border-collapse: collapse; margin-bottom: 32px;">
+            <tr>
+              <td align="center" style="padding: 0;">
+                <a href="${eventUrl}" class="button" style="display: inline-block; padding: 16px 40px; background-color: #A80D0C; color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: 700; font-size: 18px; letter-spacing: 0.5px;">Get Your Ticket</a>
+              </td>
+            </tr>
+          </table>
+
+          <!-- Event Details Card -->
+          <div class="details-card" style="background-color: #18181b; padding: 24px; margin-bottom: 24px; border-radius: 8px;">
+            ${gmailBlendStart}
+              <h2 style="margin: 0 0 20px 0; color: #ffffff; font-size: 22px; font-weight: 600;">Event Details</h2>
+            ${gmailBlendEnd}
+            <table role="presentation" style="width: 100%; border-collapse: collapse;">
+              <tr>
+                <td style="padding: 8px 0; color: #a1a1aa; font-size: 14px; width: 120px; vertical-align: top;">
+                  ${gmailBlendStart}Event:${gmailBlendEnd}
+                </td>
+                <td style="padding: 8px 0; color: #f4f4f5; font-size: 14px; font-weight: 500;">
+                  ${gmailBlendStart}${data.eventName}${gmailBlendEnd}
+                </td>
+              </tr>
+              <tr>
+                <td style="padding: 8px 0; color: #a1a1aa; font-size: 14px; vertical-align: top;">
+                  ${gmailBlendStart}Date & Time:${gmailBlendEnd}
+                </td>
+                <td style="padding: 8px 0; color: #f4f4f5; font-size: 14px; font-weight: 500;">
+                  ${gmailBlendStart}${formattedDate}${gmailBlendEnd}
+                </td>
+              </tr>
+            </table>
+          </div>
+
+          ${gmailBlendStart}
+            <p style="margin: 0 0 8px 0; color: #a1a1aa; font-size: 14px; line-height: 1.6;">
+              Tickets are first-come, first-served, so don't wait!
+            </p>
+          ${gmailBlendEnd}
+        </div>
+      </td>
+    </tr>
+
+    <!-- Footer -->
+    <tr>
+      <td align="center" class="footer" style="padding: 30px; background-color: #18181b; border-top: 1px solid #3f3f46; text-align: center;">
+        ${gmailBlendStart}
+          <p style="margin: 0 0 8px 0; color: #71717a; font-size: 12px;">
+            Stanford Speakers Bureau
+          </p>
+          <p style="margin: 0; color: #71717a; font-size: 12px;">
+            For questions, please email <a href="mailto:${FROM_EMAIL}" style="color: #a1a1aa; text-decoration: none;">${FROM_EMAIL}</a>
+          </p>
+        ${gmailBlendEnd}
+      </td>
+    </tr>
+  </table>
+
+</body>
+</html>
+  `.trim();
+}
+
+export async function sendClaimTicketEmail(
+  data: ClaimTicketEmailData,
+): Promise<void> {
+  if (process.env.DISABLE_EMAIL?.toLowerCase().trim() === "true") {
+    console.log(`Email disabled. Skipping claim-ticket to ${data.email}`);
+    return;
+  }
+  const subject = `Tickets are LIVE for ${data.eventName}!`;
+  const textContent = generateClaimTicketEmailText(data);
+  const htmlContent = await generateClaimTicketEmailHTML(data);
+  const altBoundary = `alt_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+  const lines: string[] = [
+    `From: ${FROM_EMAIL}`,
+    `To: ${data.email}`,
+    `Subject: ${subject}`,
+    `MIME-Version: 1.0`,
+    `Content-Type: multipart/alternative; boundary="${altBoundary}"`,
+    "",
+    `--${altBoundary}`,
+    `Content-Type: text/plain; charset=UTF-8`,
+    `Content-Transfer-Encoding: 7bit`,
+    "",
+    textContent,
+    "",
+    `--${altBoundary}`,
+    `Content-Type: text/html; charset=UTF-8`,
+    `Content-Transfer-Encoding: 7bit`,
+    "",
+    htmlContent,
+    "",
+    `--${altBoundary}--`,
+    "",
+  ];
+  await sendRawEmailViaSES(lines.join("\r\n"));
+  console.log(`Claim ticket email sent to ${data.email}`);
+}
+
 type WaitlistClosedEmailData = {
   email: string;
   eventName: string;
