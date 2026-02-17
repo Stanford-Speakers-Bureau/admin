@@ -448,8 +448,8 @@ async function generateTicketEmailHTML(
   const baseUrl =
     process.env.NEXT_PUBLIC_BASE_URL || "https://stanfordspeakersbureau.com";
   const eventUrl = eventRoute ? `${baseUrl}/events/${eventRoute}` : null;
-  const cancelTicketUrl = eventRoute
-    ? `${baseUrl}/events/${eventRoute}?cancel_ticket=${ticketId}`
+  const cancelTicketUrl = ticketId
+    ? `${baseUrl}/cancel/${ticketId}`
     : null;
   const logoUrl = `${baseUrl}/logo.png`;
   const googleCalendarUrl = generateGoogleCalendarUrl({
@@ -889,8 +889,8 @@ function generateTicketEmailText(data: TicketEmailData): string {
   const baseUrl =
     process.env.NEXT_PUBLIC_BASE_URL || "https://stanfordspeakersbureau.com";
   const eventUrl = eventRoute ? `${baseUrl}/events/${eventRoute}` : null;
-  const cancelTicketUrl = eventRoute
-    ? `${baseUrl}/events/${eventRoute}?cancel_ticket=${ticketId}`
+  const cancelTicketUrl = ticketId
+    ? `${baseUrl}/cancel/${ticketId}`
     : null;
 
   return `
@@ -962,8 +962,8 @@ async function generateDayOfReminderEmailHTML(
   const baseUrl =
     process.env.NEXT_PUBLIC_BASE_URL || "https://stanfordspeakersbureau.com";
   const eventUrl = eventRoute ? `${baseUrl}/events/${eventRoute}` : null;
-  const cancelTicketUrl = eventRoute
-    ? `${baseUrl}/events/${eventRoute}?cancel_ticket=${ticketId}`
+  const cancelTicketUrl = ticketId
+    ? `${baseUrl}/cancel/${ticketId}`
     : null;
   const logoUrl = `${baseUrl}/logo.png`;
   const googleCalendarUrl = generateGoogleCalendarUrl({
@@ -1412,8 +1412,8 @@ function generateDayOfReminderEmailText(
   const baseUrl =
     process.env.NEXT_PUBLIC_BASE_URL || "https://stanfordspeakersbureau.com";
   const eventUrl = eventRoute ? `${baseUrl}/events/${eventRoute}` : null;
-  const cancelTicketUrl = eventRoute
-    ? `${baseUrl}/events/${eventRoute}?cancel_ticket=${ticketId}`
+  const cancelTicketUrl = ticketId
+    ? `${baseUrl}/cancel/${ticketId}`
     : null;
 
   return `
@@ -1624,8 +1624,8 @@ async function generateEarlyReminderEmailHTML(
   const baseUrl =
     process.env.NEXT_PUBLIC_BASE_URL || "https://stanfordspeakersbureau.com";
   const eventUrl = eventRoute ? `${baseUrl}/events/${eventRoute}` : null;
-  const cancelTicketUrl = eventRoute
-    ? `${baseUrl}/events/${eventRoute}?cancel_ticket=${ticketId}`
+  const cancelTicketUrl = ticketId
+    ? `${baseUrl}/cancel/${ticketId}`
     : null;
   const logoUrl = `${baseUrl}/logo.png`;
   const googleCalendarUrl = generateGoogleCalendarUrl({
@@ -2095,8 +2095,8 @@ function generateEarlyReminderEmailText(
   const baseUrl =
     process.env.NEXT_PUBLIC_BASE_URL || "https://stanfordspeakersbureau.com";
   const eventUrl = eventRoute ? `${baseUrl}/events/${eventRoute}` : null;
-  const cancelTicketUrl = eventRoute
-    ? `${baseUrl}/events/${eventRoute}?cancel_ticket=${ticketId}`
+  const cancelTicketUrl = ticketId
+    ? `${baseUrl}/cancel/${ticketId}`
     : null;
 
   // Build promo section if present
