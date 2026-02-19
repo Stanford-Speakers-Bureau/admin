@@ -209,22 +209,7 @@ export async function DELETE(req: Request) {
 
     // Sync event scanned counts
     try {
-      const allEvents = await db.query.events.findMany({
-        columns: { id: true, scannedCount: true },
-      });
-
-      for (const event of allEvents) {
-        const [result] = await db.select({ count: dbCount() })
-          .from(tickets)
-          .where(and(eq(tickets.eventId, event.id), eq(tickets.scanned, true)));
-        const actualScanned = result?.count ?? 0;
-
-        if (event.scannedCount !== actualScanned) {
-          await db.update(events)
-            .set({ scannedCount: actualScanned })
-            .where(eq(events.id, event.id));
-        }
-      }
+      await syncEventScannedCounts();
     } catch (syncError) {
       console.error("Sync scanned counts error:", syncError);
       return NextResponse.json(
@@ -256,7 +241,7 @@ export async function DELETE(req: Request) {
 /** Helper to sync event scanned counts */
 async function syncEventScannedCounts() {
   const allEvents = await db.query.events.findMany({
-    columns: { id: true, scannedCount: true },
+    columns: { id: true, scanned: true },
   });
 
   for (const event of allEvents) {
@@ -265,9 +250,9 @@ async function syncEventScannedCounts() {
       .where(and(eq(tickets.eventId, event.id), eq(tickets.scanned, true)));
     const actualScanned = result?.count ?? 0;
 
-    if (event.scannedCount !== actualScanned) {
+    if (event.scanned !== actualScanned) {
       await db.update(events)
-        .set({ scannedCount: actualScanned })
+        .set({ scanned: actualScanned })
         .where(eq(events.id, event.id));
     }
   }
