@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { verifyAdminRequest } from "@/app/lib/supabase";
 import { getAdminSuggestions } from "@/app/suggest/data";
 import { isValidUUID } from "@/app/lib/validation";
+import { db, eq, suggest, votes } from "@ssb/db";
 
 const MIN_SPEAKER_LENGTH = 2;
 const MAX_SPEAKER_LENGTH = 500;
@@ -37,21 +38,9 @@ export async function POST(req: Request) {
       );
     }
 
-    const { error } = await auth
-      .adminClient!.from("suggest")
-      .update({
-        reviewed: true,
-        approved: action === "approve",
-      })
-      .eq("id", id);
-
-    if (error) {
-      console.error("Suggestion update error:", error);
-      return NextResponse.json(
-        { error: "Failed to update suggestion" },
-        { status: 500 },
-      );
-    }
+    await db.update(suggest)
+      .set({ reviewed: true, approved: action === "approve" })
+      .where(eq(suggest.id, id));
 
     // Return fresh suggestions using the same logic as the initial page load
     const { suggestions } = await getAdminSuggestions();
@@ -89,18 +78,9 @@ export async function PATCH(req: Request) {
 
     // Handle marking as duplicate
     if (typeof duplicate === "boolean") {
-      const { error } = await auth
-        .adminClient!.from("suggest")
-        .update({ duplicate })
-        .eq("id", id);
-
-      if (error) {
-        console.error("Suggestion duplicate update error:", error);
-        return NextResponse.json(
-          { error: "Failed to update suggestion" },
-          { status: 500 },
-        );
-      }
+      await db.update(suggest)
+        .set({ duplicate })
+        .where(eq(suggest.id, id));
 
       // Return fresh suggestions using the same logic as the initial page load
       const { suggestions } = await getAdminSuggestions();
@@ -112,18 +92,9 @@ export async function PATCH(req: Request) {
       return NextResponse.json({ error: "Invalid request" }, { status: 400 });
     }
 
-    const { error } = await auth
-      .adminClient!.from("suggest")
-      .update({ speaker: speaker.trim() })
-      .eq("id", id);
-
-    if (error) {
-      console.error("Suggestion edit error:", error);
-      return NextResponse.json(
-        { error: "Failed to update suggestion" },
-        { status: 500 },
-      );
-    }
+    await db.update(suggest)
+      .set({ speaker: speaker.trim() })
+      .where(eq(suggest.id, id));
 
     // Return fresh suggestions using the same logic as the initial page load
     const { suggestions } = await getAdminSuggestions();
@@ -164,29 +135,25 @@ export async function PUT(req: Request) {
       );
     }
 
-    const client = auth.adminClient!;
-
     // Verify source is pending or rejected (not approved) and target is approved
-    const { data: source, error: sourceError } = await client
-      .from("suggest")
-      .select("id, reviewed, approved")
-      .eq("id", sourceId)
-      .single();
+    const source = await db.query.suggest.findFirst({
+      where: eq(suggest.id, sourceId),
+      columns: { id: true, reviewed: true, approved: true },
+    });
 
-    if (sourceError || !source || source.approved) {
+    if (!source || source.approved) {
       return NextResponse.json(
         { error: "Source suggestion must be pending or rejected" },
         { status: 400 },
       );
     }
 
-    const { data: target, error: targetError } = await client
-      .from("suggest")
-      .select("id, approved")
-      .eq("id", targetId)
-      .single();
+    const target = await db.query.suggest.findFirst({
+      where: eq(suggest.id, targetId),
+      columns: { id: true, approved: true },
+    });
 
-    if (targetError || !target || !target.approved) {
+    if (!target || !target.approved) {
       return NextResponse.json(
         { error: "Target suggestion must be approved" },
         { status: 400 },
@@ -194,89 +161,41 @@ export async function PUT(req: Request) {
     }
 
     // Get all votes from the source suggestion
-    const { data: sourceVotes, error: votesError } = await client
-      .from("votes")
-      .select("email")
-      .eq("speaker_id", sourceId);
-
-    if (votesError) {
-      console.error("Failed to fetch source votes:", votesError);
-      return NextResponse.json(
-        { error: "Failed to fetch source votes" },
-        { status: 500 },
-      );
-    }
+    const sourceVotes = await db.query.votes.findMany({
+      where: eq(votes.speakerId, sourceId),
+      columns: { email: true },
+    });
 
     // Get existing votes for the target to avoid duplicates
-    const { data: targetVotes, error: targetVotesError } = await client
-      .from("votes")
-      .select("email")
-      .eq("speaker_id", targetId);
+    const targetVotes = await db.query.votes.findMany({
+      where: eq(votes.speakerId, targetId),
+      columns: { email: true },
+    });
 
-    if (targetVotesError) {
-      console.error("Failed to fetch target votes:", targetVotesError);
-      return NextResponse.json(
-        { error: "Failed to fetch target votes" },
-        { status: 500 },
-      );
-    }
-
-    const targetVoterEmails = new Set((targetVotes || []).map((v) => v.email));
+    const targetVoterEmails = new Set(targetVotes.map((v) => v.email));
 
     // Filter out votes that already exist for the target
-    const votesToTransfer = (sourceVotes || []).filter(
-      (vote) => !targetVoterEmails.has(vote.email),
+    const votesToTransfer = sourceVotes.filter(
+      (vote) => vote.email && !targetVoterEmails.has(vote.email),
     );
 
     // Transfer votes to target (only new ones)
     if (votesToTransfer.length > 0) {
-      const { error: transferError } = await client.from("votes").insert(
+      await db.insert(votes).values(
         votesToTransfer.map((vote) => ({
-          speaker_id: targetId,
-          email: vote.email,
+          speakerId: targetId,
+          email: vote.email!,
         })),
       );
-
-      if (transferError) {
-        console.error("Failed to transfer votes:", transferError);
-        return NextResponse.json(
-          { error: "Failed to transfer votes" },
-          { status: 500 },
-        );
-      }
     }
 
     // Delete all votes from source
-    const { error: deleteError } = await client
-      .from("votes")
-      .delete()
-      .eq("speaker_id", sourceId);
-
-    if (deleteError) {
-      console.error("Failed to delete source votes:", deleteError);
-      return NextResponse.json(
-        { error: "Failed to delete source votes" },
-        { status: 500 },
-      );
-    }
+    await db.delete(votes).where(eq(votes.speakerId, sourceId));
 
     // Mark source as reviewed, rejected, and duplicate
-    const { error: updateError } = await client
-      .from("suggest")
-      .update({
-        reviewed: true,
-        approved: false,
-        duplicate: true,
-      })
-      .eq("id", sourceId);
-
-    if (updateError) {
-      console.error("Failed to update source suggestion:", updateError);
-      return NextResponse.json(
-        { error: "Failed to update source suggestion" },
-        { status: 500 },
-      );
-    }
+    await db.update(suggest)
+      .set({ reviewed: true, approved: false, duplicate: true })
+      .where(eq(suggest.id, sourceId));
 
     // Return fresh suggestions using the same logic as the initial page load
     const { suggestions } = await getAdminSuggestions();

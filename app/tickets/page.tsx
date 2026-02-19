@@ -1,5 +1,6 @@
 import TicketManagementClient, { Ticket } from "./TicketManagementClient";
 import { verifyAdminRequest } from "@/app/lib/supabase";
+import { db } from "@ssb/db";
 
 export const dynamic = "force-dynamic";
 
@@ -33,19 +34,16 @@ async function getEvents() {
       return [];
     }
 
-    const client = auth.adminClient!;
+    const events = await db.query.events.findMany({
+      columns: { id: true, name: true, startTimeDate: true },
+      orderBy: (t, { desc }) => [desc(t.startTimeDate)],
+    });
 
-    const { data: events, error } = await client
-      .from("events")
-      .select("id, name, start_time_date")
-      .order("start_time_date", { ascending: false });
-
-    if (error) {
-      console.error("Events fetch error:", error);
-      return [];
-    }
-
-    return events || [];
+    return events.map((e) => ({
+      id: e.id,
+      name: e.name,
+      start_time_date: e.startTimeDate?.toISOString() ?? null,
+    }));
   } catch (error) {
     console.error("Failed to fetch events:", error);
     return [];

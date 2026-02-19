@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { verifyAdminRequest } from "@/app/lib/supabase";
 import { isValidEmail, isValidUUID } from "@/app/lib/validation";
+import { db, eq, roles } from "@ssb/db";
 
 export async function POST(req: Request) {
   try {
@@ -41,11 +42,9 @@ export async function POST(req: Request) {
       }
 
       // Check if user exists in roles table
-      const { data: existing } = await auth
-        .adminClient!.from("roles")
-        .select("*")
-        .eq("email", email)
-        .single();
+      const existing = await db.query.roles.findFirst({
+        where: eq(roles.email, email),
+      });
 
       if (existing) {
         const currentRoles = existing.roles ? existing.roles.split(",") : [];
@@ -60,39 +59,35 @@ export async function POST(req: Request) {
 
         // Add role to existing user
         const newRoles = [...currentRoles, roleName].join(",");
-        const { data, error } = await auth
-          .adminClient!.from("roles")
-          .update({ roles: newRoles })
-          .eq("id", existing.id)
-          .select("*")
-          .single();
+        const [updated] = await db.update(roles)
+          .set({ roles: newRoles })
+          .where(eq(roles.id, existing.id))
+          .returning();
 
-        if (error) {
-          console.error("Update error:", error);
-          return NextResponse.json(
-            { error: "Failed to update user roles" },
-            { status: 500 },
-          );
-        }
-
-        return NextResponse.json({ success: true, user: data });
+        return NextResponse.json({
+          success: true,
+          user: {
+            id: updated.id,
+            created_at: updated.createdAt.toISOString(),
+            email: updated.email,
+            roles: updated.roles,
+          },
+        });
       } else {
         // Create new user with role
-        const { data, error } = await auth
-          .adminClient!.from("roles")
-          .insert([{ email, roles: roleName }])
-          .select("*")
-          .single();
+        const [created] = await db.insert(roles)
+          .values({ email, roles: roleName })
+          .returning();
 
-        if (error) {
-          console.error("Insert error:", error);
-          return NextResponse.json(
-            { error: "Failed to add user" },
-            { status: 500 },
-          );
-        }
-
-        return NextResponse.json({ success: true, user: data });
+        return NextResponse.json({
+          success: true,
+          user: {
+            id: created.id,
+            created_at: created.createdAt.toISOString(),
+            email: created.email,
+            roles: created.roles,
+          },
+        });
       }
     } else {
       // Remove
@@ -108,11 +103,9 @@ export async function POST(req: Request) {
         );
       }
 
-      const { data: existing } = await auth
-        .adminClient!.from("roles")
-        .select("*")
-        .eq("id", id)
-        .single();
+      const existing = await db.query.roles.findFirst({
+        where: eq(roles.id, id),
+      });
 
       if (!existing) {
         return NextResponse.json({ error: "User not found" }, { status: 404 });
@@ -123,18 +116,9 @@ export async function POST(req: Request) {
       const newRolesString = newRoles.join(",");
 
       // Update roles
-      const { error } = await auth
-        .adminClient!.from("roles")
-        .update({ roles: newRolesString })
-        .eq("id", id);
-
-      if (error) {
-        console.error("Delete error:", error);
-        return NextResponse.json(
-          { error: "Failed to remove user role" },
-          { status: 500 },
-        );
-      }
+      await db.update(roles)
+        .set({ roles: newRolesString })
+        .where(eq(roles.id, id));
 
       return NextResponse.json({ success: true });
     }

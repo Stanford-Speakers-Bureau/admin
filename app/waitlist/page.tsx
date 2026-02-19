@@ -1,12 +1,12 @@
 import WaitlistViewerClient from "./WaitlistViewerClient";
 import { verifyAdminRequest } from "@/app/lib/supabase";
+import { db } from "@ssb/db";
 
 export const dynamic = "force-dynamic";
 
 type WaitlistEntry = {
   id: string;
   email: string;
-  name: string | null;
   referral: string | null;
   position: number;
   created_at: string;
@@ -37,65 +37,47 @@ async function getInitialWaitlist(): Promise<{
       return { waitlist: [], isGrouped: true };
     }
 
-    const client = auth.adminClient!;
-
     // Get all waitlist entries with event data
-    const { data: waitlistEntries, error: waitlistError } = await client
-      .from("waitlist")
-      .select(
-        `
-        id,
-        email,
-        name,
-        referral,
-        position,
-        created_at,
-        event_id,
-        events (
-          id,
-          name,
-          capacity,
-          reserved,
-          start_time_date,
-          venue
-        )
-      `,
-      )
-      .order("event_id", { ascending: false })
-      .order("position", { ascending: true });
-
-    if (waitlistError) {
-      console.error("Waitlist fetch error:", waitlistError);
-      return { waitlist: [], isGrouped: true };
-    }
+    const waitlistEntries = await db.query.waitlist.findMany({
+      columns: {
+        id: true,
+        email: true,
+        referral: true,
+        position: true,
+        createdAt: true,
+        eventId: true,
+      },
+      with: {
+        event: {
+          columns: {
+            id: true,
+            name: true,
+            capacity: true,
+            reserved: true,
+            startTimeDate: true,
+            venue: true,
+          },
+        },
+      },
+      orderBy: (t, { desc, asc }) => [desc(t.eventId), asc(t.position)],
+    });
 
     // Group by event
     const groupedByEvent: Record<string, EventGroup> = {};
 
-    waitlistEntries?.forEach((entry) => {
-      const eventId = entry.event_id;
-      if (!eventId) return;
-
-      // Handle events relation - Supabase may return it as array or object
-      let eventData: EventDetails | null = null;
-
-      if (Array.isArray(entry.events)) {
-        eventData = entry.events[0] || null;
-      } else if (entry.events) {
-        eventData = entry.events as EventDetails;
-      }
-
-      if (!eventData || !eventData.id) return;
+    for (const entry of waitlistEntries) {
+      const eventId = entry.eventId;
+      if (!eventId || !entry.event) continue;
 
       if (!groupedByEvent[eventId]) {
         groupedByEvent[eventId] = {
           event: {
-            id: eventData.id,
-            name: eventData.name,
-            capacity: eventData.capacity,
-            reserved: eventData.reserved,
-            start_time_date: eventData.start_time_date,
-            venue: eventData.venue,
+            id: entry.event.id,
+            name: entry.event.name,
+            capacity: entry.event.capacity,
+            reserved: entry.event.reserved ?? null,
+            start_time_date: entry.event.startTimeDate?.toISOString() ?? null,
+            venue: entry.event.venue,
           },
           waitlist: [],
           totalCount: 0,
@@ -105,13 +87,12 @@ async function getInitialWaitlist(): Promise<{
       groupedByEvent[eventId].waitlist.push({
         id: entry.id,
         email: entry.email,
-        name: entry.name,
         referral: entry.referral,
         position: entry.position,
-        created_at: entry.created_at,
+        created_at: entry.createdAt.toISOString(),
       });
       groupedByEvent[eventId].totalCount++;
-    });
+    }
 
     return {
       waitlist: Object.values(groupedByEvent),
@@ -130,19 +111,16 @@ async function getEvents() {
       return [];
     }
 
-    const client = auth.adminClient!;
+    const events = await db.query.events.findMany({
+      columns: { id: true, name: true, startTimeDate: true },
+      orderBy: (t, { desc }) => [desc(t.startTimeDate)],
+    });
 
-    const { data: events, error } = await client
-      .from("events")
-      .select("id, name, start_time_date")
-      .order("start_time_date", { ascending: false });
-
-    if (error) {
-      console.error("Events fetch error:", error);
-      return [];
-    }
-
-    return events || [];
+    return events.map((e) => ({
+      id: e.id,
+      name: e.name,
+      start_time_date: e.startTimeDate?.toISOString() ?? null,
+    }));
   } catch (error) {
     console.error("Failed to fetch events:", error);
     return [];

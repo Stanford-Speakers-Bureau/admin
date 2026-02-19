@@ -1,5 +1,6 @@
 import AdminUsersClient, { Admin, Ban, Scanner } from "./AdminUsersClient";
 import { verifyAdminRequest } from "@/app/lib/supabase";
+import { db } from "@ssb/db";
 
 export const dynamic = "force-dynamic";
 
@@ -14,31 +15,32 @@ async function getInitialUsers(): Promise<{
       return { admins: [], bans: [], scanners: [] };
     }
 
-    const client = auth.adminClient!;
+    const allRoles = await db.query.roles.findMany({
+      orderBy: (t, { desc }) => [desc(t.createdAt)],
+    });
 
-    const { data: allRoles, error: rolesError } = await client
-      .from("roles")
-      .select("*")
-      .order("created_at", { ascending: false });
+    // Serialize to snake_case for client components
+    const serialized = allRoles.map((r) => ({
+      id: r.id,
+      created_at: r.createdAt.toISOString(),
+      email: r.email,
+      roles: r.roles,
+    }));
 
-    if (rolesError) {
-      console.error("Roles fetch error:", rolesError);
-    }
-
-    const admins = (allRoles || []).filter((r: { roles?: string | null }) =>
+    const admins = serialized.filter((r) =>
       r.roles?.split(",").includes("admin"),
     );
-    const bans = (allRoles || []).filter((r: { roles?: string | null }) =>
+    const bans = serialized.filter((r) =>
       r.roles?.split(",").includes("banned"),
     );
-    const scanners = (allRoles || []).filter((r: { roles?: string | null }) =>
+    const scanners = serialized.filter((r) =>
       r.roles?.split(",").includes("scanner"),
     );
 
     return {
-      admins: (admins || []) as Admin[],
-      bans: (bans || []) as Ban[],
-      scanners: (scanners || []) as Scanner[],
+      admins: admins as Admin[],
+      bans: bans as Ban[],
+      scanners: scanners as Scanner[],
     };
   } catch (error) {
     console.error("Failed to fetch initial users:", error);

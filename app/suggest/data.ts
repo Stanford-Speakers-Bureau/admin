@@ -1,5 +1,6 @@
 import type { Suggestion } from "./AdminSuggestClient";
 import { verifyAdminRequest } from "@/app/lib/supabase";
+import { db, inArray, votes } from "@ssb/db";
 
 export async function getAdminSuggestions(): Promise<{
   suggestions: Suggestion[];
@@ -10,47 +11,40 @@ export async function getAdminSuggestions(): Promise<{
       return { suggestions: [] };
     }
 
-    const client = auth.adminClient!;
-
     // Fetch all suggestions, newest first
-    const { data: suggestions, error } = await client
-      .from("suggest")
-      .select("*")
-      .order("created_at", { ascending: false });
-
-    if (error) {
-      console.error("Suggestions fetch error:", error);
-      return { suggestions: [] };
-    }
+    const suggestions = await db.query.suggest.findMany({
+      orderBy: (t, { desc }) => [desc(t.createdAt)],
+    });
 
     // Attach voters for each suggestion (admin-only view)
-    let suggestionsWithVoters = suggestions || [];
+    let suggestionsWithVoters: any[] = suggestions;
     try {
-      const suggestionIds = (suggestions || [])
-        .map((s: any) => s.id)
-        .filter(Boolean);
+      const suggestionIds = suggestions.map((s) => s.id).filter(Boolean);
 
       if (suggestionIds.length > 0) {
-        const { data: votes, error: votesError } = await client
-          .from("votes")
-          .select("speaker_id, email")
-          .in("speaker_id", suggestionIds);
+        const allVotes = await db.query.votes.findMany({
+          where: inArray(votes.speakerId, suggestionIds),
+          columns: { speakerId: true, email: true },
+        });
 
-        if (votesError) {
-          console.error("Votes fetch error:", votesError);
-        } else {
-          const votersBySpeaker: Record<string, string[]> = {};
-          for (const vote of votes || []) {
-            const key = vote.speaker_id as string;
-            if (!votersBySpeaker[key]) votersBySpeaker[key] = [];
-            votersBySpeaker[key].push(vote.email);
-          }
-
-          suggestionsWithVoters = (suggestions || []).map((s: any) => ({
-            ...s,
-            voters: votersBySpeaker[s.id] || [],
-          }));
+        const votersBySpeaker: Record<string, string[]> = {};
+        for (const vote of allVotes) {
+          const key = vote.speakerId as string;
+          if (!votersBySpeaker[key]) votersBySpeaker[key] = [];
+          if (vote.email) votersBySpeaker[key].push(vote.email);
         }
+
+        suggestionsWithVoters = suggestions.map((s) => ({
+          id: s.id,
+          created_at: s.createdAt.toISOString(),
+          email: s.email,
+          speaker: s.speaker,
+          approved: s.approved,
+          votes: s.votes,
+          reviewed: s.reviewed,
+          duplicate: s.duplicate,
+          voters: votersBySpeaker[s.id] || [],
+        }));
       }
     } catch (votesError) {
       console.error("Unexpected error attaching voters:", votesError);

@@ -1,5 +1,6 @@
 import AdminNotifyClient, { EventWithNotifications } from "./AdminNotifyClient";
 import { verifyAdminRequest } from "@/app/lib/supabase";
+import { db } from "@ssb/db";
 
 export const dynamic = "force-dynamic";
 
@@ -10,92 +11,32 @@ async function getInitialNotifications(): Promise<EventWithNotifications[]> {
       return [];
     }
 
-    const client = auth.adminClient!;
+    const [events, notifications] = await Promise.all([
+      db.query.events.findMany({
+        columns: { id: true, name: true, startTimeDate: true, route: true, ticketingDate: true },
+        orderBy: (t, { desc }) => [desc(t.startTimeDate)],
+      }),
+      db.query.notify.findMany({
+        columns: { id: true, email: true, createdAt: true, speakerId: true },
+        orderBy: (t, { desc }) => [desc(t.createdAt)],
+      }),
+    ]);
 
-    const { data: events, error: eventsError } = await client
-      .from("events")
-      .select("id, name, start_time_date, route, ticketing_date")
-      .order("start_time_date", { ascending: false });
-
-    if (eventsError) {
-      console.error("Events fetch error:", eventsError);
-    }
-
-    // Fetch ALL notify rows (Supabase caps at 1000 per query)
-    const notifications: { id: string; email: string; created_at: string; speaker_id: string }[] = [];
-    {
-      const PAGE_SIZE = 1000;
-      let offset = 0;
-      let hasMore = true;
-      while (hasMore) {
-        const { data: page, error: notifyError } = await client
-          .from("notify")
-          .select("id, email, created_at, speaker_id")
-          .order("created_at", { ascending: false })
-          .range(offset, offset + PAGE_SIZE - 1);
-
-        if (notifyError) {
-          console.error("Notifications fetch error:", notifyError);
-          break;
-        }
-        if (page && page.length > 0) {
-          notifications.push(...page);
-          offset += page.length;
-          hasMore = page.length === PAGE_SIZE;
-        } else {
-          hasMore = false;
-        }
-      }
-    }
-
-    // Fetch ALL ticket rows (Supabase caps at 1000 per query)
-    const allTickets: { email: string; event_id: string }[] = [];
-    const PAGE_SIZE = 1000;
-    let ticketOffset = 0;
-    let hasMore = true;
-    while (hasMore) {
-      const { data: page, error: ticketsError } = await client
-        .from("tickets")
-        .select("email, event_id")
-        .range(ticketOffset, ticketOffset + PAGE_SIZE - 1);
-
-      if (ticketsError) {
-        console.error("Tickets fetch error:", ticketsError);
-        break;
-      }
-      if (page && page.length > 0) {
-        allTickets.push(...page);
-        ticketOffset += page.length;
-        hasMore = page.length === PAGE_SIZE;
-      } else {
-        hasMore = false;
-      }
-    }
-
-    // Build a set of "email|event_id" for quick lookup
-    const ticketSet = new Set(
-      allTickets.map((t) => `${t.email.toLowerCase()}|${t.event_id}`),
-    );
-
-    const now = new Date().toISOString();
-
-    const eventsWithNotifications =
-      events?.map((event: any) => {
-        const ticketingOpen = event.ticketing_date && event.ticketing_date <= now;
-        return {
-          ...event,
-          ticketingOpen: !!ticketingOpen,
-          notifications:
-            (notifications?.filter((n: any) => n.speaker_id === event.id) || []).map(
-              (n: any) => ({
-                ...n,
-                hasTicket: ticketingOpen
-                  ? ticketSet.has(`${n.email.toLowerCase()}|${event.id}`)
-                  : false,
-              }),
-            ),
-        };
-      }) || [];
+    const eventsWithNotifications = events.map((event) => ({
+      id: event.id,
+      name: event.name,
+      start_time_date: event.startTimeDate?.toISOString() ?? null,
+      route: event.route,
+      ticketing_date: event.ticketingDate?.toISOString() ?? null,
+      notifications: notifications
+        .filter((n) => n.speakerId === event.id)
+        .map((n) => ({
+          id: n.id,
+          email: n.email,
+          created_at: n.createdAt.toISOString(),
+          speaker_id: n.speakerId,
+        })),
+    }));
 
     return eventsWithNotifications as EventWithNotifications[];
   } catch (error) {

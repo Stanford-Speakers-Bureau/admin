@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { verifyAdminRequest } from "@/app/lib/supabase";
 import { isValidUUID } from "@/app/lib/validation";
 import { sendWaitlistClosedEmail } from "@/app/lib/email";
+import { db, eq, waitlist, events } from "@ssb/db";
 
 export async function GET(req: Request) {
   try {
@@ -13,8 +14,6 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const eventId = searchParams.get("eventId");
 
-    const adminClient = auth.adminClient;
-
     // If eventId is provided, validate and return single event waitlist
     if (eventId) {
       if (!isValidUUID(eventId)) {
@@ -25,36 +24,53 @@ export async function GET(req: Request) {
       }
 
       // Get event details
-      const { data: event, error: eventError } = await adminClient
-        .from("events")
-        .select("id, name, capacity, reserved, start_time_date, venue")
-        .eq("id", eventId)
-        .single();
+      const event = await db.query.events.findFirst({
+        where: eq(events.id, eventId),
+        columns: {
+          id: true,
+          name: true,
+          capacity: true,
+          reserved: true,
+          startTimeDate: true,
+          venue: true,
+        },
+      });
 
-      if (eventError || !event) {
+      if (!event) {
         return NextResponse.json({ error: "Event not found" }, { status: 404 });
       }
 
       // Get waitlist for this event
-      const { data: waitlist, error: waitlistError } = await adminClient
-        .from("waitlist")
-        .select("id, email, name, referral, position, created_at")
-        .eq("event_id", eventId)
-        .order("position", { ascending: true });
-
-      if (waitlistError) {
-        console.error("Waitlist fetch error:", waitlistError);
-        return NextResponse.json(
-          { error: "Failed to fetch waitlist" },
-          { status: 500 },
-        );
-      }
+      const waitlistEntries = await db.query.waitlist.findMany({
+        where: eq(waitlist.eventId, eventId),
+        columns: {
+          id: true,
+          email: true,
+          referral: true,
+          position: true,
+          createdAt: true,
+        },
+        orderBy: (t, { asc }) => [asc(t.position)],
+      });
 
       return NextResponse.json(
         {
-          event,
-          waitlist: waitlist || [],
-          totalCount: waitlist?.length || 0,
+          event: {
+            id: event.id,
+            name: event.name,
+            capacity: event.capacity,
+            reserved: event.reserved ?? null,
+            start_time_date: event.startTimeDate?.toISOString() ?? null,
+            venue: event.venue,
+          },
+          waitlist: waitlistEntries.map((e) => ({
+            id: e.id,
+            email: e.email,
+            referral: e.referral,
+            position: e.position,
+            created_at: e.createdAt.toISOString(),
+          })),
+          totalCount: waitlistEntries.length,
           grouped: false,
         },
         { status: 200 },
@@ -62,37 +78,29 @@ export async function GET(req: Request) {
     }
 
     // No eventId - return all waitlist entries grouped by event
-    const { data: waitlistEntries, error: waitlistError } = await adminClient
-      .from("waitlist")
-      .select(
-        `
-        id,
-        email,
-        name,
-        referral,
-        position,
-        created_at,
-        event_id,
-        events (
-          id,
-          name,
-          capacity,
-          reserved,
-          start_time_date,
-          venue
-        )
-      `,
-      )
-      .order("event_id", { ascending: false })
-      .order("position", { ascending: true });
-
-    if (waitlistError) {
-      console.error("Waitlist fetch error:", waitlistError);
-      return NextResponse.json(
-        { error: "Failed to fetch waitlist" },
-        { status: 500 },
-      );
-    }
+    const allWaitlistEntries = await db.query.waitlist.findMany({
+      columns: {
+        id: true,
+        email: true,
+        referral: true,
+        position: true,
+        createdAt: true,
+        eventId: true,
+      },
+      with: {
+        event: {
+          columns: {
+            id: true,
+            name: true,
+            capacity: true,
+            reserved: true,
+            startTimeDate: true,
+            venue: true,
+          },
+        },
+      },
+      orderBy: (t, { desc, asc }) => [desc(t.eventId), asc(t.position)],
+    });
 
     // Group by event
     const groupedByEvent: Record<
@@ -109,7 +117,6 @@ export async function GET(req: Request) {
         waitlist: Array<{
           id: string;
           email: string;
-          name: string | null;
           referral: string | null;
           position: number;
           created_at: string;
@@ -118,52 +125,33 @@ export async function GET(req: Request) {
       }
     > = {};
 
-    waitlistEntries?.forEach((entry) => {
-      const eventId = entry.event_id;
-      if (!eventId) return;
+    allWaitlistEntries.forEach((entry) => {
+      const evtId = entry.eventId;
+      if (!evtId || !entry.event) return;
 
-      // Handle events relation - Supabase may return it as array or object
-      let eventData: {
-        id: string;
-        name: string | null;
-        capacity: number;
-        reserved: number | null;
-        start_time_date: string | null;
-        venue: string | null;
-      } | null = null;
-
-      if (Array.isArray(entry.events)) {
-        eventData = entry.events[0] || null;
-      } else if (entry.events) {
-        eventData = entry.events as typeof eventData;
-      }
-
-      if (!eventData || !eventData.id) return;
-
-      if (!groupedByEvent[eventId]) {
-        groupedByEvent[eventId] = {
+      if (!groupedByEvent[evtId]) {
+        groupedByEvent[evtId] = {
           event: {
-            id: eventData.id,
-            name: eventData.name,
-            capacity: eventData.capacity,
-            reserved: eventData.reserved,
-            start_time_date: eventData.start_time_date,
-            venue: eventData.venue,
+            id: entry.event.id,
+            name: entry.event.name,
+            capacity: entry.event.capacity,
+            reserved: entry.event.reserved ?? null,
+            start_time_date: entry.event.startTimeDate?.toISOString() ?? null,
+            venue: entry.event.venue,
           },
           waitlist: [],
           totalCount: 0,
         };
       }
 
-      groupedByEvent[eventId].waitlist.push({
+      groupedByEvent[evtId].waitlist.push({
         id: entry.id,
         email: entry.email,
-        name: entry.name,
         referral: entry.referral,
         position: entry.position,
-        created_at: entry.created_at,
+        created_at: entry.createdAt.toISOString(),
       });
-      groupedByEvent[eventId].totalCount++;
+      groupedByEvent[evtId].totalCount++;
     });
 
     return NextResponse.json(
@@ -206,32 +194,27 @@ export async function POST(req: Request) {
       );
     }
 
-    const adminClient = auth.adminClient;
-
     // Fetch event details
-    const { data: event, error: eventError } = await adminClient
-      .from("events")
-      .select("id, name, start_time_date, venue, venue_link")
-      .eq("id", eventId)
-      .single();
+    const event = await db.query.events.findFirst({
+      where: eq(events.id, eventId),
+      columns: {
+        id: true,
+        name: true,
+        startTimeDate: true,
+        venue: true,
+        venueLink: true,
+      },
+    });
 
-    if (eventError || !event) {
+    if (!event) {
       return NextResponse.json({ error: "Event not found" }, { status: 404 });
     }
 
     // Fetch all waitlist entries for this event
-    const { data: waitlistEntries, error: waitlistError } = await adminClient
-      .from("waitlist")
-      .select("id, email")
-      .eq("event_id", eventId);
-
-    if (waitlistError) {
-      console.error("Waitlist fetch error:", waitlistError);
-      return NextResponse.json(
-        { error: "Failed to fetch waitlist" },
-        { status: 500 },
-      );
-    }
+    const waitlistEntries = await db.query.waitlist.findMany({
+      where: eq(waitlist.eventId, eventId),
+      columns: { id: true, email: true },
+    });
 
     if (!waitlistEntries || waitlistEntries.length === 0) {
       return NextResponse.json(
@@ -250,9 +233,9 @@ export async function POST(req: Request) {
         await sendWaitlistClosedEmail({
           email: entry.email,
           eventName: event.name || "Event",
-          eventStartTime: event.start_time_date,
+          eventStartTime: event.startTimeDate?.toISOString() ?? null,
           eventVenue: event.venue,
-          eventVenueLink: event.venue_link,
+          eventVenueLink: event.venueLink,
           waitlistOpenTime: waitlistOpenTime || "7:30 PM",
           expectedCapacity: expectedCapacity || "100-200",
         });
