@@ -30,6 +30,7 @@ type TicketManagementClientProps = {
   initialFilteredCount: number;
   initialStandardCount: number;
   initialVipCount: number;
+  initialExternalCount: number;
   initialEvents: {
     id: string;
     name: string | null;
@@ -74,6 +75,7 @@ export default function TicketManagementClient({
   initialFilteredCount,
   initialStandardCount,
   initialVipCount,
+  initialExternalCount,
   initialEvents,
 }: TicketManagementClientProps) {
   const defaultEventId = getNextEventId(initialEvents);
@@ -84,6 +86,7 @@ export default function TicketManagementClient({
   const [filteredCount, setFilteredCount] = useState(initialFilteredCount);
   const [standardCount, setStandardCount] = useState(initialStandardCount);
   const [vipCount, setVipCount] = useState(initialVipCount);
+  const [externalCount, setExternalCount] = useState(initialExternalCount);
   const [selectedEventId, setSelectedEventId] = useState<string>(defaultEventId);
   const [search, setSearch] = useState("");
   const [ticketTypeFilter, setTicketTypeFilter] = useState<string>("");
@@ -140,6 +143,7 @@ export default function TicketManagementClient({
       setFilteredCount(0);
       setStandardCount(0);
       setVipCount(0);
+      setExternalCount(0);
       return;
     }
 
@@ -183,6 +187,7 @@ export default function TicketManagementClient({
       setFilteredCount(data.filteredCount || 0);
       setStandardCount(data.standardCount || 0);
       setVipCount(data.vipCount || 0);
+      setExternalCount(data.externalCount || 0);
     } catch (err) {
       console.error("Error fetching tickets:", err);
       setError(err instanceof Error ? err.message : "Failed to load tickets");
@@ -233,6 +238,8 @@ export default function TicketManagementClient({
       // Update ticket type counts
       if (ticketToDelete?.type === "STANDARD") {
         setStandardCount((prev) => prev - 1);
+      } else if (ticketToDelete?.type === "EXTERNAL") {
+        setExternalCount((prev) => prev - 1);
       } else {
         setVipCount((prev) => prev - 1);
       }
@@ -296,13 +303,13 @@ export default function TicketManagementClient({
       );
       // Update ticket type counts if type actually changed
       if (oldType !== newType) {
-        if (oldType === "STANDARD") {
-          setStandardCount((prev) => prev - 1);
-          setVipCount((prev) => prev + 1);
-        } else {
-          setVipCount((prev) => prev - 1);
-          setStandardCount((prev) => prev + 1);
-        }
+        if (oldType === "STANDARD") setStandardCount((prev) => prev - 1);
+        else if (oldType === "VIP") setVipCount((prev) => prev - 1);
+        else if (oldType === "EXTERNAL") setExternalCount((prev) => prev - 1);
+
+        if (newType === "STANDARD") setStandardCount((prev) => prev + 1);
+        else if (newType === "VIP") setVipCount((prev) => prev + 1);
+        else if (newType === "EXTERNAL") setExternalCount((prev) => prev + 1);
       }
       setSuccess("Ticket type updated successfully!");
     } catch (err) {
@@ -693,6 +700,8 @@ export default function TicketManagementClient({
       setUnscannedCount((prev) => prev + successCount);
       if (newTicketType === "STANDARD") {
         setStandardCount((prev) => prev + successCount);
+      } else if (newTicketType === "EXTERNAL") {
+        setExternalCount((prev) => prev + successCount);
       } else {
         setVipCount((prev) => prev + successCount);
       }
@@ -742,6 +751,12 @@ export default function TicketManagementClient({
                   <span className="text-zinc-400">VIP:</span>
                   <span className="text-blue-400 font-semibold">
                     {vipCount}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-zinc-400">External:</span>
+                  <span className="text-green-400 font-semibold">
+                    {externalCount}
                   </span>
                 </div>
                 <div className="flex items-center gap-2">
@@ -983,6 +998,7 @@ export default function TicketManagementClient({
                 >
                   <option value="VIP">VIP</option>
                   <option value="STANDARD">STANDARD</option>
+                  <option value="EXTERNAL">EXTERNAL</option>
                 </select>
               </div>
             </div>
@@ -1182,6 +1198,7 @@ export default function TicketManagementClient({
             <option value="">All Types</option>
             <option value="VIP">VIP</option>
             <option value="STANDARD">STANDARD</option>
+            <option value="EXTERNAL">EXTERNAL</option>
           </select>
         </div>
         <div>
@@ -1330,11 +1347,14 @@ export default function TicketManagementClient({
                         disabled={updatingTicketId === ticket.id}
                         className={`px-2 py-1 text-xs font-medium rounded-lg bg-zinc-800 border border-zinc-700 text-white focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 disabled:opacity-50 disabled:cursor-not-allowed ${ticket.type === "VIP"
                           ? "bg-blue-500/20 text-blue-400 border-blue-500/30"
-                          : ""
+                          : ticket.type === "EXTERNAL"
+                            ? "bg-green-500/20 text-green-400 border-green-500/30"
+                            : ""
                           }`}
                       >
                         <option value="VIP">VIP</option>
                         <option value="STANDARD">STANDARD</option>
+                        <option value="EXTERNAL">EXTERNAL</option>
                       </select>
                     </td>
                     <td className="hidden lg:table-cell px-3 sm:px-4 py-3 sm:py-4 whitespace-nowrap">
