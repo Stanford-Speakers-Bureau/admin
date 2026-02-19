@@ -10,7 +10,7 @@ import {
   sendTicketEmail,
 } from "@/app/lib/email";
 import { pullFromWaitlist } from "@/app/lib/waitlist";
-import { db, eq, and, ilike, count as dbCount, tickets, events, waitlist, referrals } from "@ssb/db";
+import { db, eq, and, or, ilike, count as dbCount, tickets, events, waitlist, referrals } from "@ssb/db";
 
 /** Helper to serialize a ticket (with optional event relation) to snake_case for API response */
 function serializeTicket(ticket: {
@@ -89,7 +89,7 @@ export async function GET(req: Request) {
 
     const { searchParams } = new URL(req.url);
     const eventId = searchParams.get("eventId");
-    const email = searchParams.get("email");
+    const search = searchParams.get("search");
     const type = searchParams.get("type");
     const scanned = searchParams.get("scanned");
     const limit = parseInt(searchParams.get("limit") || "100");
@@ -98,7 +98,7 @@ export async function GET(req: Request) {
     // Build where conditions for main query and filtered count
     const conditions: ReturnType<typeof eq>[] = [];
     if (eventId) conditions.push(eq(tickets.eventId, eventId));
-    if (email) conditions.push(ilike(tickets.email, `%${email}%`));
+    if (search) conditions.push(or(ilike(tickets.email, `%${search}%`), ilike(tickets.name, `%${search}%`))!);
     if (type) conditions.push(eq(tickets.type, type));
     if (scanned !== null && scanned !== undefined && scanned !== "") {
       conditions.push(eq(tickets.scanned, scanned === "true"));
