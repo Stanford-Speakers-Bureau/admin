@@ -1,5 +1,6 @@
 import ReferralLeaderboardClient from "./ReferralLeaderboardClient";
 import { verifyAdminRequest } from "@/app/lib/supabase";
+import { db, eq, and, isNotNull, tickets } from "@ssb/db";
 
 export const dynamic = "force-dynamic";
 
@@ -10,54 +11,34 @@ async function getInitialLeaderboard() {
       return { leaderboard: [], isGrouped: true };
     }
 
-    const client = auth.adminClient!;
-
     // Fetch referrals and checked-in tickets in parallel
-    const [{ data: referrals, error }, { data: tickets, error: ticketsError }] =
-      await Promise.all([
-        client
-          .from("referrals")
-          .select(
-            `
-        referral_code,
-        count,
-        event_id,
-        events (
-          id,
-          name,
-          route,
-          start_time_date
-        )
-      `,
-          )
-          .order("count", { ascending: false }),
-        client
-          .from("tickets")
-          .select("referral, event_id, scanned")
-          .eq("scanned", true)
-          .not("referral", "is", null),
-      ]);
-
-    if (error) {
-      console.error("Referrals fetch error:", error);
-      return { leaderboard: [], isGrouped: true };
-    }
-
-    if (ticketsError) {
-      console.error("Tickets fetch error:", ticketsError);
-    }
+    const [referrals, scannedTickets] = await Promise.all([
+      db.query.referrals.findMany({
+        columns: { referralCode: true, count: true, eventId: true },
+        with: {
+          event: {
+            columns: { id: true, name: true, route: true, startTimeDate: true },
+          },
+        },
+        orderBy: (t, { desc }) => [desc(t.count)],
+      }),
+      db.query.tickets.findMany({
+        where: and(eq(tickets.scanned, true), isNotNull(tickets.referral)),
+        columns: { referral: true, eventId: true, scanned: true },
+      }),
+    ]);
 
     // Build a map of referral_code -> event_id -> checked_in_count
     const checkedInMap: Record<string, Record<string, number>> = {};
-    tickets?.forEach((ticket) => {
-      if (!ticket.referral) return;
+    scannedTickets.forEach((ticket) => {
+      if (!ticket.referral || !ticket.eventId) return;
       if (!checkedInMap[ticket.referral]) {
         checkedInMap[ticket.referral] = {};
       }
-      if (!checkedInMap[ticket.referral][ticket.event_id]) {
-        checkedInMap[ticket.referral][ticket.event_id] = 0;
+      if (!checkedInMap[ticket.referral][ticket.eventId]) {
+        checkedInMap[ticket.referral][ticket.eventId] = 0;
       }
-      checkedInMap[ticket.referral][ticket.event_id]++;
+      checkedInMap[ticket.referral][ticket.eventId]++;
     });
 
     // Group by event
@@ -73,40 +54,26 @@ async function getInitialLeaderboard() {
       }
     > = {};
 
-    referrals?.forEach((ref) => {
-      const eventId = ref.event_id;
-      if (!eventId) return;
-
-      // Handle events relation - Supabase may return it as array or object
-      let eventData: {
-        id: string;
-        name: string | null;
-        route: string | null;
-        start_time_date: string | null;
-      } | null = null;
-
-      if (Array.isArray(ref.events)) {
-        eventData = ref.events[0] || null;
-      } else if (ref.events) {
-        eventData = ref.events as typeof eventData;
-      }
-
-      if (!eventData || !eventData.id) return;
+    referrals.forEach((ref) => {
+      const eventId = ref.eventId;
+      if (!eventId || !ref.event) return;
 
       if (!groupedByEvent[eventId]) {
         groupedByEvent[eventId] = {
           event: {
-            id: eventData.id,
-            name: eventData.name ?? null,
-            route: eventData.route ?? null,
+            id: ref.event.id,
+            name: ref.event.name ?? null,
+            route: ref.event.route ?? null,
           },
           referrals: [],
         };
       }
+
+      const refCode = ref.referralCode ?? "";
       groupedByEvent[eventId].referrals.push({
-        referral_code: ref.referral_code,
+        referral_code: refCode,
         count: ref.count || 0,
-        checked_in_count: checkedInMap[ref.referral_code]?.[eventId] || 0,
+        checked_in_count: checkedInMap[refCode]?.[eventId] || 0,
       });
     });
 
@@ -132,19 +99,15 @@ async function getEvents() {
       return [];
     }
 
-    const client = auth.adminClient!;
+    const events = await db.query.events.findMany({
+      columns: { id: true, name: true, startTimeDate: true },
+      orderBy: (t, { desc }) => [desc(t.startTimeDate)],
+    });
 
-    const { data: events, error } = await client
-      .from("events")
-      .select("id, name")
-      .order("start_time_date", { ascending: false });
-
-    if (error) {
-      console.error("Events fetch error:", error);
-      return [];
-    }
-
-    return events || [];
+    return events.map((e) => ({
+      id: e.id,
+      name: e.name,
+    }));
   } catch (error) {
     console.error("Failed to fetch events:", error);
     return [];

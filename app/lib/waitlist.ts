@@ -1,11 +1,9 @@
-import {
-  getAvailablePublicTickets,
-  getSupabaseClient,
-} from "@/app/lib/supabase";
+import { getAvailablePublicTickets } from "@/app/lib/supabase";
+import { db, eq, inArray, tickets, waitlist } from "@ssb/db";
 import { sendTicketEmail } from "@/app/lib/email";
 
 export async function pullFromWaitlist(
-  adminClient: ReturnType<typeof getSupabaseClient>,
+  _adminClient: any, // kept for backward compatibility during migration
   eventId: string,
   limit?: number,
 ): Promise<number> {
@@ -16,57 +14,67 @@ export async function pullFromWaitlist(
 
   if (maxToPull <= 0) return 0;
 
-  // Get the first person on the waitlist for this event
-  const { data: waitlistEntries, error: waitlistFetchError } = await adminClient
-    .from("waitlist")
-    .select("id, email, name")
-    .eq("event_id", eventId)
-    .order("position", { ascending: true })
-    .limit(maxToPull);
+  // Get the first people on the waitlist for this event
+  const waitlistEntries = await db.query.waitlist.findMany({
+    where: eq(waitlist.eventId, eventId),
+    orderBy: (t, { asc }) => [asc(t.position)],
+    limit: maxToPull,
+    columns: { id: true, email: true, name: true },
+  });
 
-  if (waitlistFetchError || !waitlistEntries?.length) return 0;
+  if (!waitlistEntries.length) return 0;
 
-  // Create a STANDARD ticket for the waitlist person (transfer name from waitlist)
-  const { data: newTickets, error: ticketCreateError } = await adminClient
-    .from("tickets")
-    .insert(
-      waitlistEntries.map((entry) => ({
-        event_id: eventId,
+  // Create STANDARD tickets for each waitlist person
+  const newTickets: Array<{
+    id: string;
+    email: string;
+    name: string | null;
+    type: string;
+    eventId: string | null;
+    event: {
+      id: string;
+      name: string | null;
+      route: string | null;
+      startTimeDate: Date | null;
+      venue: string | null;
+      venueLink: string | null;
+      desc: string | null;
+    } | null;
+  }> = [];
+
+  for (const entry of waitlistEntries) {
+    try {
+      const [inserted] = await db.insert(tickets).values({
+        eventId,
         email: entry.email,
         name: entry.name ?? null,
         type: "STANDARD",
-      })),
-    )
-    .select(
-      `
-      id,
-      email,
-      name,
-      type,
-      event_id,
-      events (
-        id,
-        name,
-        route,
-        start_time_date,
-        venue,
-        venue_link,
-        desc
-      )
-    `,
-    );
-
-  if (ticketCreateError || !newTickets?.length) {
-    console.error(
-      "Failed to create ticket for waitlist person (non-fatal):",
-      ticketCreateError,
-    );
-    return 0;
+      }).returning();
+      const ticket = await db.query.tickets.findFirst({
+        where: eq(tickets.id, inserted.id),
+        columns: { id: true, email: true, name: true, type: true, eventId: true },
+        with: {
+          event: {
+            columns: { id: true, name: true, route: true, startTimeDate: true, venue: true, venueLink: true, desc: true },
+          },
+        },
+      });
+      if (ticket) newTickets.push(ticket);
+    } catch (err) {
+      console.error(
+        "Failed to create ticket for waitlist person (non-fatal):",
+        err,
+      );
+    }
   }
 
-  // Remove them from the waitlist
-  const waitlistIds = waitlistEntries.map((entry) => entry.id);
-  const createdEmails = new Set(newTickets.map((ticket) => ticket.email));
+  if (!newTickets.length) return 0;
+
+  // Remove converted entries from the waitlist
+  const createdEmails = new Set(newTickets.map((t) => t.email));
+  const waitlistIds = waitlistEntries
+    .filter((e) => createdEmails.has(e.email))
+    .map((e) => e.id);
 
   if (newTickets.length !== waitlistEntries.length) {
     console.error(
@@ -76,39 +84,27 @@ export async function pullFromWaitlist(
     );
   }
 
-  const waitlistDeleteQuery = adminClient.from("waitlist").delete();
-  if (newTickets.length === waitlistEntries.length) {
-    waitlistDeleteQuery.in("id", waitlistIds);
-  } else if (createdEmails.size > 0) {
-    waitlistDeleteQuery
-      .eq("event_id", eventId)
-      .in("email", Array.from(createdEmails));
-  } else {
-    return 0;
-  }
-
-  const { error: waitlistDeleteError } = await waitlistDeleteQuery;
-
-  if (waitlistDeleteError) {
-    console.error("Waitlist removal error (non-fatal):", waitlistDeleteError);
+  if (waitlistIds.length > 0) {
+    try {
+      await db.delete(waitlist).where(inArray(waitlist.id, waitlistIds));
+    } catch (err) {
+      console.error("Waitlist removal error (non-fatal):", err);
+    }
   }
 
   for (const newTicket of newTickets) {
     try {
-      const eventData = Array.isArray(newTicket.events)
-        ? newTicket.events[0]
-        : newTicket.events;
       await sendTicketEmail({
         email: newTicket.email,
         name: newTicket.name || null,
-        eventName: eventData?.name || "Event",
+        eventName: newTicket.event?.name || "Event",
         ticketType: newTicket.type || "STANDARD",
-        eventStartTime: eventData?.start_time_date || null,
-        eventRoute: eventData?.route || null,
+        eventStartTime: newTicket.event?.startTimeDate?.toISOString() || null,
+        eventRoute: newTicket.event?.route || null,
         ticketId: newTicket.id,
-        eventVenue: eventData?.venue || null,
-        eventVenueLink: eventData?.venue_link || null,
-        eventDescription: eventData?.desc || null,
+        eventVenue: newTicket.event?.venue || null,
+        eventVenueLink: newTicket.event?.venueLink || null,
+        eventDescription: newTicket.event?.desc || null,
       });
     } catch (emailError) {
       console.error(

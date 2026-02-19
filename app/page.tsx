@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { getSupabaseClient } from "@/app/lib/supabase";
+import { db, eq, count as dbCount, suggest, events, notify, roles } from "@ssb/db";
 
 type Stats = {
   pendingSuggestions: number;
@@ -14,43 +14,40 @@ export const dynamic = "force-dynamic";
 
 async function getStats(): Promise<Stats> {
   try {
-    const supabase = getSupabaseClient();
-
     const [
-      { count: pendingSuggestions },
-      { count: totalEvents },
-      { count: totalNotifications },
-      { count: totalUsers },
-      { count: totalBans },
-      { count: totalScanners },
+      [pendingSuggestionsResult],
+      [totalEventsResult],
+      [totalNotificationsResult],
+      allRoles,
     ] = await Promise.all([
-      supabase
-        .from("suggest")
-        .select("*", { count: "exact", head: true })
-        .eq("reviewed", false),
-      supabase.from("events").select("*", { count: "exact", head: true }),
-      supabase.from("notify").select("*", { count: "exact", head: true }),
-      supabase
-        .from("roles")
-        .select("*", { count: "exact", head: true })
-        .ilike("roles", "%admin%"),
-      supabase
-        .from("roles")
-        .select("*", { count: "exact", head: true })
-        .ilike("roles", "%banned%"),
-      supabase
-        .from("roles")
-        .select("*", { count: "exact", head: true })
-        .ilike("roles", "%scanner%"),
+      db.select({ count: dbCount() }).from(suggest).where(eq(suggest.reviewed, false)),
+      db.select({ count: dbCount() }).from(events),
+      db.select({ count: dbCount() }).from(notify),
+      db.query.roles.findMany({ columns: { roles: true } }),
     ]);
 
+    const pendingSuggestions = pendingSuggestionsResult?.count ?? 0;
+    const totalEvents = totalEventsResult?.count ?? 0;
+    const totalNotifications = totalNotificationsResult?.count ?? 0;
+
+    let totalUsers = 0;
+    let totalBans = 0;
+    let totalScanners = 0;
+
+    for (const role of allRoles) {
+      const roleList = role.roles?.toLowerCase() ?? "";
+      if (roleList.includes("admin")) totalUsers++;
+      if (roleList.includes("banned")) totalBans++;
+      if (roleList.includes("scanner")) totalScanners++;
+    }
+
     return {
-      pendingSuggestions: pendingSuggestions ?? 0,
-      totalEvents: totalEvents ?? 0,
-      totalNotifications: totalNotifications ?? 0,
-      totalUsers: totalUsers ?? 0,
-      totalBans: totalBans ?? 0,
-      totalScanners: totalScanners ?? 0,
+      pendingSuggestions,
+      totalEvents,
+      totalNotifications,
+      totalUsers,
+      totalBans,
+      totalScanners,
     };
   } catch (error) {
     console.error("Failed to fetch stats on dashboard:", error);

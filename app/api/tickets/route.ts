@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import {
   verifyAdminRequest,
-  getSupabaseClient,
   getAvailablePublicTickets,
   isEventUnderCapacity,
 } from "@/app/lib/supabase";
@@ -11,6 +10,75 @@ import {
   sendTicketEmail,
 } from "@/app/lib/email";
 import { pullFromWaitlist } from "@/app/lib/waitlist";
+import { db, eq, and, ilike, count as dbCount, tickets, events, waitlist, referrals } from "@ssb/db";
+
+/** Helper to serialize a ticket (with optional event relation) to snake_case for API response */
+function serializeTicket(ticket: {
+  id: string;
+  email: string;
+  name: string | null;
+  type: string;
+  createdAt: Date;
+  scanned: boolean;
+  scanTime: Date | null;
+  referral: string | null;
+  eventId: string | null;
+  event?: {
+    id: string;
+    name: string | null;
+    route: string | null;
+    startTimeDate: Date | null;
+    venue?: string | null;
+    venueLink?: string | null;
+    desc?: string | null;
+    doorsOpen?: Date | null;
+  } | null;
+}) {
+  return {
+    id: ticket.id,
+    email: ticket.email,
+    name: ticket.name,
+    type: ticket.type,
+    created_at: ticket.createdAt.toISOString(),
+    scanned: ticket.scanned,
+    scan_time: ticket.scanTime?.toISOString() ?? null,
+    referral: ticket.referral,
+    event_id: ticket.eventId,
+    events: ticket.event
+      ? {
+          id: ticket.event.id,
+          name: ticket.event.name,
+          route: ticket.event.route,
+          start_time_date: ticket.event.startTimeDate?.toISOString() ?? null,
+          ...(ticket.event.venue !== undefined ? { venue: ticket.event.venue } : {}),
+          ...(ticket.event.venueLink !== undefined ? { venue_link: ticket.event.venueLink } : {}),
+          ...(ticket.event.desc !== undefined ? { desc: ticket.event.desc } : {}),
+          ...(ticket.event.doorsOpen !== undefined ? { doors_open: ticket.event.doorsOpen?.toISOString() ?? null } : {}),
+        }
+      : null,
+  };
+}
+
+/** Standard ticket columns */
+const TICKET_COLUMNS = {
+  id: true, email: true, name: true, type: true, createdAt: true,
+  scanned: true, scanTime: true, referral: true, eventId: true,
+} as const;
+
+/** Standard event relation (basic fields) */
+const TICKET_WITH_EVENT = {
+  event: { columns: { id: true, name: true, route: true, startTimeDate: true } },
+} as const;
+
+/** Extended event relation (includes venue/desc for emails) */
+const TICKET_WITH_EVENT_DETAILS = {
+  event: { columns: { id: true, name: true, route: true, startTimeDate: true, venue: true, venueLink: true, desc: true } },
+} as const;
+
+/** Extended event relation with doors_open for reminders */
+const TICKET_WITH_DOORS_OPEN = {
+  event: { columns: { id: true, name: true, route: true, startTimeDate: true, venue: true, venueLink: true, desc: true, doorsOpen: true } },
+} as const;
 
 export async function GET(req: Request) {
   try {
@@ -21,148 +89,54 @@ export async function GET(req: Request) {
 
     const { searchParams } = new URL(req.url);
     const eventId = searchParams.get("eventId");
-    const search = searchParams.get("search");
+    const email = searchParams.get("email");
     const type = searchParams.get("type");
     const scanned = searchParams.get("scanned");
     const limit = parseInt(searchParams.get("limit") || "100");
     const offset = parseInt(searchParams.get("offset") || "0");
 
-    const adminClient = auth.adminClient!;
-
-    let query = adminClient
-      .from("tickets")
-      .select(
-        `
-        id,
-        email,
-        name,
-        type,
-        created_at,
-        scanned,
-        scan_time,
-        referral,
-        event_id,
-        events (
-          id,
-          name,
-          route,
-          start_time_date
-        )
-      `,
-      )
-      .order("created_at", { ascending: false });
-
-    if (eventId) {
-      query = query.eq("event_id", eventId);
-    }
-
-    if (search) {
-      query = query.or(`email.ilike.%${search}%,name.ilike.%${search}%`);
-    }
-
-    if (type) {
-      query = query.eq("type", type);
-    }
-
+    // Build where conditions for main query and filtered count
+    const conditions: ReturnType<typeof eq>[] = [];
+    if (eventId) conditions.push(eq(tickets.eventId, eventId));
+    if (email) conditions.push(ilike(tickets.email, `%${email}%`));
+    if (type) conditions.push(eq(tickets.type, type));
     if (scanned !== null && scanned !== undefined && scanned !== "") {
-      query = query.eq("scanned", scanned === "true");
+      conditions.push(eq(tickets.scanned, scanned === "true"));
     }
+    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
 
-    const { data: tickets, error } = await query.range(
-      offset,
-      offset + limit - 1,
-    );
+    // Build where conditions for unfiltered counts (only eventId filter)
+    const baseConditions: ReturnType<typeof eq>[] = [];
+    if (eventId) baseConditions.push(eq(tickets.eventId, eventId));
+    const baseWhereClause = baseConditions.length > 0 ? and(...baseConditions) : undefined;
 
-    if (error) {
-      console.error("Tickets fetch error:", error);
-      return NextResponse.json(
-        { error: "Failed to fetch tickets" },
-        { status: 500 },
-      );
-    }
-
-    // Get total count for the event (not filtered)
-    let totalCountQuery = adminClient
-      .from("tickets")
-      .select("id", { count: "exact", head: true });
-    let totalScannedQuery = adminClient
-      .from("tickets")
-      .select("id", { count: "exact", head: true })
-      .eq("scanned", true);
-    let totalUnscannedQuery = adminClient
-      .from("tickets")
-      .select("id", { count: "exact", head: true })
-      .eq("scanned", false);
-    let standardCountQuery = adminClient
-      .from("tickets")
-      .select("id", { count: "exact", head: true })
-      .eq("type", "STANDARD");
-    let vipCountQuery = adminClient
-      .from("tickets")
-      .select("id", { count: "exact", head: true })
-      .eq("type", "VIP");
-    let externalCountQuery = adminClient
-      .from("tickets")
-      .select("id", { count: "exact", head: true })
-      .eq("type", "EXTERNAL");
-
-    if (eventId) {
-      totalCountQuery = totalCountQuery.eq("event_id", eventId);
-      totalScannedQuery = totalScannedQuery.eq("event_id", eventId);
-      totalUnscannedQuery = totalUnscannedQuery.eq("event_id", eventId);
-      standardCountQuery = standardCountQuery.eq("event_id", eventId);
-      vipCountQuery = vipCountQuery.eq("event_id", eventId);
-      externalCountQuery = externalCountQuery.eq("event_id", eventId);
-    }
-
-    // Get filtered count (matches all current filters including email, type, scanned)
-    let filteredCountQuery = adminClient
-      .from("tickets")
-      .select("id", { count: "exact", head: true });
-
-    if (eventId) {
-      filteredCountQuery = filteredCountQuery.eq("event_id", eventId);
-    }
-
-    if (search) {
-      filteredCountQuery = filteredCountQuery.or(`email.ilike.%${search}%,name.ilike.%${search}%`);
-    }
-
-    if (type) {
-      filteredCountQuery = filteredCountQuery.eq("type", type);
-    }
-
-    if (scanned !== null && scanned !== undefined && scanned !== "") {
-      filteredCountQuery = filteredCountQuery.eq("scanned", scanned === "true");
-    }
-
-    const [
-      totalResult,
-      scannedResult,
-      unscannedResult,
-      filteredCountResult,
-      standardResult,
-      vipResult,
-      externalResult,
-    ] = await Promise.all([
-      totalCountQuery,
-      totalScannedQuery,
-      totalUnscannedQuery,
-      filteredCountQuery,
-      standardCountQuery,
-      vipCountQuery,
-      externalCountQuery,
-    ]);
+    // Run all queries in parallel
+    const [ticketResults, [totalResult], [scannedResult], [unscannedResult], [filteredResult], [standardResult], [vipResult]] =
+      await Promise.all([
+        db.query.tickets.findMany({
+          where: whereClause,
+          columns: TICKET_COLUMNS,
+          with: TICKET_WITH_EVENT,
+          orderBy: (t, { desc }) => [desc(t.createdAt)],
+          offset,
+          limit,
+        }),
+        db.select({ count: dbCount() }).from(tickets).where(baseWhereClause),
+        db.select({ count: dbCount() }).from(tickets).where(baseWhereClause ? and(baseWhereClause, eq(tickets.scanned, true)) : eq(tickets.scanned, true)),
+        db.select({ count: dbCount() }).from(tickets).where(baseWhereClause ? and(baseWhereClause, eq(tickets.scanned, false)) : eq(tickets.scanned, false)),
+        db.select({ count: dbCount() }).from(tickets).where(whereClause),
+        db.select({ count: dbCount() }).from(tickets).where(baseWhereClause ? and(baseWhereClause, eq(tickets.type, "STANDARD")) : eq(tickets.type, "STANDARD")),
+        db.select({ count: dbCount() }).from(tickets).where(baseWhereClause ? and(baseWhereClause, eq(tickets.type, "VIP")) : eq(tickets.type, "VIP")),
+      ]);
 
     return NextResponse.json({
-      tickets: tickets || [],
-      total: totalResult.count || 0,
-      scannedCount: scannedResult.count || 0,
-      unscannedCount: unscannedResult.count || 0,
-      filteredCount: filteredCountResult.count || 0,
-      standardCount: standardResult.count || 0,
-      vipCount: vipResult.count || 0,
-      externalCount: externalResult.count || 0,
+      tickets: ticketResults.map(serializeTicket),
+      total: totalResult?.count ?? 0,
+      scannedCount: scannedResult?.count ?? 0,
+      unscannedCount: unscannedResult?.count ?? 0,
+      filteredCount: filteredResult?.count ?? 0,
+      standardCount: standardResult?.count ?? 0,
+      vipCount: vipResult?.count ?? 0,
       limit,
       offset,
     });
@@ -192,53 +166,52 @@ export async function DELETE(req: Request) {
       );
     }
 
-    const adminClient = auth.adminClient!;
-
     // Fetch the ticket before deleting to get event_id and type
-    const { data: ticketToDelete, error: fetchError } = await adminClient
-      .from("tickets")
-      .select("event_id, type")
-      .eq("id", id)
-      .single();
+    const ticketToDelete = await db.query.tickets.findFirst({
+      where: eq(tickets.id, id),
+      columns: { eventId: true, type: true },
+    });
 
-    if (fetchError || !ticketToDelete) {
-      console.error("Ticket fetch error:", fetchError);
+    if (!ticketToDelete) {
       return NextResponse.json({ error: "Ticket not found" }, { status: 404 });
     }
 
     // Delete the ticket
-    const { error: deleteError } = await adminClient
-      .from("tickets")
-      .delete()
-      .eq("id", id);
+    await db.delete(tickets).where(eq(tickets.id, id));
 
-    if (deleteError) {
-      console.error("Ticket delete error:", deleteError);
-      return NextResponse.json(
-        { error: "Failed to delete ticket" },
-        { status: 500 },
-      );
-    }
+    // Sync referral counts
+    try {
+      const allReferrals = await db.query.referrals.findMany({
+        columns: { id: true, eventId: true, referralCode: true, count: true },
+      });
 
-    // Call the sync_referral_counts RPC function
-    const { error: rpcReferralError } = (await adminClient.rpc(
-      "sync_referral_counts",
-    )) as { error?: { code?: string } | null };
+      for (const referral of allReferrals) {
+        const conditions = [eq(tickets.eventId, referral.eventId)];
+        if (referral.referralCode) conditions.push(eq(tickets.referral, referral.referralCode));
+        const [result] = await db.select({ count: dbCount() })
+          .from(tickets)
+          .where(and(...conditions));
+        const actualCount = result?.count ?? 0;
 
-    if (rpcReferralError) {
-      console.error("Sync referral RPC error:", rpcReferralError);
-
+        if (referral.count !== actualCount) {
+          await db.update(referrals)
+            .set({ count: actualCount })
+            .where(eq(referrals.id, referral.id));
+        }
+      }
+    } catch (syncError) {
+      console.error("Sync referral counts error:", syncError);
       return NextResponse.json(
         { error: "Failed to sync referrals" },
         { status: 500 },
       );
     }
 
-    const { error: rpcScannedError } = (await adminClient.rpc(
-      "sync_event_scanned_counts",
-    )) as { error?: { code?: string } | null };
-    if (rpcScannedError) {
-      console.error("Sync scanned RPC error:", rpcScannedError);
+    // Sync event scanned counts
+    try {
+      await syncEventScannedCounts();
+    } catch (syncError) {
+      console.error("Sync scanned counts error:", syncError);
       return NextResponse.json(
         { error: "Failed to sync scanned" },
         { status: 500 },
@@ -246,9 +219,9 @@ export async function DELETE(req: Request) {
     }
 
     // If the deleted ticket was non-VIP and we have capacity, pull from waitlist
-    if (ticketToDelete.type !== "VIP" && ticketToDelete.event_id) {
+    if (ticketToDelete.type !== "VIP" && ticketToDelete.eventId) {
       try {
-        await pullFromWaitlist(adminClient, ticketToDelete.event_id, 1);
+        await pullFromWaitlist(null, ticketToDelete.eventId, 1);
       } catch (waitlistError) {
         console.error("Waitlist conversion error (non-fatal):", waitlistError);
         // Don't fail the delete if waitlist conversion fails
@@ -262,6 +235,26 @@ export async function DELETE(req: Request) {
       { error: "Internal server error" },
       { status: 500 },
     );
+  }
+}
+
+/** Helper to sync event scanned counts */
+async function syncEventScannedCounts() {
+  const allEvents = await db.query.events.findMany({
+    columns: { id: true, scanned: true },
+  });
+
+  for (const event of allEvents) {
+    const [result] = await db.select({ count: dbCount() })
+      .from(tickets)
+      .where(and(eq(tickets.eventId, event.id), eq(tickets.scanned, true)));
+    const actualScanned = result?.count ?? 0;
+
+    if (event.scanned !== actualScanned) {
+      await db.update(events)
+        .set({ scanned: actualScanned })
+        .where(eq(events.id, event.id));
+    }
   }
 }
 
@@ -284,117 +277,60 @@ export async function PATCH(req: Request) {
       );
     }
 
-    const adminClient = auth.adminClient!;
-
     // Handle different actions
     if (action === "updateName") {
       // Update ticket name
       const newName = typeof name === "string" ? name.trim() || null : null;
 
-      const { data: ticket, error: updateError } = await adminClient
-        .from("tickets")
-        .update({ name: newName })
-        .eq("id", id)
-        .select(
-          `
-          id,
-          email,
-          name,
-          type,
-          created_at,
-          scanned,
-          scan_time,
-          referral,
-          event_id,
-          events (
-            id,
-            name,
-            route,
-            start_time_date
-          )
-        `,
-        )
-        .single();
+      await db.update(tickets).set({ name: newName }).where(eq(tickets.id, id));
+      const ticket = await db.query.tickets.findFirst({
+        where: eq(tickets.id, id),
+        columns: TICKET_COLUMNS,
+        with: TICKET_WITH_EVENT,
+      });
 
-      if (updateError) {
-        console.error("Ticket name update error:", updateError);
-        return NextResponse.json(
-          { error: "Failed to update ticket name" },
-          { status: 500 },
-        );
-      }
-
-      return NextResponse.json({ success: true, ticket });
+      return NextResponse.json({ success: true, ticket: serializeTicket(ticket!) });
     } else if (action === "unscan") {
       // Unscan the ticket: set scanned to false and clear scan-related fields
-      const { data: ticket, error: updateError } = await adminClient
-        .from("tickets")
-        .update({
-          scanned: false,
-          scan_time: null,
-          scan_user: null,
-          scan_email: null,
-        })
-        .eq("id", id)
-        .select(
-          `
-          id,
-          email,
-          name,
-          type,
-          created_at,
-          scanned,
-          scan_time,
-          referral,
-          event_id,
-          events (
-            id,
-            name,
-            route,
-            start_time_date
-          )
-        `,
-        )
-        .single();
+      await db.update(tickets).set({
+        scanned: false,
+        scanTime: null,
+        scanUser: null,
+        scanEmail: null,
+      }).where(eq(tickets.id, id));
+      const ticket = await db.query.tickets.findFirst({
+        where: eq(tickets.id, id),
+        columns: TICKET_COLUMNS,
+        with: TICKET_WITH_EVENT,
+      });
 
-      if (updateError) {
-        console.error("Ticket unscan error:", updateError);
-        return NextResponse.json(
-          { error: "Failed to unscan ticket" },
-          { status: 500 },
-        );
-      }
-
-      const { error: rpcScannedError } = (await adminClient.rpc(
-        "sync_event_scanned_counts",
-      )) as { error?: { code?: string } | null };
-      if (rpcScannedError) {
-        console.error("Sync scanned RPC error:", rpcScannedError);
+      try {
+        await syncEventScannedCounts();
+      } catch (syncError) {
+        console.error("Sync scanned RPC error:", syncError);
         return NextResponse.json(
           { error: "Failed to sync scanned" },
           { status: 500 },
         );
       }
 
-      return NextResponse.json({ success: true, ticket });
+      return NextResponse.json({ success: true, ticket: serializeTicket(ticket!) });
     } else if (action === "updateType" || type) {
       // Update ticket type
-      if (type !== "VIP" && type !== "STANDARD" && type !== "EXTERNAL") {
+      if (type !== "VIP" && type !== "STANDARD") {
         return NextResponse.json(
-          { error: "Invalid ticket type. Must be 'VIP', 'STANDARD', or 'EXTERNAL'." },
+          { error: "Invalid ticket type. Must be 'VIP' or 'STANDARD'." },
           { status: 400 },
         );
       }
 
       // First, fetch the current ticket to check if type is changing
-      const { data: currentTicket, error: fetchError } = await adminClient
-        .from("tickets")
-        .select("type, event_id")
-        .eq("id", id)
-        .single();
+      const currentTicket = await db.query.tickets.findFirst({
+        where: eq(tickets.id, id),
+        columns: { type: true, eventId: true },
+      });
 
-      if (fetchError || !currentTicket) {
-        console.error("Ticket fetch error:", fetchError);
+      if (!currentTicket) {
         return NextResponse.json(
           { error: "Ticket not found" },
           { status: 404 },
@@ -404,12 +340,11 @@ export async function PATCH(req: Request) {
       const typeChanged = currentTicket.type !== type;
 
       // Block STANDARD→VIP upgrade if VIP capacity is full
-      if (typeChanged && type === "VIP" && currentTicket.event_id) {
+      if (typeChanged && type === "VIP" && currentTicket.eventId) {
         const ticketInfo = await getAvailablePublicTickets(
-          currentTicket.event_id,
+          currentTicket.eventId,
         );
         // CRITICAL: Block upgrade if it would exceed reserved allocation
-        // Check if adding one more VIP would exceed reserved: vipCount + 1 > reserved
         if (ticketInfo.vipCount + 1 > ticketInfo.reserved) {
           return NextResponse.json(
             {
@@ -420,59 +355,27 @@ export async function PATCH(req: Request) {
         }
       }
 
-      const { data: ticket, error: updateError } = await adminClient
-        .from("tickets")
-        .update({ type })
-        .eq("id", id)
-        .select(
-          `
-          id,
-          email,
-          name,
-          type,
-          created_at,
-          scanned,
-          scan_time,
-          referral,
-          event_id,
-          events (
-            id,
-            name,
-            route,
-            start_time_date,
-            venue,
-            venue_link,
-            desc
-          )
-        `,
-        )
-        .single();
-
-      if (updateError) {
-        console.error("Ticket type update error:", updateError);
-        return NextResponse.json(
-          { error: "Failed to update ticket type" },
-          { status: 500 },
-        );
-      }
+      await db.update(tickets).set({ type }).where(eq(tickets.id, id));
+      const ticket = await db.query.tickets.findFirst({
+        where: eq(tickets.id, id),
+        columns: TICKET_COLUMNS,
+        with: TICKET_WITH_EVENT_DETAILS,
+      });
 
       // If the type changed, send updated ticket email
       if (typeChanged && ticket) {
         try {
-          const event = Array.isArray(ticket.events)
-            ? ticket.events[0]
-            : ticket.events;
           await sendTicketEmail({
             email: ticket.email,
             name: ticket.name || null,
-            eventName: event?.name || "Event",
+            eventName: ticket.event?.name || "Event",
             ticketType: ticket.type || "STANDARD",
-            eventStartTime: event?.start_time_date || null,
-            eventRoute: event?.route || null,
+            eventStartTime: ticket.event?.startTimeDate?.toISOString() || null,
+            eventRoute: ticket.event?.route || null,
             ticketId: ticket.id,
-            eventVenue: event?.venue || null,
-            eventVenueLink: event?.venue_link || null,
-            eventDescription: event?.desc || null,
+            eventVenue: ticket.event?.venue || null,
+            eventVenueLink: ticket.event?.venueLink || null,
+            eventDescription: ticket.event?.desc || null,
           });
         } catch (emailError) {
           console.error("Email sending error:", emailError);
@@ -481,98 +384,60 @@ export async function PATCH(req: Request) {
       }
 
       // If type changed, pull someone off the waitlist if there's available public capacity
-      // This handles both:
-      // - STANDARD→VIP: VIP moves to reserved pool, freeing a public slot
-      // - VIP→STANDARD: If VIPs were overflowing into public capacity, this frees a slot
-      if (typeChanged && ticket?.event_id) {
+      if (typeChanged && ticket?.eventId) {
         try {
-          // Check available public capacity after the type change
-          const hasCapacity = await isEventUnderCapacity(ticket.event_id);
+          const hasCapacity = await isEventUnderCapacity(ticket.eventId);
 
-          // Only pull from waitlist if there's available public capacity
           if (hasCapacity) {
             // Get the first person on the waitlist for this event
-            const { data: waitlistEntry, error: waitlistFetchError } =
-              await adminClient
-                .from("waitlist")
-                .select("id, email, name")
-                .eq("event_id", ticket.event_id)
-                .order("position", { ascending: true })
-                .limit(1)
-                .single();
+            const waitlistEntry = await db.query.waitlist.findFirst({
+              where: eq(waitlist.eventId, ticket.eventId),
+              orderBy: (t, { asc }) => [asc(t.position)],
+              columns: { id: true, email: true, name: true },
+            });
 
-            if (!waitlistFetchError && waitlistEntry) {
-              // Create a STANDARD ticket for the waitlist person (transfer name from waitlist)
-              const { data: newTicket, error: ticketCreateError } =
-                await adminClient
-                  .from("tickets")
-                  .insert({
-                    event_id: ticket.event_id,
-                    email: waitlistEntry.email,
-                    name: waitlistEntry.name ?? null,
-                    type: "STANDARD",
-                  })
-                  .select(
-                    `
-                  id,
-                  email,
-                  name,
-                  type,
-                  event_id,
-                  events (
-                    id,
-                    name,
-                    route,
-                    start_time_date,
-                    venue,
-                    venue_link,
-                    desc
-                  )
-                `,
-                  )
-                  .single();
+            if (waitlistEntry) {
+              // Create a STANDARD ticket for the waitlist person
+              const [inserted] = await db.insert(tickets).values({
+                eventId: ticket.eventId,
+                email: waitlistEntry.email,
+                name: waitlistEntry.name ?? null,
+                type: "STANDARD",
+              }).returning();
+              const newTicket = await db.query.tickets.findFirst({
+                where: eq(tickets.id, inserted.id),
+                columns: TICKET_COLUMNS,
+                with: TICKET_WITH_EVENT_DETAILS,
+              });
 
-              if (!ticketCreateError && newTicket) {
-                // Remove them from the waitlist
-                const { error: waitlistDeleteError } = await adminClient
-                  .from("waitlist")
-                  .delete()
-                  .eq("id", waitlistEntry.id);
-
-                if (waitlistDeleteError) {
-                  console.error(
-                    "Waitlist removal error (non-fatal):",
-                    waitlistDeleteError,
-                  );
-                }
-
-                // Send ticket email to the person who was on the waitlist
-                try {
-                  const eventData = Array.isArray(newTicket.events)
-                    ? newTicket.events[0]
-                    : newTicket.events;
-                  await sendTicketEmail({
-                    email: newTicket.email,
-                    name: newTicket.name || null,
-                    eventName: eventData?.name || "Event",
-                    ticketType: newTicket.type || "STANDARD",
-                    eventStartTime: eventData?.start_time_date || null,
-                    eventRoute: eventData?.route || null,
-                    ticketId: newTicket.id,
-                    eventVenue: eventData?.venue || null,
-                    eventVenueLink: eventData?.venue_link || null,
-                    eventDescription: eventData?.desc || null,
-                  });
-                } catch (emailError) {
-                  console.error(
-                    "Email sending error for waitlist conversion (non-fatal):",
-                    emailError,
-                  );
-                }
-              } else if (ticketCreateError) {
+              // Remove them from the waitlist
+              try {
+                await db.delete(waitlist).where(eq(waitlist.id, waitlistEntry.id));
+              } catch (waitlistDeleteError) {
                 console.error(
-                  "Failed to create ticket for waitlist person (non-fatal):",
-                  ticketCreateError,
+                  "Waitlist removal error (non-fatal):",
+                  waitlistDeleteError,
+                );
+              }
+
+              // Send ticket email to the person who was on the waitlist
+              if (newTicket) try {
+                await sendTicketEmail({
+                  email: newTicket.email,
+                  name: newTicket.name || null,
+                  eventName: newTicket.event?.name || "Event",
+                  ticketType: newTicket.type || "STANDARD",
+                  eventStartTime: newTicket.event?.startTimeDate?.toISOString() || null,
+                  eventRoute: newTicket.event?.route || null,
+                  ticketId: newTicket.id,
+                  eventVenue: newTicket.event?.venue || null,
+                  eventVenueLink: newTicket.event?.venueLink || null,
+                  eventDescription: newTicket.event?.desc || null,
+                });
+              } catch (emailError) {
+                console.error(
+                  "Email sending error for waitlist conversion (non-fatal):",
+                  emailError,
                 );
               }
             }
@@ -582,108 +447,58 @@ export async function PATCH(req: Request) {
             "Waitlist conversion error (non-fatal):",
             waitlistError,
           );
-          // Don't fail the type change if waitlist conversion fails
         }
       }
 
-      return NextResponse.json({ success: true, ticket });
+      return NextResponse.json({ success: true, ticket: serializeTicket(ticket!) });
     } else if (action === "updateScanned" || typeof scanned === "boolean") {
       // Update scanned status
       const updateData: {
         scanned: boolean;
-        scan_time?: string | null;
-        scan_user?: string | null;
-        scan_email?: string | null;
+        scanTime?: Date | null;
+        scanUser?: string | null;
+        scanEmail?: string | null;
       } = {
         scanned,
       };
 
       // If unscanning, clear scan-related fields
       if (!scanned) {
-        updateData.scan_time = null;
-        updateData.scan_user = null;
-        updateData.scan_email = null;
+        updateData.scanTime = null;
+        updateData.scanUser = null;
+        updateData.scanEmail = null;
       } else {
         // If scanning, set scan_time to now
-        updateData.scan_time = new Date().toISOString();
+        updateData.scanTime = new Date();
       }
 
-      const { data: ticket, error: updateError } = await adminClient
-        .from("tickets")
-        .update(updateData)
-        .eq("id", id)
-        .select(
-          `
-          id,
-          email,
-          name,
-          type,
-          created_at,
-          scanned,
-          scan_time,
-          referral,
-          event_id,
-          events (
-            id,
-            name,
-            route,
-            start_time_date
-          )
-        `,
-        )
-        .single();
+      await db.update(tickets).set(updateData).where(eq(tickets.id, id));
+      const ticket = await db.query.tickets.findFirst({
+        where: eq(tickets.id, id),
+        columns: TICKET_COLUMNS,
+        with: TICKET_WITH_EVENT,
+      });
 
-      if (updateError) {
-        console.error("Ticket scanned status update error:", updateError);
-        return NextResponse.json(
-          { error: "Failed to update scanned status" },
-          { status: 500 },
-        );
-      }
-
-      const { error: rpcScannedError } = (await adminClient.rpc(
-        "sync_event_scanned_counts",
-      )) as { error?: { code?: string } | null };
-      if (rpcScannedError) {
-        console.error("Sync scanned RPC error:", rpcScannedError);
+      try {
+        await syncEventScannedCounts();
+      } catch (syncError) {
+        console.error("Sync scanned RPC error:", syncError);
         return NextResponse.json(
           { error: "Failed to sync scanned" },
           { status: 500 },
         );
       }
 
-      return NextResponse.json({ success: true, ticket });
+      return NextResponse.json({ success: true, ticket: serializeTicket(ticket!) });
     } else if (action === "resendEmail") {
       // Resend ticket confirmation email
-      const { data: ticket, error: fetchError } = await adminClient
-        .from("tickets")
-        .select(
-          `
-          id,
-          email,
-          name,
-          type,
-          created_at,
-          scanned,
-          scan_time,
-          referral,
-          event_id,
-          events (
-            id,
-            name,
-            route,
-            start_time_date,
-            venue,
-            venue_link,
-            desc
-          )
-        `,
-        )
-        .eq("id", id)
-        .single();
+      const ticket = await db.query.tickets.findFirst({
+        where: eq(tickets.id, id),
+        columns: TICKET_COLUMNS,
+        with: TICKET_WITH_EVENT_DETAILS,
+      });
 
-      if (fetchError || !ticket) {
-        console.error("Ticket fetch error:", fetchError);
+      if (!ticket) {
         return NextResponse.json(
           { error: "Ticket not found" },
           { status: 404 },
@@ -692,20 +507,17 @@ export async function PATCH(req: Request) {
 
       // Send ticket confirmation email
       try {
-        const event = Array.isArray(ticket.events)
-          ? ticket.events[0]
-          : ticket.events;
         await sendTicketEmail({
           email: ticket.email,
           name: ticket.name || null,
-          eventName: event?.name || "Event",
+          eventName: ticket.event?.name || "Event",
           ticketType: ticket.type || "STANDARD",
-          eventStartTime: event?.start_time_date || null,
-          eventRoute: event?.route || null,
+          eventStartTime: ticket.event?.startTimeDate?.toISOString() || null,
+          eventRoute: ticket.event?.route || null,
           ticketId: ticket.id,
-          eventVenue: event?.venue || null,
-          eventVenueLink: event?.venue_link || null,
-          eventDescription: event?.desc || null,
+          eventVenue: ticket.event?.venue || null,
+          eventVenueLink: ticket.event?.venueLink || null,
+          eventDescription: ticket.event?.desc || null,
         });
       } catch (emailError) {
         console.error("Email sending error:", emailError);
@@ -732,34 +544,31 @@ export async function PATCH(req: Request) {
       }
 
       // Fetch event details including doors_open time
-      const { data: event, error: eventError } = await adminClient
-        .from("events")
-        .select(
-          "id, name, route, start_time_date, doors_open, venue, venue_link, desc",
-        )
-        .eq("id", eventId)
-        .single();
+      const event = await db.query.events.findFirst({
+        where: eq(events.id, eventId),
+        columns: {
+          id: true,
+          name: true,
+          route: true,
+          startTimeDate: true,
+          doorsOpen: true,
+          venue: true,
+          venueLink: true,
+          desc: true,
+        },
+      });
 
-      if (eventError || !event) {
-        console.error("Event fetch error:", eventError);
+      if (!event) {
         return NextResponse.json({ error: "Event not found" }, { status: 404 });
       }
 
       // Fetch all tickets for this event (both VIP and STANDARD)
-      const { data: tickets, error: ticketsError } = await adminClient
-        .from("tickets")
-        .select("id, email, name, type")
-        .eq("event_id", eventId);
+      const eventTickets = await db.query.tickets.findMany({
+        where: eq(tickets.eventId, eventId),
+        columns: { id: true, email: true, name: true, type: true },
+      });
 
-      if (ticketsError) {
-        console.error("Tickets fetch error:", ticketsError);
-        return NextResponse.json(
-          { error: "Failed to fetch tickets" },
-          { status: 500 },
-        );
-      }
-
-      if (!tickets || tickets.length === 0) {
+      if (!eventTickets || eventTickets.length === 0) {
         return NextResponse.json({
           success: true,
           sent: 0,
@@ -768,32 +577,31 @@ export async function PATCH(req: Request) {
         });
       }
 
-      // Send reminder emails to all ticket holders in batches to avoid memory overflow
-      // Rate limit: max 14 emails per second
+      // Send reminder emails to all ticket holders in batches
       const BATCH_SIZE = 14;
-      const MIN_BATCH_DURATION_MS = 1000; // Ensure at least 1 second per batch
+      const MIN_BATCH_DURATION_MS = 1000;
       const results: PromiseSettledResult<{
         success: boolean;
         email: string;
         error?: unknown;
       }>[] = [];
 
-      for (let i = 0; i < tickets.length; i += BATCH_SIZE) {
+      for (let i = 0; i < eventTickets.length; i += BATCH_SIZE) {
         const batchStartTime = Date.now();
-        const batch = tickets.slice(i, i + BATCH_SIZE);
+        const batch = eventTickets.slice(i, i + BATCH_SIZE);
         const batchPromises = batch.map((ticket) =>
           sendDayOfReminderEmail({
             email: ticket.email,
             name: ticket.name || null,
             eventName: event.name || "Event",
             ticketType: ticket.type || "STANDARD",
-            eventStartTime: event.start_time_date || null,
+            eventStartTime: event.startTimeDate?.toISOString() || null,
             eventRoute: event.route || null,
             ticketId: ticket.id,
             eventVenue: event.venue || null,
-            eventVenueLink: event.venue_link || null,
+            eventVenueLink: event.venueLink || null,
             eventDescription: event.desc || null,
-            doorsOpenTime: event.doors_open || null,
+            doorsOpenTime: event.doorsOpen?.toISOString() || null,
           }).then(
             () => ({ success: true, email: ticket.email }),
             (error) => ({
@@ -806,9 +614,8 @@ export async function PATCH(req: Request) {
         const batchResults = await Promise.allSettled(batchPromises);
         results.push(...batchResults);
 
-        // Rate limiting: ensure we don't exceed 14 emails/second
         const batchDuration = Date.now() - batchStartTime;
-        if (batchDuration < MIN_BATCH_DURATION_MS && i + BATCH_SIZE < tickets.length) {
+        if (batchDuration < MIN_BATCH_DURATION_MS && i + BATCH_SIZE < eventTickets.length) {
           await new Promise((resolve) =>
             setTimeout(resolve, MIN_BATCH_DURATION_MS - batchDuration),
           );
@@ -846,7 +653,7 @@ export async function PATCH(req: Request) {
         success: true,
         sent,
         failed,
-        total: tickets.length,
+        total: eventTickets.length,
         message: `Sent ${sent} reminder(s), ${failed} failed`,
         errors: errors.length > 0 ? errors : undefined,
       });
@@ -859,56 +666,32 @@ export async function PATCH(req: Request) {
         );
       }
 
-      // Fetch the ticket with event details
-      const { data: ticket, error: ticketError } = await adminClient
-        .from("tickets")
-        .select(
-          `
-          id,
-          email,
-          name,
-          type,
-          event_id,
-          events (
-            id,
-            name,
-            route,
-            start_time_date,
-            doors_open,
-            venue,
-            venue_link,
-            desc
-          )
-        `,
-        )
-        .eq("id", id)
-        .single();
+      const ticket = await db.query.tickets.findFirst({
+        where: eq(tickets.id, id),
+        columns: TICKET_COLUMNS,
+        with: TICKET_WITH_DOORS_OPEN,
+      });
 
-      if (ticketError || !ticket) {
-        console.error("Ticket fetch error:", ticketError);
+      if (!ticket) {
         return NextResponse.json(
           { error: "Ticket not found" },
           { status: 404 },
         );
       }
 
-      const event = Array.isArray(ticket.events)
-        ? ticket.events[0]
-        : ticket.events;
-
       try {
         await sendDayOfReminderEmail({
           email: ticket.email,
           name: ticket.name || null,
-          eventName: event?.name || "Event",
+          eventName: ticket.event?.name || "Event",
           ticketType: ticket.type || "STANDARD",
-          eventStartTime: event?.start_time_date || null,
-          eventRoute: event?.route || null,
+          eventStartTime: ticket.event?.startTimeDate?.toISOString() || null,
+          eventRoute: ticket.event?.route || null,
           ticketId: ticket.id,
-          eventVenue: event?.venue || null,
-          eventVenueLink: event?.venue_link || null,
-          eventDescription: event?.desc || null,
-          doorsOpenTime: event?.doors_open || null,
+          eventVenue: ticket.event?.venue || null,
+          eventVenueLink: ticket.event?.venueLink || null,
+          eventDescription: ticket.event?.desc || null,
+          doorsOpenTime: ticket.event?.doorsOpen?.toISOString() || null,
         });
       } catch (emailError) {
         console.error("Email sending error:", emailError);
@@ -934,35 +717,30 @@ export async function PATCH(req: Request) {
         );
       }
 
-      // Fetch event details including doors_open time
-      const { data: event, error: eventError } = await adminClient
-        .from("events")
-        .select(
-          "id, name, route, start_time_date, doors_open, venue, venue_link, desc",
-        )
-        .eq("id", eventId)
-        .single();
+      const event = await db.query.events.findFirst({
+        where: eq(events.id, eventId),
+        columns: {
+          id: true,
+          name: true,
+          route: true,
+          startTimeDate: true,
+          doorsOpen: true,
+          venue: true,
+          venueLink: true,
+          desc: true,
+        },
+      });
 
-      if (eventError || !event) {
-        console.error("Event fetch error:", eventError);
+      if (!event) {
         return NextResponse.json({ error: "Event not found" }, { status: 404 });
       }
 
-      // Fetch all tickets for this event (both VIP and STANDARD)
-      const { data: tickets, error: ticketsError } = await adminClient
-        .from("tickets")
-        .select("id, email, name, type")
-        .eq("event_id", eventId);
+      const eventTickets = await db.query.tickets.findMany({
+        where: eq(tickets.eventId, eventId),
+        columns: { id: true, email: true, name: true, type: true },
+      });
 
-      if (ticketsError) {
-        console.error("Tickets fetch error:", ticketsError);
-        return NextResponse.json(
-          { error: "Failed to fetch tickets" },
-          { status: 500 },
-        );
-      }
-
-      if (!tickets || tickets.length === 0) {
+      if (!eventTickets || eventTickets.length === 0) {
         return NextResponse.json({
           success: true,
           sent: 0,
@@ -971,32 +749,30 @@ export async function PATCH(req: Request) {
         });
       }
 
-      // Send early reminder emails to all ticket holders in batches to avoid memory overflow
-      // Rate limit: max 14 emails per second
       const BATCH_SIZE = 14;
-      const MIN_BATCH_DURATION_MS = 1000; // Ensure at least 1 second per batch
+      const MIN_BATCH_DURATION_MS = 1000;
       const results: PromiseSettledResult<{
         success: boolean;
         email: string;
         error?: unknown;
       }>[] = [];
 
-      for (let i = 0; i < tickets.length; i += BATCH_SIZE) {
+      for (let i = 0; i < eventTickets.length; i += BATCH_SIZE) {
         const batchStartTime = Date.now();
-        const batch = tickets.slice(i, i + BATCH_SIZE);
+        const batch = eventTickets.slice(i, i + BATCH_SIZE);
         const batchPromises = batch.map((ticket) =>
           sendEarlyReminderEmail({
             email: ticket.email,
             name: ticket.name || null,
             eventName: event.name || "Event",
             ticketType: ticket.type || "STANDARD",
-            eventStartTime: event.start_time_date || null,
+            eventStartTime: event.startTimeDate?.toISOString() || null,
             eventRoute: event.route || null,
             ticketId: ticket.id,
             eventVenue: event.venue || null,
-            eventVenueLink: event.venue_link || null,
+            eventVenueLink: event.venueLink || null,
             eventDescription: event.desc || null,
-            doorsOpenTime: event.doors_open || null,
+            doorsOpenTime: event.doorsOpen?.toISOString() || null,
             promo: promo || null,
           }).then(
             () => ({ success: true, email: ticket.email }),
@@ -1010,9 +786,8 @@ export async function PATCH(req: Request) {
         const batchResults = await Promise.allSettled(batchPromises);
         results.push(...batchResults);
 
-        // Rate limiting: ensure we don't exceed 14 emails/second
         const batchDuration = Date.now() - batchStartTime;
-        if (batchDuration < MIN_BATCH_DURATION_MS && i + BATCH_SIZE < tickets.length) {
+        if (batchDuration < MIN_BATCH_DURATION_MS && i + BATCH_SIZE < eventTickets.length) {
           await new Promise((resolve) =>
             setTimeout(resolve, MIN_BATCH_DURATION_MS - batchDuration),
           );
@@ -1050,7 +825,7 @@ export async function PATCH(req: Request) {
         success: true,
         sent,
         failed,
-        total: tickets.length,
+        total: eventTickets.length,
         message: `Sent ${sent} early reminder(s), ${failed} failed`,
         errors: errors.length > 0 ? errors : undefined,
       });
@@ -1063,56 +838,32 @@ export async function PATCH(req: Request) {
         );
       }
 
-      // Fetch the ticket with event details
-      const { data: ticket, error: ticketError } = await adminClient
-        .from("tickets")
-        .select(
-          `
-          id,
-          email,
-          name,
-          type,
-          event_id,
-          events (
-            id,
-            name,
-            route,
-            start_time_date,
-            doors_open,
-            venue,
-            venue_link,
-            desc
-          )
-        `,
-        )
-        .eq("id", id)
-        .single();
+      const ticket = await db.query.tickets.findFirst({
+        where: eq(tickets.id, id),
+        columns: TICKET_COLUMNS,
+        with: TICKET_WITH_DOORS_OPEN,
+      });
 
-      if (ticketError || !ticket) {
-        console.error("Ticket fetch error:", ticketError);
+      if (!ticket) {
         return NextResponse.json(
           { error: "Ticket not found" },
           { status: 404 },
         );
       }
 
-      const event = Array.isArray(ticket.events)
-        ? ticket.events[0]
-        : ticket.events;
-
       try {
         await sendEarlyReminderEmail({
           email: ticket.email,
           name: ticket.name || null,
-          eventName: event?.name || "Event",
+          eventName: ticket.event?.name || "Event",
           ticketType: ticket.type || "STANDARD",
-          eventStartTime: event?.start_time_date || null,
-          eventRoute: event?.route || null,
+          eventStartTime: ticket.event?.startTimeDate?.toISOString() || null,
+          eventRoute: ticket.event?.route || null,
           ticketId: ticket.id,
-          eventVenue: event?.venue || null,
-          eventVenueLink: event?.venue_link || null,
-          eventDescription: event?.desc || null,
-          doorsOpenTime: event?.doors_open || null,
+          eventVenue: ticket.event?.venue || null,
+          eventVenueLink: ticket.event?.venueLink || null,
+          eventDescription: ticket.event?.desc || null,
+          doorsOpenTime: ticket.event?.doorsOpen?.toISOString() || null,
           promo: promo || null,
         });
       } catch (emailError) {
@@ -1166,16 +917,13 @@ export async function POST(req: Request) {
       );
     }
 
-    const adminClient = auth.adminClient!;
-
     // Check if event exists
-    const { data: event, error: eventError } = await adminClient
-      .from("events")
-      .select("id, name, capacity, reserved")
-      .eq("id", eventId)
-      .single();
+    const event = await db.query.events.findFirst({
+      where: eq(events.id, eventId),
+      columns: { id: true, name: true, capacity: true, reserved: true },
+    });
 
-    if (eventError || !event) {
+    if (!event) {
       return NextResponse.json({ error: "Event not found" }, { status: 404 });
     }
 
@@ -1184,17 +932,8 @@ export async function POST(req: Request) {
     if (event.capacity) {
       const ticketInfo = await getAvailablePublicTickets(eventId);
 
-      // if (ticketType === "STANDARD") {
-      //   if (ticketInfo.available <= 0) {
-      //     return NextResponse.json(
-      //       { error: "Standard ticket capacity reached for this event" },
-      //       { status: 400 },
-      //     );
-      //   }
-      // } else
       if (ticketType === "VIP") {
         // CRITICAL: Block VIP creation if it would exceed reserved allocation
-        // Check if adding one more VIP would exceed reserved: vipCount + 1 > reserved
         if (ticketInfo.vipCount + 1 > ticketInfo.reserved) {
           return NextResponse.json(
             {
@@ -1207,12 +946,10 @@ export async function POST(req: Request) {
     }
 
     // Check if user already has a ticket for this event
-    const { data: existingTicket } = await adminClient
-      .from("tickets")
-      .select("id, type")
-      .eq("event_id", eventId)
-      .eq("email", email)
-      .single();
+    const existingTicket = await db.query.tickets.findFirst({
+      where: and(eq(tickets.eventId, eventId), eq(tickets.email, email)),
+      columns: { id: true, type: true },
+    });
 
     if (existingTicket) {
       const newType = type || "VIP";
@@ -1225,8 +962,6 @@ export async function POST(req: Request) {
         event.capacity
       ) {
         const ticketInfo = await getAvailablePublicTickets(eventId);
-        // CRITICAL: Block upgrade if it would exceed reserved allocation
-        // Check if adding one more VIP would exceed reserved: vipCount + 1 > reserved
         if (ticketInfo.vipCount + 1 > ticketInfo.reserved) {
           return NextResponse.json(
             {
@@ -1238,203 +973,108 @@ export async function POST(req: Request) {
       }
 
       // Update the existing ticket's type (and name if provided)
-      const { data: updatedTicket, error: updateError } = await adminClient
-        .from("tickets")
-        .update({ type: newType, ...(name ? { name } : {}) })
-        .eq("id", existingTicket.id)
-        .select(
-          `
-          id,
-          email,
-          name,
-          type,
-          created_at,
-          scanned,
-          scan_time,
-          referral,
-          event_id,
-          events (
-            id,
-            name,
-            route,
-            start_time_date,
-            venue,
-            venue_link,
-            desc
-          )
-        `,
-        )
-        .single();
-
-      if (updateError) {
-        console.error("Ticket update error:", updateError);
-        return NextResponse.json(
-          { error: "Failed to update ticket" },
-          { status: 500 },
-        );
-      }
+      await db.update(tickets)
+        .set({ type: newType, ...(name ? { name } : {}) })
+        .where(eq(tickets.id, existingTicket.id));
+      const updatedTicket = await db.query.tickets.findFirst({
+        where: eq(tickets.id, existingTicket.id),
+        columns: TICKET_COLUMNS,
+        with: TICKET_WITH_EVENT_DETAILS,
+      });
 
       // Remove user from waitlist if they were on it
-      if (updatedTicket) {
-        try {
-          const { error: waitlistDeleteError } = await adminClient
-            .from("waitlist")
-            .delete()
-            .eq("event_id", eventId)
-            .eq("email", email);
-
-          if (waitlistDeleteError) {
-            console.error(
-              "Waitlist removal error (non-fatal):",
-              waitlistDeleteError,
-            );
-            // Don't fail the ticket update if waitlist removal fails
-          }
-        } catch (waitlistError) {
-          console.error("Waitlist removal error (non-fatal):", waitlistError);
-          // Don't fail the ticket update if waitlist removal fails
-        }
+      try {
+        await db.delete(waitlist).where(and(eq(waitlist.eventId, eventId), eq(waitlist.email, email)));
+      } catch (waitlistError) {
+        console.error("Waitlist removal error (non-fatal):", waitlistError);
       }
 
       // Only send email if the type actually changed
       if (typeChanged && updatedTicket) {
         try {
-          const eventData = Array.isArray(updatedTicket.events)
-            ? updatedTicket.events[0]
-            : updatedTicket.events;
           await sendTicketEmail({
             email: updatedTicket.email,
             name: updatedTicket.name || null,
-            eventName: eventData?.name || "Event",
+            eventName: updatedTicket.event?.name || "Event",
             ticketType: updatedTicket.type || "VIP",
-            eventStartTime: eventData?.start_time_date || null,
-            eventRoute: eventData?.route || null,
+            eventStartTime: updatedTicket.event?.startTimeDate?.toISOString() || null,
+            eventRoute: updatedTicket.event?.route || null,
             ticketId: updatedTicket.id,
-            eventVenue: eventData?.venue || null,
-            eventVenueLink: eventData?.venue_link || null,
-            eventDescription: eventData?.desc || null,
+            eventVenue: updatedTicket.event?.venue || null,
+            eventVenueLink: updatedTicket.event?.venueLink || null,
+            eventDescription: updatedTicket.event?.desc || null,
           });
         } catch (emailError) {
           console.error("Email sending error (non-fatal):", emailError);
-          // Don't fail the update if email fails - ticket was already updated
         }
       }
 
       // If upgraded to VIP (from STANDARD), pull someone off the waitlist if there's capacity
-      if (typeChanged && newType === "VIP" && updatedTicket?.event_id) {
+      if (typeChanged && newType === "VIP" && updatedTicket?.eventId) {
         try {
-          await pullFromWaitlist(adminClient, updatedTicket.event_id, 1);
+          await pullFromWaitlist(null, updatedTicket.eventId, 1);
         } catch (waitlistError) {
           console.error(
             "Waitlist conversion error (non-fatal):",
             waitlistError,
           );
-          // Don't fail the upgrade if waitlist conversion fails
         }
       }
 
       return NextResponse.json({
         success: true,
-        ticket: updatedTicket,
+        ticket: serializeTicket(updatedTicket!),
         updated: true,
       });
     }
 
     // Create the VIP ticket
-    const { data: ticket, error: insertError } = await adminClient
-      .from("tickets")
-      .insert({
-        event_id: eventId,
-        email: email,
-        name: name || null,
-        type: type || "VIP", // Admin-created tickets default to VIP type
-      })
-      .select(
-        `
-        id,
-        email,
-        name,
-        type,
-        created_at,
-        scanned,
-        scan_time,
-        referral,
-        event_id,
-        events (
-          id,
-          name,
-          route,
-          start_time_date,
-          venue,
-          venue_link,
-          desc
-        )
-      `,
-      )
-      .single();
+    const [inserted] = await db.insert(tickets).values({
+      eventId: eventId,
+      email: email,
+      name: name || null,
+      type: type || "VIP",
+    }).returning();
+    const ticket = await db.query.tickets.findFirst({
+      where: eq(tickets.id, inserted.id),
+      columns: TICKET_COLUMNS,
+      with: TICKET_WITH_EVENT_DETAILS,
+    });
 
-    if (insertError) {
-      console.error("Ticket creation error:", insertError);
+    // Remove user from waitlist if they were on it
+    try {
+      await db.delete(waitlist).where(and(eq(waitlist.eventId, eventId), eq(waitlist.email, email)));
+    } catch (waitlistError) {
+      console.error("Waitlist removal error (non-fatal):", waitlistError);
+    }
+
+    // Send ticket confirmation email
+    try {
+      await sendTicketEmail({
+        email: ticket!.email,
+        name: ticket!.name || null,
+        eventName: ticket!.event?.name || "Event",
+        ticketType: ticket!.type || "VIP",
+        eventStartTime: ticket!.event?.startTimeDate?.toISOString() || null,
+        eventRoute: ticket!.event?.route || null,
+        ticketId: ticket!.id,
+        eventVenue: ticket!.event?.venue || null,
+        eventVenueLink: ticket!.event?.venueLink || null,
+        eventDescription: ticket!.event?.desc || null,
+      });
+    } catch (emailError) {
+      console.error("Email sending error:", emailError);
+      // Ticket was created but email failed - return error
       return NextResponse.json(
-        { error: "Failed to create ticket" },
+        {
+          error:
+            "Ticket was created but failed to send confirmation email. Please contact support.",
+        },
         { status: 500 },
       );
     }
 
-    // Remove user from waitlist if they were on it
-    if (ticket) {
-      try {
-        const { error: waitlistDeleteError } = await adminClient
-          .from("waitlist")
-          .delete()
-          .eq("event_id", eventId)
-          .eq("email", email);
-
-        if (waitlistDeleteError) {
-          console.error(
-            "Waitlist removal error (non-fatal):",
-            waitlistDeleteError,
-          );
-          // Don't fail the ticket creation if waitlist removal fails
-        }
-      } catch (waitlistError) {
-        console.error("Waitlist removal error (non-fatal):", waitlistError);
-        // Don't fail the ticket creation if waitlist removal fails
-      }
-    }
-
-    // Send ticket confirmation email
-    if (ticket) {
-      try {
-        const event = Array.isArray(ticket.events)
-          ? ticket.events[0]
-          : ticket.events;
-        await sendTicketEmail({
-          email: ticket.email,
-          name: ticket.name || null,
-          eventName: event?.name || "Event",
-          ticketType: ticket.type || "VIP",
-          eventStartTime: event?.start_time_date || null,
-          eventRoute: event?.route || null,
-          ticketId: ticket.id,
-          eventVenue: event?.venue || null,
-          eventVenueLink: event?.venue_link || null,
-          eventDescription: event?.desc || null,
-        });
-      } catch (emailError) {
-        console.error("Email sending error:", emailError);
-        // Ticket was created but email failed - return error
-        return NextResponse.json(
-          {
-            error:
-              "Ticket was created but failed to send confirmation email. Please contact support.",
-          },
-          { status: 500 },
-        );
-      }
-    }
-
-    return NextResponse.json({ success: true, ticket });
+    return NextResponse.json({ success: true, ticket: serializeTicket(ticket!) });
   } catch (error) {
     console.error("Ticket creation error:", error);
     return NextResponse.json(

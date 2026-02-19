@@ -1,25 +1,6 @@
 import { NextResponse } from "next/server";
 import { verifyAdminRequest } from "@/app/lib/supabase";
-
-type EventData = {
-  id: string;
-  name: string | null;
-  route: string | null;
-  start_time_date: string | null;
-};
-
-type ReferralRow = {
-  referral_code: string;
-  count: number | null;
-  event_id: string;
-  events: EventData | EventData[] | null;
-};
-
-type TicketRow = {
-  referral: string | null;
-  event_id: string;
-  scanned: boolean | null;
-};
+import { db, eq, and, isNotNull, referrals, tickets } from "@ssb/db";
 
 export async function GET(req: Request) {
   try {
@@ -31,70 +12,42 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const eventId = searchParams.get("eventId");
 
-    const adminClient = auth.adminClient!;
+    // Build where conditions
+    const referralConditions = eventId ? eq(referrals.eventId, eventId) : undefined;
+    const ticketConditions = eventId
+      ? and(eq(tickets.scanned, true), isNotNull(tickets.referral), eq(tickets.eventId, eventId))
+      : and(eq(tickets.scanned, true), isNotNull(tickets.referral));
 
-    let query = adminClient
-      .from("referrals")
-      .select(
-        `
-        referral_code,
-        count,
-        event_id,
-        events (
-          id,
-          name,
-          route,
-          start_time_date
-        )
-      `,
-      )
-      .order("count", { ascending: false });
-
-    if (eventId) {
-      query = query.eq("event_id", eventId);
-    }
-
-    // Fetch tickets to count checked-in referrals
-    let ticketsQuery = adminClient
-      .from("tickets")
-      .select("referral, event_id, scanned")
-      .eq("scanned", true)
-      .not("referral", "is", null);
-
-    if (eventId) {
-      ticketsQuery = ticketsQuery.eq("event_id", eventId);
-    }
-
-    const [{ data: referrals, error }, { data: tickets, error: ticketsError }] =
-      await Promise.all([query, ticketsQuery]);
-
-    if (ticketsError) {
-      console.error("Tickets fetch error:", ticketsError);
-    }
+    // Fetch referrals and checked-in tickets in parallel
+    const [referralResults, ticketResults] = await Promise.all([
+      db.query.referrals.findMany({
+        where: referralConditions,
+        columns: { referralCode: true, count: true, eventId: true },
+        with: {
+          event: {
+            columns: { id: true, name: true, route: true, startTimeDate: true },
+          },
+        },
+        orderBy: (t, { desc }) => [desc(t.count)],
+      }),
+      db.query.tickets.findMany({
+        where: ticketConditions,
+        columns: { referral: true, eventId: true },
+      }),
+    ]);
 
     // Build a map of referral_code -> event_id -> checked_in_count
     const checkedInMap: Record<string, Record<string, number>> = {};
-    const typedTickets = (tickets || []) as TicketRow[];
-    typedTickets.forEach((ticket) => {
-      if (!ticket.referral) return;
+    ticketResults.forEach((ticket) => {
+      if (!ticket.referral || !ticket.eventId) return;
       if (!checkedInMap[ticket.referral]) {
         checkedInMap[ticket.referral] = {};
       }
-      if (!checkedInMap[ticket.referral][ticket.event_id]) {
-        checkedInMap[ticket.referral][ticket.event_id] = 0;
+      if (!checkedInMap[ticket.referral][ticket.eventId]) {
+        checkedInMap[ticket.referral][ticket.eventId] = 0;
       }
-      checkedInMap[ticket.referral][ticket.event_id]++;
+      checkedInMap[ticket.referral][ticket.eventId]++;
     });
-
-    if (error) {
-      console.error("Referrals fetch error:", error);
-      return NextResponse.json(
-        { error: "Failed to fetch referral leaderboard" },
-        { status: 500 },
-      );
-    }
-
-    const typedReferrals = (referrals || []) as ReferralRow[];
 
     // Group by event if no eventId filter
     if (!eventId) {
@@ -110,38 +63,26 @@ export async function GET(req: Request) {
         }
       > = {};
 
-      typedReferrals.forEach((ref) => {
-        const eventId = ref.event_id;
-        if (!eventId) return;
+      referralResults.forEach((ref) => {
+        const evtId = ref.eventId;
+        if (!evtId || !ref.event) return;
 
-        // Handle events relation - Supabase may return it as array or object
-        let eventData: EventData | null = null;
-
-        if (Array.isArray(ref.events)) {
-          eventData = ref.events[0] || null;
-        } else if (ref.events) {
-          eventData = ref.events;
-        }
-
-        if (!eventData || !eventData.id) return;
-
-        if (!groupedByEvent[eventId]) {
-          groupedByEvent[eventId] = {
+        if (!groupedByEvent[evtId]) {
+          groupedByEvent[evtId] = {
             event: {
-              id: eventData.id,
-              name: eventData.name ?? null,
-              route: eventData.route ?? null,
+              id: ref.event.id,
+              name: ref.event.name ?? null,
+              route: ref.event.route ?? null,
             },
             referrals: [],
           };
         }
 
-        const checkedInCount = checkedInMap[ref.referral_code]?.[eventId] || 0;
-
-        groupedByEvent[eventId].referrals.push({
-          referral_code: ref.referral_code,
+        const refCode = ref.referralCode ?? "";
+        groupedByEvent[evtId].referrals.push({
+          referral_code: refCode,
           count: ref.count || 0,
-          checked_in_count: checkedInCount,
+          checked_in_count: checkedInMap[refCode]?.[evtId] || 0,
         });
       });
 
@@ -157,25 +98,23 @@ export async function GET(req: Request) {
     }
 
     // Single event - return flat list
-    const leaderboard = typedReferrals
+    const leaderboard = referralResults
       .map((ref) => ({
-        referral_code: ref.referral_code,
+        referral_code: ref.referralCode ?? "",
         count: ref.count || 0,
-        checked_in_count: checkedInMap[ref.referral_code]?.[ref.event_id] || 0,
+        checked_in_count: checkedInMap[ref.referralCode ?? ""]?.[ref.eventId] || 0,
       }))
       .sort((a, b) => b.count - a.count);
 
-    // Handle events relation - Supabase may return it as array or object
-    let eventData: EventData | null = null;
-
-    const firstRef = typedReferrals[0];
-    if (firstRef?.events) {
-      if (Array.isArray(firstRef.events)) {
-        eventData = firstRef.events[0] || null;
-      } else {
-        eventData = firstRef.events;
-      }
-    }
+    // Get event data from first referral
+    const eventData = referralResults[0]?.event
+      ? {
+          id: referralResults[0].event.id,
+          name: referralResults[0].event.name ?? null,
+          route: referralResults[0].event.route ?? null,
+          start_time_date: referralResults[0].event.startTimeDate?.toISOString() ?? null,
+        }
+      : null;
 
     return NextResponse.json({
       leaderboard,

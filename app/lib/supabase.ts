@@ -1,18 +1,21 @@
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
+import { db, eq, events, roles, referrals } from "@ssb/db";
+import type { InferSelectModel } from "@ssb/db";
+import {
+  getTicketCounts as _getTicketCounts,
+  getAvailablePublicTickets as _getAvailablePublicTickets,
+  isEventUnderCapacity as _isEventUnderCapacity,
+} from "@ssb/db/queries";
 import { generateReferralCode } from "./utils";
 
-/**
- * Simple Supabase client for public data queries (bypasses RLS with service key)
- */
-export function getSupabaseClient() {
-  return createSupabaseClient(
-    process.env.SUPABASE_URL!,
-    process.env.SUPABASE_KEY!,
-  );
-}
+type DBEvent = InferSelectModel<typeof events>;
 
+/**
+ * Serialized event type used across the admin app.
+ * Maps from DB Event (camelCase) to the snake_case string/number format the UI expects.
+ */
 export type Event = {
   id: string;
   created_at: string;
@@ -21,10 +24,6 @@ export type Event = {
   tagline: string | null;
   img: string | null;
   capacity: number;
-  /**
-   * Number of tickets sold so far.
-   * (Newer schema field; fall back to `reserved` in older rows/clients.)
-   */
   tickets?: number | null;
   venue: string | null;
   reserved: number | null;
@@ -35,7 +34,46 @@ export type Event = {
   start_time_date: string | null;
   doors_open: string | null;
   route: string | null;
+  img_version?: number | null;
+  live?: boolean;
+  latitude?: number;
+  longitude?: number;
+  address?: string;
+  waitlist_chance?: string | null;
+  livestream?: boolean | null;
 };
+
+/**
+ * Convert a DB Event to the serialized Event type used by the UI.
+ */
+export function serializeEvent(e: DBEvent): Event {
+  return {
+    id: e.id,
+    created_at: e.createdAt.toISOString(),
+    name: e.name,
+    desc: e.desc,
+    tagline: e.tagline,
+    img: e.img,
+    capacity: e.capacity,
+    tickets: e.tickets,
+    venue: e.venue,
+    reserved: e.reserved,
+    venue_link: e.venueLink,
+    release_date: e.releaseDate?.toISOString() ?? null,
+    ticketing_date: e.ticketingDate?.toISOString() ?? null,
+    banner: e.banner,
+    start_time_date: e.startTimeDate?.toISOString() ?? null,
+    doors_open: e.doorsOpen?.toISOString() ?? null,
+    route: e.route,
+    img_version: e.imgVersion,
+    live: e.live,
+    latitude: Number(e.latitude),
+    longitude: Number(e.longitude),
+    address: e.address,
+    waitlist_chance: e.waitlistChance ?? null,
+    livestream: e.livestream ?? null,
+  };
+}
 
 type UnauthorizedResult = {
   authorized: false;
@@ -51,8 +89,19 @@ type AuthorizedResult = {
 export type AdminVerificationResult = UnauthorizedResult | AuthorizedResult;
 
 /**
+ * Supabase client for Auth and Storage operations only.
+ * Database queries use Drizzle via @ssb/db.
+ */
+export function getSupabaseClient() {
+  return createSupabaseClient(
+    process.env.SUPABASE_URL!,
+    process.env.SUPABASE_KEY!,
+  );
+}
+
+/**
  * Verify that the current request is authenticated and belongs to an admin user.
- * Returns the admin client for privileged database access when authorized.
+ * Returns the admin client for privileged Storage/Auth access when authorized.
  */
 export async function verifyAdminRequest(): Promise<AdminVerificationResult> {
   const supabase = await createServerSupabaseClient();
@@ -65,17 +114,16 @@ export async function verifyAdminRequest(): Promise<AdminVerificationResult> {
     return { authorized: false, error: "Not authenticated" };
   }
 
-  const adminClient = getSupabaseClient();
-  const { data: adminRecord } = await adminClient
-    .from("roles")
-    .select("roles")
-    .eq("email", user.email)
-    .single();
+  const roleRecord = await db.query.roles.findFirst({
+    where: eq(roles.email, user.email),
+    columns: { roles: true },
+  });
 
-  if (!adminRecord || !adminRecord.roles?.split(",").includes("admin")) {
+  if (!roleRecord || !roleRecord.roles?.split(",").includes("admin")) {
     return { authorized: false, error: "Not authorized" };
   }
 
+  const adminClient = getSupabaseClient();
   return { authorized: true, email: user.email, adminClient };
 }
 
@@ -135,136 +183,15 @@ export async function getSignedImageUrl(
  */
 export { generateReferralCode };
 
-/**
- * Calculates available public ticket capacity with unified logic
- *
- * Business Rules:
- * - Reserved slots are pre-allocated for VIP tickets
- * - VIP tickets don't count towards public capacity UNLESS they exceed reserved
- * - If VIPs <= reserved: public capacity = capacity - reserved
- * - If VIPs > reserved: public capacity = capacity - vipCount (overflow protection)
- * - Total tickets (VIP + public) can never exceed capacity
- *
- * @param eventId - The event UUID
- * @returns Detailed capacity information for displaying to users
- */
-export async function getAvailablePublicTickets(eventId: string): Promise<{
-  available: number; // How many public tickets can still be sold
-  publicSold: number; // How many public tickets have been sold
-  maxPublic: number; // Maximum public ticket capacity (accounting for VIP overflow)
-  vipCount: number; // How many VIP tickets exist
-  totalCapacity: number; // Total event capacity
-  reserved: number; // Reserved slots for VIPs
-}> {
-  const adminClient = getSupabaseClient();
-
-  // Get event capacity info
-  const { data: event } = await adminClient
-    .from("events")
-    .select("capacity, reserved")
-    .eq("id", eventId)
-    .single();
-
-  if (!event || !event.capacity) {
-    return {
-      available: 0,
-      publicSold: 0,
-      maxPublic: 0,
-      vipCount: 0,
-      totalCapacity: 0,
-      reserved: 0,
-    };
-  }
-
-  const capacity = event.capacity;
-  const reserved = event.reserved ?? 0;
-
-  // Get actual ticket counts from database
-  const { vipCount, publicCount } = await getTicketCounts(eventId);
-
-  // Calculate public capacity with VIP overflow protection
-  // If VIPs exceed reserved, they start taking from public capacity
-  let maxPublic: number;
-  if (vipCount <= reserved) {
-    // Normal case: VIPs fit within reserved allocation
-    maxPublic = capacity - reserved;
-  } else {
-    // Overflow case: VIPs exceed reserved, reduce public capacity
-    maxPublic = capacity - vipCount;
-  }
-
-  // Ensure maxPublic is non-negative
-  maxPublic = Math.max(0, maxPublic);
-
-  // Calculate available public tickets
-  const available = Math.max(0, maxPublic - publicCount);
-
-  return {
-    available,
-    publicSold: publicCount,
-    maxPublic,
-    vipCount,
-    totalCapacity: capacity,
-    reserved,
-  };
+// Re-export shared query helpers from @ssb/db, bound to the singleton db client
+export async function getTicketCounts(eventId: string) {
+  return _getTicketCounts(db, eventId);
 }
 
-/**
- * Check if an event is under capacity (has available public tickets)
- *
- * @param eventId - The event UUID
- * @returns True if there are available tickets or no capacity is set, false if sold out
- */
-export async function isEventUnderCapacity(eventId: string): Promise<boolean> {
-  const adminClient = getSupabaseClient();
-
-  // Get event capacity info
-  const { data: event } = await adminClient
-    .from("events")
-    .select("capacity")
-    .eq("id", eventId)
-    .single();
-
-  // If no capacity is set, event is never "sold out"
-  if (!event?.capacity) {
-    return true;
-  }
-
-  const ticketInfo = await getAvailablePublicTickets(eventId);
-  return ticketInfo.available > 0;
+export async function getAvailablePublicTickets(eventId: string) {
+  return _getAvailablePublicTickets(db, eventId);
 }
 
-/**
- * Gets detailed ticket counts for an event
- * Separates VIP and public tickets for proper capacity management
- *
- * @param eventId - The event UUID
- * @returns Object with vipCount, publicCount, and totalCount
- */
-export async function getTicketCounts(eventId: string): Promise<{
-  vipCount: number;
-  publicCount: number;
-  totalCount: number;
-}> {
-  const adminClient = getSupabaseClient();
-
-  // Count VIP tickets (admin-created only)
-  const { count: vipCount } = await adminClient
-    .from("tickets")
-    .select("*", { count: "exact", head: true })
-    .eq("event_id", eventId)
-    .eq("type", "VIP");
-
-  // Count public tickets (STANDARD or null)
-  const { count: publicCount } = await adminClient
-    .from("tickets")
-    .select("*", { count: "exact", head: true })
-    .eq("event_id", eventId)
-    .or("type.eq.STANDARD,type.eq.EXTERNAL,type.is.null");
-
-  return {
-    vipCount: vipCount ?? 0,
-    publicCount: publicCount ?? 0,
-    totalCount: (vipCount ?? 0) + (publicCount ?? 0),
-  };
+export async function isEventUnderCapacity(eventId: string) {
+  return _isEventUnderCapacity(db, eventId);
 }

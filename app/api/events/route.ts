@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import { fromZonedTime } from "date-fns-tz";
-import { getSignedImageUrl, verifyAdminRequest } from "@/app/lib/supabase";
+import { getSignedImageUrl, verifyAdminRequest, serializeEvent } from "@/app/lib/supabase";
 import { PACIFIC_TIMEZONE } from "@/app/lib/constants";
 import { pullFromWaitlist } from "@/app/lib/waitlist";
+import { db, eq, ne, and, events } from "@ssb/db";
 import {
   isValidUUID,
   isValidUrl,
@@ -132,29 +133,22 @@ export async function POST(req: Request) {
     }
 
     let existingEvent: {
-      capacity: number | null;
-      reserved: number | null;
-      tickets: number | null;
-      img_version: number | null;
+      capacity: number;
+      reserved: number;
+      tickets: number;
+      imgVersion: number;
     } | null = null;
 
     if (id) {
-      const { data, error } = await adminClient
-        .from("events")
-        .select("capacity, reserved, tickets, img_version")
-        .eq("id", id)
-        .single();
-
-      if (error) {
-        console.error("Event fetch error:", error);
-      } else {
-        existingEvent = data;
-      }
+      existingEvent = await db.query.events.findFirst({
+        where: eq(events.id, id),
+        columns: { capacity: true, reserved: true, tickets: true, imgVersion: true },
+      }) ?? null;
     }
 
     let imgName: string | null = null;
 
-    // Handle image upload with validation
+    // Handle image upload with validation (still uses Supabase Storage)
     if (imageFile && imageFile.size > 0) {
       // Validate file size
       if (!isValidImageSize(imageFile.size)) {
@@ -196,32 +190,31 @@ export async function POST(req: Request) {
       imgName = fileName;
     }
 
+    // Build event data object
     const eventData: Record<string, unknown> = {
       name: name || null,
       desc: desc || null,
       tagline: tagline || null,
       capacity: capacity ? parseInt(capacity) : 0,
-      // tickets = tickets sold so far (new field)
       tickets: tickets
         ? parseInt(tickets)
         : reserved
           ? parseInt(reserved)
           : null,
-      // reserved is legacy (kept for backwards compatibility / older rows)
       reserved: reserved ? parseInt(reserved) : null,
       venue: venue || null,
-      venue_link: venue_link || null,
-      release_date: release_date
-        ? fromZonedTime(release_date, PACIFIC_TIMEZONE).toISOString()
+      venueLink: venue_link || null,
+      releaseDate: release_date
+        ? fromZonedTime(release_date, PACIFIC_TIMEZONE)
         : null,
-      ticketing_date: ticketing_date
-        ? fromZonedTime(ticketing_date, PACIFIC_TIMEZONE).toISOString()
+      ticketingDate: ticketing_date
+        ? fromZonedTime(ticketing_date, PACIFIC_TIMEZONE)
         : null,
-      start_time_date: start_time_date
-        ? fromZonedTime(start_time_date, PACIFIC_TIMEZONE).toISOString()
+      startTimeDate: start_time_date
+        ? fromZonedTime(start_time_date, PACIFIC_TIMEZONE)
         : null,
-      doors_open: doors_open
-        ? fromZonedTime(doors_open, PACIFIC_TIMEZONE).toISOString()
+      doorsOpen: doors_open
+        ? fromZonedTime(doors_open, PACIFIC_TIMEZONE)
         : null,
       route: route || null,
       banner: banner,
@@ -231,9 +224,9 @@ export async function POST(req: Request) {
     };
 
     // Enforce: ticketing date must be on/after release date when both are set
-    if (eventData.release_date && eventData.ticketing_date) {
-      const publishMs = new Date(eventData.release_date as string).getTime();
-      const ticketingMs = new Date(eventData.ticketing_date as string).getTime();
+    if (eventData.releaseDate && eventData.ticketingDate) {
+      const publishMs = (eventData.releaseDate as Date).getTime();
+      const ticketingMs = (eventData.ticketingDate as Date).getTime();
       if (Number.isNaN(publishMs) || Number.isNaN(ticketingMs)) {
         return NextResponse.json(
           { error: "Invalid date format" },
@@ -254,21 +247,11 @@ export async function POST(req: Request) {
     if (imgName) {
       eventData.img = imgName;
       // Increment img_version when image is updated (for cache busting)
-      if (id) {
-        const currentVersion =
-          existingEvent?.img_version ??
-          (
-            await adminClient
-              .from("events")
-              .select("img_version")
-              .eq("id", id)
-              .single()
-          ).data?.img_version ??
-          0;
-        eventData.img_version = currentVersion + 1;
+      if (id && existingEvent) {
+        eventData.imgVersion = existingEvent.imgVersion + 1;
       } else {
         // For new events, start at version 1
-        eventData.img_version = 1;
+        eventData.imgVersion = 1;
       }
     }
 
@@ -276,48 +259,24 @@ export async function POST(req: Request) {
 
     if (id) {
       // Update existing event
-      const { data, error } = await adminClient
-        .from("events")
-        .update(eventData)
-        .eq("id", id)
-        .select("*")
-        .single();
-
-      if (error) {
-        console.error("Event update error:", error);
-        return NextResponse.json(
-          { error: "Failed to update event" },
-          { status: 500 },
-        );
-      }
-
-      savedEvent = data;
+      const [updated] = await db.update(events)
+        .set(eventData)
+        .where(eq(events.id, id))
+        .returning();
+      savedEvent = updated;
     } else {
       // Create new event
-      const { data, error } = await adminClient
-        .from("events")
-        .insert([eventData])
-        .select("*")
-        .single();
-
-      if (error) {
-        console.error("Event insert error:", error);
-        return NextResponse.json(
-          { error: "Failed to create event" },
-          { status: 500 },
-        );
-      }
-
-      savedEvent = data;
+      const [created] = await db.insert(events)
+        .values(eventData as any)
+        .returning();
+      savedEvent = created;
     }
 
     if (id && existingEvent && savedEvent) {
-      const previousCapacity = existingEvent.capacity ?? 0;
-      const previousReserved = existingEvent.reserved ?? 0;
-      const newCapacity =
-        typeof savedEvent.capacity === "number" ? savedEvent.capacity : 0;
-      const newReserved =
-        typeof savedEvent.reserved === "number" ? savedEvent.reserved : 0;
+      const previousCapacity = existingEvent.capacity;
+      const previousReserved = existingEvent.reserved;
+      const newCapacity = savedEvent.capacity;
+      const newReserved = savedEvent.reserved;
 
       const capacityIncreased = newCapacity > previousCapacity;
       const reservedDecreased = newReserved < previousReserved;
@@ -334,14 +293,13 @@ export async function POST(req: Request) {
       }
     }
 
-    const eventWithImage = savedEvent
-      ? {
-        ...savedEvent,
-        image_url: savedEvent.img
-          ? await getSignedImageUrl(savedEvent.img, 60 * 60)
-          : null,
-      }
-      : null;
+    const serialized = serializeEvent(savedEvent);
+    const eventWithImage = {
+      ...serialized,
+      image_url: savedEvent.img
+        ? await getSignedImageUrl(savedEvent.img, 60 * 60)
+        : null,
+    };
 
     return NextResponse.json({ success: true, event: eventWithImage });
   } catch (error) {
@@ -370,63 +328,41 @@ export async function PATCH(req: Request) {
       );
     }
 
-    const adminClient = auth.adminClient!;
-
     if (live) {
       // Set all events to not live first
-      await adminClient.from("events").update({ live: false }).neq("id", id);
+      await db.update(events)
+        .set({ live: false })
+        .where(ne(events.id, id));
 
       // Set the specified event to live
-      const { data, error } = await adminClient
-        .from("events")
-        .update({ live: true })
-        .eq("id", id)
-        .select("*")
-        .single();
+      const [updatedEvent] = await db.update(events)
+        .set({ live: true })
+        .where(eq(events.id, id))
+        .returning();
 
-      if (error) {
-        console.error("Event live update error:", error);
-        return NextResponse.json(
-          { error: "Failed to update live status" },
-          { status: 500 },
-        );
-      }
-
-      const eventWithImage = data
-        ? {
-          ...data,
-          image_url: data.img
-            ? await getSignedImageUrl(data.img, 60 * 60)
-            : null,
-        }
-        : null;
+      const serialized = serializeEvent(updatedEvent);
+      const eventWithImage = {
+        ...serialized,
+        image_url: updatedEvent.img
+          ? await getSignedImageUrl(updatedEvent.img, 60 * 60)
+          : null,
+      };
 
       return NextResponse.json({ success: true, event: eventWithImage });
     } else {
       // Just set this event to not live
-      const { data, error } = await adminClient
-        .from("events")
-        .update({ live: false })
-        .eq("id", id)
-        .select("*")
-        .single();
+      const [updatedEvent] = await db.update(events)
+        .set({ live: false })
+        .where(eq(events.id, id))
+        .returning();
 
-      if (error) {
-        console.error("Event live update error:", error);
-        return NextResponse.json(
-          { error: "Failed to update live status" },
-          { status: 500 },
-        );
-      }
-
-      const eventWithImage = data
-        ? {
-          ...data,
-          image_url: data.img
-            ? await getSignedImageUrl(data.img, 60 * 60)
-            : null,
-        }
-        : null;
+      const serialized = serializeEvent(updatedEvent);
+      const eventWithImage = {
+        ...serialized,
+        image_url: updatedEvent.img
+          ? await getSignedImageUrl(updatedEvent.img, 60 * 60)
+          : null,
+      };
 
       return NextResponse.json({ success: true, event: eventWithImage });
     }
@@ -465,30 +401,19 @@ export async function DELETE(req: Request) {
     }
 
     // Get the event first to delete its image
-    const { data: event } = await auth
-      .adminClient!.from("events")
-      .select("img")
-      .eq("id", id)
-      .single();
+    const event = await db.query.events.findFirst({
+      where: eq(events.id, id),
+      columns: { img: true },
+    });
 
-    // Delete the image from storage if it exists
+    // Delete the image from storage if it exists (Supabase Storage)
     if (event?.img) {
-      await auth.adminClient!.storage.from("speakers").remove([event.img]);
+      const adminClient = auth.adminClient!;
+      await adminClient.storage.from("speakers").remove([event.img]);
     }
 
     // Delete the event
-    const { error } = await auth
-      .adminClient!.from("events")
-      .delete()
-      .eq("id", id);
-
-    if (error) {
-      console.error("Event delete error:", error);
-      return NextResponse.json(
-        { error: "Failed to delete event" },
-        { status: 500 },
-      );
-    }
+    await db.delete(events).where(eq(events.id, id));
 
     return NextResponse.json({ success: true });
   } catch (error) {

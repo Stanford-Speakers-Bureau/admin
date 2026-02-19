@@ -1,6 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  transpilePackages: ["@ssb/db"],
   images: {
     qualities: [70, 75, 90],
     loader: "custom",

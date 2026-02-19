@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { verifyAdminRequest } from "@/app/lib/supabase";
+import { db, eq, events, tickets } from "@ssb/db";
 
 export async function GET(
   req: Request,
@@ -20,80 +21,71 @@ export async function GET(
       );
     }
 
-    const adminClient = auth.adminClient!;
+    // Get event details to determine time range
+    const event = await db.query.events.findFirst({
+      where: eq(events.id, eventId),
+      columns: { releaseDate: true, startTimeDate: true },
+    });
 
-    // Get event details
-    const { data: event, error: eventError } = await adminClient
-      .from("events")
-      .select("release_date, start_time_date, capacity")
-      .eq("id", eventId)
-      .single();
-
-    if (eventError || !event) {
+    if (!event) {
       return NextResponse.json({ error: "Event not found" }, { status: 404 });
     }
 
-    // Fetch all tickets with created_at and type
-    const allTickets: { created_at: string; type: string | null }[] = [];
-    const pageSize = 1000;
-    let page = 0;
-    let hasMore = true;
+    // Determine time range
+    const startDate = event.releaseDate ?? new Date();
+    const endDate = event.startTimeDate ?? new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
-    while (hasMore) {
-      const { data: tickets, error: ticketsError } = await adminClient
-        .from("tickets")
-        .select("created_at, type")
-        .eq("event_id", eventId)
-        .order("created_at", { ascending: true })
-        .range(page * pageSize, (page + 1) * pageSize - 1);
-
-      if (ticketsError) {
-        console.error("Tickets fetch error:", ticketsError);
-        return NextResponse.json(
-          { error: "Failed to fetch ticket data" },
-          { status: 500 },
-        );
-      }
-
-      if (tickets && tickets.length > 0) {
-        allTickets.push(...tickets);
-        hasMore = tickets.length === pageSize;
-        page++;
-      } else {
-        hasMore = false;
-      }
-    }
-
-    const totalTickets = allTickets.length;
-    const vipCount = allTickets.filter((t) => t.type === "VIP").length;
-    const standardCount = totalTickets - vipCount;
-
-    // Milestones
-    const capacity = event.capacity || 0;
-    const milestones = [25, 50, 75, 100].map((pct) => {
-      const target = Math.ceil((capacity * pct) / 100);
-      const reached = totalTickets >= target;
-      return {
-        percent: pct,
-        reached,
-        ticketNumber: target,
-        reachedAt:
-          reached && allTickets.length >= target
-            ? allTickets[target - 1].created_at
-            : null,
-      };
+    // Get all tickets for this event with created_at timestamps
+    const ticketResults = await db.query.tickets.findMany({
+      where: eq(tickets.eventId, eventId),
+      columns: { createdAt: true },
+      orderBy: (t, { asc }) => [asc(t.createdAt)],
     });
 
-    // Send raw timestamps for client-side bucketing (just the ISO strings)
-    const timestamps = allTickets.map((t) => t.created_at);
+    // Always use 1-hour intervals
+    const intervalHours = 1;
+
+    // Create intervals
+    const intervals: { time: string; count: number; cumulative: number }[] = [];
+    let currentTime = new Date(startDate);
+    let cumulativeCount = 0;
+
+    while (currentTime < endDate) {
+      const intervalEnd = new Date(
+        currentTime.getTime() + intervalHours * 60 * 60 * 1000,
+      );
+      const intervalEndTime = intervalEnd > endDate ? endDate : intervalEnd;
+
+      // Count tickets in this interval
+      const intervalCount = ticketResults.filter((ticket) => {
+        return ticket.createdAt >= currentTime && ticket.createdAt < intervalEndTime;
+      }).length;
+
+      cumulativeCount += intervalCount;
+
+      intervals.push({
+        time: currentTime.toISOString(),
+        count: intervalCount,
+        cumulative: cumulativeCount,
+      });
+
+      currentTime = intervalEnd;
+    }
+
+    // Ensure we have at least one data point
+    if (intervals.length === 0) {
+      intervals.push({
+        time: new Date(startDate).toISOString(),
+        count: 0,
+        cumulative: 0,
+      });
+    }
 
     return NextResponse.json({
-      timestamps,
-      totalTickets,
-      capacity,
-      vipCount,
-      standardCount,
-      milestones,
+      data: intervals,
+      startDate: new Date(startDate).toISOString(),
+      endDate: new Date(endDate).toISOString(),
+      totalTickets: ticketResults.length,
     });
   } catch (error) {
     console.error("Ticket sales fetch error:", error);

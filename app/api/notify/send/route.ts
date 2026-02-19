@@ -3,8 +3,8 @@ import { verifyAdminRequest } from "@/app/lib/supabase";
 import {
   sendTicketsAvailableNowEmail,
   sendTicketsAvailableInEmail,
-  sendClaimTicketEmail,
 } from "@/app/lib/email";
+import { db, eq, events, notify } from "@ssb/db";
 
 export async function POST(req: Request) {
   try {
@@ -15,7 +15,7 @@ export async function POST(req: Request) {
 
     let body: {
       eventId?: string;
-      variant?: "now" | "in" | "claim";
+      variant?: "now" | "in";
       approxTimeUntilAvailable?: string;
       singleEmail?: string;
     };
@@ -33,9 +33,9 @@ export async function POST(req: Request) {
         { status: 400 },
       );
     }
-    if (!variant || (variant !== "now" && variant !== "in" && variant !== "claim")) {
+    if (!variant || (variant !== "now" && variant !== "in")) {
       return NextResponse.json(
-        { error: 'variant must be "now", "in", or "claim"' },
+        { error: 'variant must be "now" or "in"' },
         { status: 400 },
       );
     }
@@ -52,25 +52,20 @@ export async function POST(req: Request) {
       }
     }
 
-    const adminClient = auth.adminClient!;
+    const event = await db.query.events.findFirst({
+      where: eq(events.id, eventId),
+      columns: { id: true, name: true, route: true, startTimeDate: true },
+    });
 
-    const { data: event, error: eventError } = await adminClient
-      .from("events")
-      .select("id, name, route, start_time_date")
-      .eq("id", eventId)
-      .single();
-
-    if (eventError || !event) {
-      console.error("Event fetch error:", eventError);
+    if (!event) {
       return NextResponse.json({ error: "Event not found" }, { status: 404 });
     }
 
     const eventName = event.name || "Event";
     const eventRoute = event.route ?? null;
-    const eventStartTime = event.start_time_date ?? null;
+    const eventStartTime = event.startTimeDate?.toISOString() ?? null;
 
     let emails: string[];
-    let skipped = 0;
     if (singleEmail && typeof singleEmail === "string") {
       const email = singleEmail.trim().toLowerCase();
       if (!email) {
@@ -81,48 +76,17 @@ export async function POST(req: Request) {
       }
       emails = [email];
     } else {
-      const { data: notifications, error: notifyError } = await adminClient
-        .from("notify")
-        .select("email")
-        .eq("speaker_id", eventId);
+      const notifications = await db.query.notify.findMany({
+        where: eq(notify.speakerId, eventId),
+        columns: { email: true },
+      });
 
-      if (notifyError) {
-        console.error("Notify fetch error:", notifyError);
-        return NextResponse.json(
-          { error: "Failed to fetch notify list" },
-          { status: 500 },
-        );
-      }
-      const allEmails = [...new Set((notifications || []).map((n: { email: string }) => n.email.toLowerCase()))];
-
-      // For "claim" variant, filter out people who already have tickets
-      if (variant === "claim") {
-        const { data: tickets, error: ticketsError } = await adminClient
-          .from("tickets")
-          .select("email")
-          .eq("event_id", eventId);
-
-        if (ticketsError) {
-          console.error("Tickets fetch error:", ticketsError);
-          return NextResponse.json(
-            { error: "Failed to check existing tickets" },
-            { status: 500 },
-          );
-        }
-
-        const ticketEmails = new Set(
-          (tickets || []).map((t: { email: string }) => t.email.toLowerCase()),
-        );
-        emails = allEmails.filter((e) => !ticketEmails.has(e));
-        skipped = allEmails.length - emails.length;
-      } else {
-        emails = allEmails;
-      }
+      emails = [...new Set(notifications.map((n) => n.email.toLowerCase()))];
     }
 
     if (emails.length === 0) {
       return NextResponse.json(
-        { sent: 0, failed: 0, skipped },
+        { error: "No recipients to send to", sent: 0, failed: 0 },
         { status: 200 },
       );
     }
@@ -130,7 +94,7 @@ export async function POST(req: Request) {
     // Send emails in batches to avoid memory overflow
     // Rate limit: max 14 emails per second (matches ticket reminder batching)
     const BATCH_SIZE = 14;
-    const MIN_BATCH_DURATION_MS = 1000;
+    const MIN_BATCH_DURATION_MS = 1000; // Ensure at least 1 second per batch
     const results: PromiseSettledResult<{
       success: boolean;
       email: string;
@@ -143,27 +107,20 @@ export async function POST(req: Request) {
       const batchStartTime = Date.now();
       const batch = emails.slice(i, i + BATCH_SIZE);
       const batchPromises = batch.map((email) =>
-        (variant === "claim"
-          ? sendClaimTicketEmail({
+        (variant === "now"
+          ? sendTicketsAvailableNowEmail({
               email,
               eventName,
               eventRoute,
               eventStartTime,
             })
-          : variant === "now"
-            ? sendTicketsAvailableNowEmail({
-                email,
-                eventName,
-                eventRoute,
-                eventStartTime,
-              })
-            : sendTicketsAvailableInEmail({
-                email,
-                eventName,
-                eventRoute,
-                eventStartTime,
-                approxTimeUntilAvailable: approxTime,
-              })
+          : sendTicketsAvailableInEmail({
+              email,
+              eventName,
+              eventRoute,
+              eventStartTime,
+              approxTimeUntilAvailable: approxTime,
+            })
         ).then(
           () => ({ success: true, email }),
           (error) => ({ success: false, email, error }),
@@ -196,7 +153,7 @@ export async function POST(req: Request) {
       }
     }
 
-    return NextResponse.json({ sent, failed, skipped });
+    return NextResponse.json({ sent, failed });
   } catch (err) {
     console.error("Notify send error:", err);
     return NextResponse.json(

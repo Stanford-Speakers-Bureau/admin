@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { verifyAdminRequest } from "@/app/lib/supabase";
 import { getAdminSuggestions } from "@/app/suggest/data";
+import { db, eq, suggest } from "@ssb/db";
 
 export async function PATCH(req: Request) {
   try {
@@ -28,16 +29,13 @@ export async function PATCH(req: Request) {
       );
     }
 
-    const client = auth.adminClient!;
-
     // Verify the suggestion exists
-    const { data: suggestion, error: suggestionError } = await client
-      .from("suggest")
-      .select("id")
-      .eq("id", speaker_id)
-      .single();
+    const suggestion = await db.query.suggest.findFirst({
+      where: eq(suggest.id, speaker_id),
+      columns: { id: true },
+    });
 
-    if (suggestionError || !suggestion) {
+    if (!suggestion) {
       return NextResponse.json(
         { error: "Speaker suggestion not found" },
         { status: 404 },
@@ -45,18 +43,9 @@ export async function PATCH(req: Request) {
     }
 
     // Update the vote count directly
-    const { error: updateError } = await client
-      .from("suggest")
-      .update({ votes })
-      .eq("id", speaker_id);
-
-    if (updateError) {
-      console.error("Vote count update error:", updateError);
-      return NextResponse.json(
-        { error: "Failed to update vote count" },
-        { status: 500 },
-      );
-    }
+    await db.update(suggest)
+      .set({ votes })
+      .where(eq(suggest.id, speaker_id));
 
     // Return fresh suggestions
     const { suggestions } = await getAdminSuggestions();

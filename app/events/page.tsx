@@ -1,5 +1,6 @@
 import AdminEventsClient, { Event } from "./AdminEventsClient";
-import { getSignedImageUrl, verifyAdminRequest } from "@/app/lib/supabase";
+import { getSignedImageUrl, verifyAdminRequest, serializeEvent } from "@/app/lib/supabase";
+import { db } from "@ssb/db";
 
 export const dynamic = "force-dynamic";
 
@@ -10,28 +11,21 @@ async function getInitialEvents(): Promise<Event[]> {
       return [];
     }
 
-    const client = auth.adminClient!;
+    const events = await db.query.events.findMany({
+      orderBy: (t, { desc }) => [desc(t.startTimeDate)],
+    });
 
-    const { data: events, error } = await client
-      .from("events")
-      .select("*")
-      .order("start_time_date", { ascending: false });
-
-    if (error) {
-      console.error("Events fetch error:", error);
-      return [];
-    }
-
-    const eventsWithImages = events
-      ? await Promise.all(
-          events.map(async (event: Event) => ({
-            ...event,
-            image_url: event.img
-              ? await getSignedImageUrl(event.img, 60 * 60) // 1 hour expiry
-              : null,
-          })),
-        )
-      : [];
+    const eventsWithImages = await Promise.all(
+      events.map(async (event) => {
+        const serialized = serializeEvent(event);
+        return {
+          ...serialized,
+          image_url: event.img
+            ? await getSignedImageUrl(event.img, 60 * 60) // 1 hour expiry
+            : null,
+        };
+      }),
+    );
 
     return eventsWithImages as Event[];
   } catch (error) {

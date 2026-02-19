@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import AdminLayoutClient from "./AdminLayoutClient";
 import { verifyAdminRequest } from "@/app/lib/supabase";
+import { db, eq, events } from "@ssb/db";
 import "./globals.css";
 import { Hedvig_Letters_Serif, Inter } from "next/font/google";
 import { Metadata } from "next";
@@ -80,22 +81,14 @@ const navItems = [
 
 export const dynamic = "force-dynamic";
 
-async function checkLiveEvent(auth: any): Promise<boolean> {
+async function checkLiveEvent(): Promise<boolean> {
   try {
-    const client = auth.adminClient!;
+    const liveEvent = await db.query.events.findFirst({
+      where: eq(events.live, true),
+      columns: { id: true },
+    });
 
-    const { data: liveEvent, error } = await client
-      .from("events")
-      .select("live")
-      .eq("live", true)
-      .limit(1);
-
-    if (error) {
-      console.error("Live event check error:", error);
-      return false;
-    }
-
-    return liveEvent && liveEvent.length > 0;
+    return !!liveEvent;
   } catch (error) {
     console.error("Failed to check live event:", error);
     return false;
@@ -118,7 +111,7 @@ export default async function AdminLayout({ children }: AdminLayoutProps) {
 
   const [emailDisabled, hasLiveEvent] = await Promise.all([
     Promise.resolve(process.env.DISABLE_EMAIL === "true"),
-    checkLiveEvent(auth),
+    checkLiveEvent(),
   ]);
 
   return (
