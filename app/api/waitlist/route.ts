@@ -46,6 +46,7 @@ export async function GET(req: Request) {
         columns: {
           id: true,
           email: true,
+          name: true,
           referral: true,
           position: true,
           createdAt: true,
@@ -66,6 +67,7 @@ export async function GET(req: Request) {
           waitlist: waitlistEntries.map((e) => ({
             id: e.id,
             email: e.email,
+            name: e.name,
             referral: e.referral,
             position: e.position,
             created_at: e.createdAt.toISOString(),
@@ -82,6 +84,7 @@ export async function GET(req: Request) {
       columns: {
         id: true,
         email: true,
+        name: true,
         referral: true,
         position: true,
         createdAt: true,
@@ -117,6 +120,7 @@ export async function GET(req: Request) {
         waitlist: Array<{
           id: string;
           email: string;
+          name: string | null;
           referral: string | null;
           position: number;
           created_at: string;
@@ -147,6 +151,7 @@ export async function GET(req: Request) {
       groupedByEvent[evtId].waitlist.push({
         id: entry.id,
         email: entry.email,
+        name: entry.name,
         referral: entry.referral,
         position: entry.position,
         created_at: entry.createdAt.toISOString(),

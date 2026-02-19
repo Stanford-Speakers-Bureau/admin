@@ -161,7 +161,7 @@ export default function TicketManagementClient({
       }
 
       if (search.trim()) {
-        params.append("search", search.trim());
+        params.append("email", search.trim());
       }
 
       if (ticketTypeFilter) {
