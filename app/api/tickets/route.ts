@@ -21,7 +21,7 @@ export async function GET(req: Request) {
 
     const { searchParams } = new URL(req.url);
     const eventId = searchParams.get("eventId");
-    const email = searchParams.get("email");
+    const search = searchParams.get("search");
     const type = searchParams.get("type");
     const scanned = searchParams.get("scanned");
     const limit = parseInt(searchParams.get("limit") || "100");
@@ -56,8 +56,8 @@ export async function GET(req: Request) {
       query = query.eq("event_id", eventId);
     }
 
-    if (email) {
-      query = query.ilike("email", `%${email}%`);
+    if (search) {
+      query = query.or(`email.ilike.%${search}%,name.ilike.%${search}%`);
     }
 
     if (type) {
@@ -119,8 +119,8 @@ export async function GET(req: Request) {
       filteredCountQuery = filteredCountQuery.eq("event_id", eventId);
     }
 
-    if (email) {
-      filteredCountQuery = filteredCountQuery.ilike("email", `%${email}%`);
+    if (search) {
+      filteredCountQuery = filteredCountQuery.or(`email.ilike.%${search}%,name.ilike.%${search}%`);
     }
 
     if (type) {

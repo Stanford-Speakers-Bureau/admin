@@ -6,6 +6,7 @@ export const dynamic = "force-dynamic";
 type WaitlistEntry = {
   id: string;
   email: string;
+  name: string | null;
   referral: string | null;
   position: number;
   created_at: string;
@@ -45,6 +46,7 @@ async function getInitialWaitlist(): Promise<{
         `
         id,
         email,
+        name,
         referral,
         position,
         created_at,
@@ -103,6 +105,7 @@ async function getInitialWaitlist(): Promise<{
       groupedByEvent[eventId].waitlist.push({
         id: entry.id,
         email: entry.email,
+        name: entry.name,
         referral: entry.referral,
         position: entry.position,
         created_at: entry.created_at,

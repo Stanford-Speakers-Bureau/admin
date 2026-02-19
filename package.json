@@ -21,11 +21,12 @@
     "@supabase/supabase-js": "^2.88.0",
     "@types/qrcode": "^1.5.6",
     "date-fns-tz": "^3.2.0",
+    "echarts": "^6.0.0",
+    "echarts-for-react": "^3.0.6",
     "next": "16.0.10",
     "qrcode": "^1.5.4",
     "react": "19.2.1",
     "react-dom": "19.2.1",
-    "recharts": "^3.6.0",
     "wrangler": "^4.55.0"
   },
   "devDependencies": {
