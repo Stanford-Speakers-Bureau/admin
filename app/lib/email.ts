@@ -464,6 +464,7 @@ async function generateTicketEmailHTML(
 
   const qrImageSrc = options?.qrCid ? `cid:${options.qrCid}` : "";
   const isVIP = ticketType?.toUpperCase() === "VIP";
+  const isExternal = ticketType?.toUpperCase() === "EXTERNAL";
   const ticketValidTime = eventStartTime
     ? new Date(eventStartTime).toLocaleString("en-US", {
         hour: "numeric",
@@ -544,28 +545,43 @@ async function generateTicketEmailHTML(
       background-image: linear-gradient(#A80D0C, #A80D0D) !important;
       color: #ffffff !important; 
     }
-    u + .body .ticket-type-standard { 
-      background-color: #71717a !important; 
+    u + .body .ticket-type-standard {
+      background-color: #71717a !important;
       background-image: linear-gradient(#71717a, #71717b) !important;
-      color: #ffffff !important; 
+      color: #ffffff !important;
     }
-    u + .body .button { 
-      background-color: #A80D0C !important; 
+    u + .body .ticket-type-external {
+      background-color: #16a34a !important;
+      background-image: linear-gradient(#16a34a, #16a34b) !important;
+      color: #ffffff !important;
+    }
+    u + .body .qr-code-wrapper-external {
+      background-color: #16a34a !important;
+      background-image: linear-gradient(180deg, #16a34a, #16a34b) !important;
+    }
+    u + .body .external-border {
+      border-color: #16a34a !important;
+    }
+    u + .body .external-shadow {
+      box-shadow: 0 0 15px rgba(22, 163, 74, 0.3) !important;
+    }
+    u + .body .button {
+      background-color: #A80D0C !important;
       background-image: linear-gradient(#A80D0C, #A80D0D) !important;
-      color: #ffffff !important; 
+      color: #ffffff !important;
     }
-    u + .body .button-calendar { 
-      background-color: #175dcd !important; 
+    u + .body .button-calendar {
+      background-color: #175dcd !important;
       background-image: linear-gradient(#175dcd, #175dce) !important;
-      color: #ffffff !important; 
+      color: #ffffff !important;
     }
     u + .body a { color: #A80D0C !important; }
 
     /* VIP Gold accent borders */
-    u + .body .vip-border { 
-      border-color: #D4AF37 !important; 
+    u + .body .vip-border {
+      border-color: #D4AF37 !important;
     }
-    u + .body .vip-shadow { 
+    u + .body .vip-shadow {
       box-shadow: 0 0 15px rgba(212, 175, 55, 0.3) !important;
     }
 
@@ -581,6 +597,8 @@ async function generateTicketEmailHTML(
       .footer { background-color: #18181b !important; border-top: 1px solid #3f3f46 !important; }
       .vip-border { border-color: #D4AF37 !important; }
       .vip-shadow { box-shadow: 0 0 15px rgba(212, 175, 55, 0.3) !important; }
+      .external-border { border-color: #16a34a !important; }
+      .external-shadow { box-shadow: 0 0 15px rgba(22, 163, 74, 0.3) !important; }
     }
 
     /* Mobile responsive */
@@ -599,17 +617,17 @@ async function generateTicketEmailHTML(
 </head>
 <body class="body" style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #18181b; color: #f4f4f5;">
 
-  <table role="presentation" style="width: 100%; border-collapse: collapse; background-color: #27272a;${isVIP ? " border: 3px solid #D4AF37;" : ""}">
-    
+  <table role="presentation" style="width: 100%; border-collapse: collapse; background-color: #27272a;${isVIP ? " border: 3px solid #D4AF37;" : isExternal ? " border: 3px solid #16a34a;" : ""}">
+
     <!-- Header -->
     <tr>
-      <td align="center" class="email-header" style="background: linear-gradient(135deg, #A80D0C 0%, #C11211 100%); padding: 40px 30px; text-align: center;${isVIP ? " border: 3px solid #D4AF37; border-bottom: none;" : ""}">
+      <td align="center" class="email-header" style="background: linear-gradient(135deg, #A80D0C 0%, #C11211 100%); padding: 40px 30px; text-align: center;${isVIP ? " border: 3px solid #D4AF37; border-bottom: none;" : isExternal ? " border: 3px solid #16a34a; border-bottom: none;" : ""}">
         <div style="margin-bottom: 20px;">
           <img src="${logoUrl}" alt="Stanford Speakers Bureau Logo" class="logo" style="width: 60px; height: 60px; margin: 0 auto; display: block;" />
         </div>
         ${gmailBlendStart}
           <h2 class="header-subtitle" style="margin: 0 0 12px 0; color: #ffffff; font-size: 24px; font-weight: 600; letter-spacing: 0.5px;">Stanford Speakers Bureau</h2>
-          <h1 class="header-title" style="margin: 0; color: #ffffff; font-size: 28px; font-weight: 700;">${isVIP ? "Your VIP ticket is reserved!" : "Your seat is reserved!"}</h1>
+          <h1 class="header-title" style="margin: 0; color: #ffffff; font-size: 28px; font-weight: 700;">${isVIP ? "Your VIP ticket is reserved!" : isExternal ? "Your external ticket is confirmed!" : "Your seat is reserved!"}</h1>
         ${gmailBlendEnd}
       </td>
     </tr>
@@ -657,7 +675,7 @@ async function generateTicketEmailHTML(
     }
           
           <!-- Event Details Card -->
-          <div class="details-card" style="background-color: #18181b; padding: 24px; margin-bottom: 24px;${isVIP ? " border: 2px solid #D4AF37; border-radius: 8px; box-shadow: 0 0 15px rgba(212, 175, 55, 0.3);" : ""}">
+          <div class="details-card" style="background-color: #18181b; padding: 24px; margin-bottom: 24px;${isVIP ? " border: 2px solid #D4AF37; border-radius: 8px; box-shadow: 0 0 15px rgba(212, 175, 55, 0.3);" : isExternal ? " border: 2px solid #16a34a; border-radius: 8px; box-shadow: 0 0 15px rgba(22, 163, 74, 0.3);" : ""}">
             
             ${gmailBlendStart}
               <h2 class="details-title" style="margin: 0 0 20px 0; color: #ffffff; font-size: 22px; font-weight: 600;">Event Details</h2>
@@ -724,7 +742,7 @@ async function generateTicketEmailHTML(
                   ${gmailBlendStart}Ticket Type:${gmailBlendEnd}
                 </td>
                 <td class="details-value" style="padding: 8px 0;">
-                  <span class="${ticketType === "VIP" ? "ticket-type-vip" : "ticket-type-standard"}" style="display: inline-block; padding: 4px 12px; background-color: ${ticketType === "VIP" ? "#A80D0C" : "#71717a"}; color: #ffffff; border-radius: 4px; font-size: 12px; font-weight: 600; text-transform: uppercase;">
+                  <span class="${ticketType === "VIP" ? "ticket-type-vip" : ticketType === "EXTERNAL" ? "ticket-type-external" : "ticket-type-standard"}" style="display: inline-block; padding: 4px 12px; background-color: ${ticketType === "VIP" ? "#A80D0C" : ticketType === "EXTERNAL" ? "#16a34a" : "#71717a"}; color: #ffffff; border-radius: 4px; font-size: 12px; font-weight: 600; text-transform: uppercase;">
                     ${ticketType || "STANDARD"}
                   </span>
                 </td>
@@ -744,7 +762,7 @@ async function generateTicketEmailHTML(
             <table role="presentation" style="width: 100%; border-collapse: collapse; margin-top: 20px;">
               <tr>
                 <td align="center" class="button-wrapper" style="padding: 0;">
-                  <a href="${eventUrl}" class="button" style="display: inline-block; padding: 14px 28px; background-color: #A80D0C; color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 16px;${isVIP ? " border: 2px solid #D4AF37;" : ""}">View Event Details</a>
+                  <a href="${eventUrl}" class="button" style="display: inline-block; padding: 14px 28px; background-color: #A80D0C; color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 16px;${isVIP ? " border: 2px solid #D4AF37;" : isExternal ? " border: 2px solid #16a34a;" : ""}">View Event Details</a>
                 </td>
               </tr>
             </table>
@@ -756,13 +774,13 @@ async function generateTicketEmailHTML(
           ${qrImageSrc
       ? `
           <!-- QR Code Section -->
-          <div class="qr-section" style="background-color: #18181b; padding: 24px; margin-bottom: 24px; text-align: center;${isVIP ? " border: 2px solid #D4AF37; border-radius: 8px; box-shadow: 0 0 15px rgba(212, 175, 55, 0.3);" : ""}">
+          <div class="qr-section" style="background-color: #18181b; padding: 24px; margin-bottom: 24px; text-align: center;${isVIP ? " border: 2px solid #D4AF37; border-radius: 8px; box-shadow: 0 0 15px rgba(212, 175, 55, 0.3);" : isExternal ? " border: 2px solid #16a34a; border-radius: 8px; box-shadow: 0 0 15px rgba(22, 163, 74, 0.3);" : ""}">
             
             ${gmailBlendStart}
               <h2 class="qr-title" style="margin: 0 0 16px 0; color: #ffffff; font-size: 20px; font-weight: 600;">Your Ticket QR Code</h2>
             ${gmailBlendEnd}
 
-            <div class="qr-code-wrapper${isVIP ? " qr-code-wrapper-vip" : ""}" style="display: inline-block; border-radius: 12px; ${isVIP ? "background-color: #D4AF37; padding: 4px;" : "padding: 0;"
+            <div class="qr-code-wrapper${isVIP ? " qr-code-wrapper-vip" : isExternal ? " qr-code-wrapper-external" : ""}" style="display: inline-block; border-radius: 12px; ${isVIP ? "background-color: #D4AF37; padding: 4px;" : isExternal ? "background-color: #16a34a; padding: 4px;" : "padding: 0;"
       }">
               <div style="background-color: #ffffff; padding: 16px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);">
                 <img src="${qrImageSrc}" alt="Ticket QR Code" class="qr-code-img" style="display: block; width: 350px; max-width: 100%; height: auto;" />
@@ -777,7 +795,15 @@ async function generateTicketEmailHTML(
               </span>
             </div>
             `
-        : ""
+        : isExternal
+          ? `
+            <div style="margin-top: 12px;">
+              <span style="display: inline-block; padding: 6px 16px; background-color: #16a34a; color: #ffffff; border-radius: 20px; font-size: 12px; font-weight: 700; text-transform: uppercase;">
+                EXTERNAL
+              </span>
+            </div>
+            `
+          : ""
       }
             
             <table width="100%" border="0" cellspacing="0" cellpadding="0" role="presentation" style="margin-top: 16px;">
@@ -894,7 +920,7 @@ function generateTicketEmailText(data: TicketEmailData): string {
     : null;
 
   return `
-${ticketType?.toUpperCase() === "VIP" ? "VIP Ticket Confirmed!" : "Ticket Confirmed!"}
+${ticketType?.toUpperCase() === "VIP" ? "VIP Ticket Confirmed!" : ticketType?.toUpperCase() === "EXTERNAL" ? "External Ticket Confirmed!" : "Ticket Confirmed!"}
 
 Thank you for your ticket purchase. Your ticket has been confirmed!
 
@@ -978,6 +1004,7 @@ async function generateDayOfReminderEmailHTML(
 
   const qrImageSrc = options?.qrCid ? `cid:${options.qrCid}` : "";
   const isVIP = ticketType?.toUpperCase() === "VIP";
+  const isExternal = ticketType?.toUpperCase() === "EXTERNAL";
   const ticketValidTime = eventStartTime
     ? new Date(eventStartTime).toLocaleString("en-US", {
         hour: "numeric",
@@ -1058,33 +1085,48 @@ async function generateDayOfReminderEmailHTML(
       background-image: linear-gradient(#A80D0C, #A80D0D) !important;
       color: #ffffff !important; 
     }
-    u + .body .ticket-type-standard { 
-      background-color: #71717a !important; 
+    u + .body .ticket-type-standard {
+      background-color: #71717a !important;
       background-image: linear-gradient(#71717a, #71717b) !important;
-      color: #ffffff !important; 
+      color: #ffffff !important;
     }
-    u + .body .button { 
-      background-color: #A80D0C !important; 
+    u + .body .ticket-type-external {
+      background-color: #16a34a !important;
+      background-image: linear-gradient(#16a34a, #16a34b) !important;
+      color: #ffffff !important;
+    }
+    u + .body .qr-code-wrapper-external {
+      background-color: #16a34a !important;
+      background-image: linear-gradient(180deg, #16a34a, #16a34b) !important;
+    }
+    u + .body .external-border {
+      border-color: #16a34a !important;
+    }
+    u + .body .external-shadow {
+      box-shadow: 0 0 15px rgba(22, 163, 74, 0.3) !important;
+    }
+    u + .body .button {
+      background-color: #A80D0C !important;
       background-image: linear-gradient(#A80D0C, #A80D0D) !important;
-      color: #ffffff !important; 
+      color: #ffffff !important;
     }
-    u + .body .button-cancel { 
-      background-color: #A80D0C !important; 
+    u + .body .button-cancel {
+      background-color: #A80D0C !important;
       background-image: linear-gradient(#A80D0C, #A80D0D) !important;
-      color: #ffffff !important; 
+      color: #ffffff !important;
     }
-    u + .body .button-calendar { 
-      background-color: #175dcd !important; 
+    u + .body .button-calendar {
+      background-color: #175dcd !important;
       background-image: linear-gradient(#175dcd, #175dce) !important;
-      color: #ffffff !important; 
+      color: #ffffff !important;
     }
     u + .body a { color: #A80D0C !important; }
 
     /* VIP Gold accent borders */
-    u + .body .vip-border { 
-      border-color: #D4AF37 !important; 
+    u + .body .vip-border {
+      border-color: #D4AF37 !important;
     }
-    u + .body .vip-shadow { 
+    u + .body .vip-shadow {
       box-shadow: 0 0 15px rgba(212, 175, 55, 0.3) !important;
     }
 
@@ -1100,6 +1142,8 @@ async function generateDayOfReminderEmailHTML(
       .footer { background-color: #18181b !important; border-top: 1px solid #3f3f46 !important; }
       .vip-border { border-color: #D4AF37 !important; }
       .vip-shadow { box-shadow: 0 0 15px rgba(212, 175, 55, 0.3) !important; }
+      .external-border { border-color: #16a34a !important; }
+      .external-shadow { box-shadow: 0 0 15px rgba(22, 163, 74, 0.3) !important; }
     }
 
     /* Mobile responsive */
@@ -1118,11 +1162,11 @@ async function generateDayOfReminderEmailHTML(
 </head>
 <body class="body" style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #18181b; color: #f4f4f5;">
 
-  <table role="presentation" style="width: 100%; border-collapse: collapse; background-color: #27272a;${isVIP ? " border: 3px solid #D4AF37;" : ""}">
-    
+  <table role="presentation" style="width: 100%; border-collapse: collapse; background-color: #27272a;${isVIP ? " border: 3px solid #D4AF37;" : isExternal ? " border: 3px solid #16a34a;" : ""}">
+
     <!-- Header -->
     <tr>
-      <td align="center" class="email-header" style="background: linear-gradient(135deg, #A80D0C 0%, #C11211 100%); padding: 40px 30px; text-align: center;${isVIP ? " border: 3px solid #D4AF37; border-bottom: none;" : ""}">
+      <td align="center" class="email-header" style="background: linear-gradient(135deg, #A80D0C 0%, #C11211 100%); padding: 40px 30px; text-align: center;${isVIP ? " border: 3px solid #D4AF37; border-bottom: none;" : isExternal ? " border: 3px solid #16a34a; border-bottom: none;" : ""}">
         <div style="margin-bottom: 20px;">
           <img src="${logoUrl}" alt="Stanford Speakers Bureau Logo" class="logo" style="width: 60px; height: 60px; margin: 0 auto; display: block;" />
         </div>
@@ -1178,7 +1222,7 @@ async function generateDayOfReminderEmailHTML(
     }
           
           <!-- Event Details Card -->
-          <div class="details-card" style="background-color: #18181b; padding: 24px; margin-bottom: 24px;${isVIP ? " border: 2px solid #D4AF37; border-radius: 8px; box-shadow: 0 0 15px rgba(212, 175, 55, 0.3);" : ""}">
+          <div class="details-card" style="background-color: #18181b; padding: 24px; margin-bottom: 24px;${isVIP ? " border: 2px solid #D4AF37; border-radius: 8px; box-shadow: 0 0 15px rgba(212, 175, 55, 0.3);" : isExternal ? " border: 2px solid #16a34a; border-radius: 8px; box-shadow: 0 0 15px rgba(22, 163, 74, 0.3);" : ""}">
             
             ${gmailBlendStart}
               <h2 class="details-title" style="margin: 0 0 20px 0; color: #ffffff; font-size: 22px; font-weight: 600;">Event Details</h2>
@@ -1245,7 +1289,7 @@ async function generateDayOfReminderEmailHTML(
                   ${gmailBlendStart}Ticket Type:${gmailBlendEnd}
                 </td>
                 <td class="details-value" style="padding: 8px 0;">
-                  <span class="${ticketType === "VIP" ? "ticket-type-vip" : "ticket-type-standard"}" style="display: inline-block; padding: 4px 12px; background-color: ${ticketType === "VIP" ? "#A80D0C" : "#71717a"}; color: #ffffff; border-radius: 4px; font-size: 12px; font-weight: 600; text-transform: uppercase;">
+                  <span class="${ticketType === "VIP" ? "ticket-type-vip" : ticketType === "EXTERNAL" ? "ticket-type-external" : "ticket-type-standard"}" style="display: inline-block; padding: 4px 12px; background-color: ${ticketType === "VIP" ? "#A80D0C" : ticketType === "EXTERNAL" ? "#16a34a" : "#71717a"}; color: #ffffff; border-radius: 4px; font-size: 12px; font-weight: 600; text-transform: uppercase;">
                     ${ticketType || "STANDARD"}
                   </span>
                 </td>
@@ -1265,7 +1309,7 @@ async function generateDayOfReminderEmailHTML(
             <table role="presentation" style="width: 100%; border-collapse: collapse; margin-top: 20px;">
               <tr>
                 <td align="center" class="button-wrapper" style="padding: 0;">
-                  <a href="${eventUrl}" class="button" style="display: inline-block; padding: 14px 28px; background-color: #A80D0C; color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 16px;${isVIP ? " border: 2px solid #D4AF37;" : ""}">View Event Details</a>
+                  <a href="${eventUrl}" class="button" style="display: inline-block; padding: 14px 28px; background-color: #A80D0C; color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 16px;${isVIP ? " border: 2px solid #D4AF37;" : isExternal ? " border: 2px solid #16a34a;" : ""}">View Event Details</a>
                 </td>
               </tr>
             </table>
@@ -1277,13 +1321,13 @@ async function generateDayOfReminderEmailHTML(
           ${qrImageSrc
       ? `
           <!-- QR Code Section -->
-          <div class="qr-section" style="background-color: #18181b; padding: 24px; margin-bottom: 24px; text-align: center;${isVIP ? " border: 2px solid #D4AF37; border-radius: 8px; box-shadow: 0 0 15px rgba(212, 175, 55, 0.3);" : ""}">
+          <div class="qr-section" style="background-color: #18181b; padding: 24px; margin-bottom: 24px; text-align: center;${isVIP ? " border: 2px solid #D4AF37; border-radius: 8px; box-shadow: 0 0 15px rgba(212, 175, 55, 0.3);" : isExternal ? " border: 2px solid #16a34a; border-radius: 8px; box-shadow: 0 0 15px rgba(22, 163, 74, 0.3);" : ""}">
             
             ${gmailBlendStart}
               <h2 class="qr-title" style="margin: 0 0 16px 0; color: #ffffff; font-size: 20px; font-weight: 600;">Your Ticket QR Code</h2>
             ${gmailBlendEnd}
 
-            <div class="qr-code-wrapper${isVIP ? " qr-code-wrapper-vip" : ""}" style="display: inline-block; border-radius: 12px; ${isVIP ? "background-color: #D4AF37; padding: 4px;" : "padding: 0;"
+            <div class="qr-code-wrapper${isVIP ? " qr-code-wrapper-vip" : isExternal ? " qr-code-wrapper-external" : ""}" style="display: inline-block; border-radius: 12px; ${isVIP ? "background-color: #D4AF37; padding: 4px;" : isExternal ? "background-color: #16a34a; padding: 4px;" : "padding: 0;"
       }">
               <div style="background-color: #ffffff; padding: 16px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);">
                 <img src="${qrImageSrc}" alt="Ticket QR Code" class="qr-code-img" style="display: block; width: 350px; max-width: 100%; height: auto;" />
@@ -1298,7 +1342,15 @@ async function generateDayOfReminderEmailHTML(
               </span>
             </div>
             `
-        : ""
+        : isExternal
+          ? `
+            <div style="margin-top: 12px;">
+              <span style="display: inline-block; padding: 6px 16px; background-color: #16a34a; color: #ffffff; border-radius: 20px; font-size: 12px; font-weight: 700; text-transform: uppercase;">
+                EXTERNAL
+              </span>
+            </div>
+            `
+          : ""
       }
             
             <table width="100%" border="0" cellspacing="0" cellpadding="0" role="presentation" style="margin-top: 16px;">
@@ -1640,6 +1692,7 @@ async function generateEarlyReminderEmailHTML(
 
   const qrImageSrc = options?.qrCid ? `cid:${options.qrCid}` : "";
   const isVIP = ticketType?.toUpperCase() === "VIP";
+  const isExternal = ticketType?.toUpperCase() === "EXTERNAL";
   const ticketValidTime = eventStartTime
     ? new Date(eventStartTime).toLocaleString("en-US", {
         hour: "numeric",
@@ -1721,33 +1774,48 @@ async function generateEarlyReminderEmailHTML(
       background-image: linear-gradient(#A80D0C, #A80D0D) !important;
       color: #ffffff !important; 
     }
-    u + .body .ticket-type-standard { 
-      background-color: #71717a !important; 
+    u + .body .ticket-type-standard {
+      background-color: #71717a !important;
       background-image: linear-gradient(#71717a, #71717b) !important;
-      color: #ffffff !important; 
+      color: #ffffff !important;
     }
-    u + .body .button { 
-      background-color: #A80D0C !important; 
+    u + .body .ticket-type-external {
+      background-color: #16a34a !important;
+      background-image: linear-gradient(#16a34a, #16a34b) !important;
+      color: #ffffff !important;
+    }
+    u + .body .qr-code-wrapper-external {
+      background-color: #16a34a !important;
+      background-image: linear-gradient(180deg, #16a34a, #16a34b) !important;
+    }
+    u + .body .external-border {
+      border-color: #16a34a !important;
+    }
+    u + .body .external-shadow {
+      box-shadow: 0 0 15px rgba(22, 163, 74, 0.3) !important;
+    }
+    u + .body .button {
+      background-color: #A80D0C !important;
       background-image: linear-gradient(#A80D0C, #A80D0D) !important;
-      color: #ffffff !important; 
+      color: #ffffff !important;
     }
-    u + .body .button-cancel { 
-      background-color: #A80D0C !important; 
+    u + .body .button-cancel {
+      background-color: #A80D0C !important;
       background-image: linear-gradient(#A80D0C, #A80D0D) !important;
-      color: #ffffff !important; 
+      color: #ffffff !important;
     }
-    u + .body .button-calendar { 
-      background-color: #175dcd !important; 
+    u + .body .button-calendar {
+      background-color: #175dcd !important;
       background-image: linear-gradient(#175dcd, #175dce) !important;
-      color: #ffffff !important; 
+      color: #ffffff !important;
     }
     u + .body a { color: #A80D0C !important; }
 
     /* VIP Gold accent borders */
-    u + .body .vip-border { 
-      border-color: #D4AF37 !important; 
+    u + .body .vip-border {
+      border-color: #D4AF37 !important;
     }
-    u + .body .vip-shadow { 
+    u + .body .vip-shadow {
       box-shadow: 0 0 15px rgba(212, 175, 55, 0.3) !important;
     }
 
@@ -1764,6 +1832,8 @@ async function generateEarlyReminderEmailHTML(
       .reminder-card { background-color: #18181b !important; }
       .vip-border { border-color: #D4AF37 !important; }
       .vip-shadow { box-shadow: 0 0 15px rgba(212, 175, 55, 0.3) !important; }
+      .external-border { border-color: #16a34a !important; }
+      .external-shadow { box-shadow: 0 0 15px rgba(22, 163, 74, 0.3) !important; }
     }
 
     /* Mobile responsive */
@@ -1783,11 +1853,11 @@ async function generateEarlyReminderEmailHTML(
 </head>
 <body class="body" style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #18181b; color: #f4f4f5;">
 
-  <table role="presentation" style="width: 100%; border-collapse: collapse; background-color: #27272a;${isVIP ? " border: 3px solid #D4AF37;" : ""}">
-    
+  <table role="presentation" style="width: 100%; border-collapse: collapse; background-color: #27272a;${isVIP ? " border: 3px solid #D4AF37;" : isExternal ? " border: 3px solid #16a34a;" : ""}">
+
     <!-- Header -->
     <tr>
-      <td align="center" class="email-header" style="background: linear-gradient(135deg, #A80D0C 0%, #C11211 100%); padding: 40px 30px; text-align: center;${isVIP ? " border: 3px solid #D4AF37; border-bottom: none;" : ""}">
+      <td align="center" class="email-header" style="background: linear-gradient(135deg, #A80D0C 0%, #C11211 100%); padding: 40px 30px; text-align: center;${isVIP ? " border: 3px solid #D4AF37; border-bottom: none;" : isExternal ? " border: 3px solid #16a34a; border-bottom: none;" : ""}">
         <div style="margin-bottom: 20px;">
           <img src="${logoUrl}" alt="Stanford Speakers Bureau Logo" class="logo" style="width: 60px; height: 60px; margin: 0 auto; display: block;" />
         </div>
@@ -1851,7 +1921,7 @@ async function generateEarlyReminderEmailHTML(
           </div>
           
           <!-- Event Details Card -->
-          <div class="details-card" style="background-color: #18181b; padding: 24px; margin-bottom: 24px;${isVIP ? " border: 2px solid #D4AF37; border-radius: 8px; box-shadow: 0 0 15px rgba(212, 175, 55, 0.3);" : ""}">
+          <div class="details-card" style="background-color: #18181b; padding: 24px; margin-bottom: 24px;${isVIP ? " border: 2px solid #D4AF37; border-radius: 8px; box-shadow: 0 0 15px rgba(212, 175, 55, 0.3);" : isExternal ? " border: 2px solid #16a34a; border-radius: 8px; box-shadow: 0 0 15px rgba(22, 163, 74, 0.3);" : ""}">
             
             ${gmailBlendStart}
               <h2 class="details-title" style="margin: 0 0 20px 0; color: #ffffff; font-size: 22px; font-weight: 600;">Event Details</h2>
@@ -1918,7 +1988,7 @@ async function generateEarlyReminderEmailHTML(
                   ${gmailBlendStart}Ticket Type:${gmailBlendEnd}
                 </td>
                 <td class="details-value" style="padding: 8px 0;">
-                  <span class="${ticketType === "VIP" ? "ticket-type-vip" : "ticket-type-standard"}" style="display: inline-block; padding: 4px 12px; background-color: ${ticketType === "VIP" ? "#A80D0C" : "#71717a"}; color: #ffffff; border-radius: 4px; font-size: 12px; font-weight: 600; text-transform: uppercase;">
+                  <span class="${ticketType === "VIP" ? "ticket-type-vip" : ticketType === "EXTERNAL" ? "ticket-type-external" : "ticket-type-standard"}" style="display: inline-block; padding: 4px 12px; background-color: ${ticketType === "VIP" ? "#A80D0C" : ticketType === "EXTERNAL" ? "#16a34a" : "#71717a"}; color: #ffffff; border-radius: 4px; font-size: 12px; font-weight: 600; text-transform: uppercase;">
                     ${ticketType || "STANDARD"}
                   </span>
                 </td>
@@ -1938,7 +2008,7 @@ async function generateEarlyReminderEmailHTML(
             <table role="presentation" style="width: 100%; border-collapse: collapse; margin-top: 20px;">
               <tr>
                 <td align="center" class="button-wrapper" style="padding: 0;">
-                  <a href="${eventUrl}" class="button" style="display: inline-block; padding: 14px 28px; background-color: #A80D0C; color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 16px;${isVIP ? " border: 2px solid #D4AF37;" : ""}">View Event Details</a>
+                  <a href="${eventUrl}" class="button" style="display: inline-block; padding: 14px 28px; background-color: #A80D0C; color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 16px;${isVIP ? " border: 2px solid #D4AF37;" : isExternal ? " border: 2px solid #16a34a;" : ""}">View Event Details</a>
                 </td>
               </tr>
             </table>
@@ -1950,13 +2020,13 @@ async function generateEarlyReminderEmailHTML(
           ${qrImageSrc
       ? `
           <!-- QR Code Section -->
-          <div class="qr-section" style="background-color: #18181b; padding: 24px; margin-bottom: 24px; text-align: center;${isVIP ? " border: 2px solid #D4AF37; border-radius: 8px; box-shadow: 0 0 15px rgba(212, 175, 55, 0.3);" : ""}">
+          <div class="qr-section" style="background-color: #18181b; padding: 24px; margin-bottom: 24px; text-align: center;${isVIP ? " border: 2px solid #D4AF37; border-radius: 8px; box-shadow: 0 0 15px rgba(212, 175, 55, 0.3);" : isExternal ? " border: 2px solid #16a34a; border-radius: 8px; box-shadow: 0 0 15px rgba(22, 163, 74, 0.3);" : ""}">
             
             ${gmailBlendStart}
               <h2 class="qr-title" style="margin: 0 0 16px 0; color: #ffffff; font-size: 20px; font-weight: 600;">Your Ticket QR Code</h2>
             ${gmailBlendEnd}
 
-            <div class="qr-code-wrapper${isVIP ? " qr-code-wrapper-vip" : ""}" style="display: inline-block; border-radius: 12px; ${isVIP ? "background-color: #D4AF37; padding: 4px;" : "padding: 0;"
+            <div class="qr-code-wrapper${isVIP ? " qr-code-wrapper-vip" : isExternal ? " qr-code-wrapper-external" : ""}" style="display: inline-block; border-radius: 12px; ${isVIP ? "background-color: #D4AF37; padding: 4px;" : isExternal ? "background-color: #16a34a; padding: 4px;" : "padding: 0;"
       }">
               <div style="background-color: #ffffff; padding: 16px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);">
                 <img src="${qrImageSrc}" alt="Ticket QR Code" class="qr-code-img" style="display: block; width: 350px; max-width: 100%; height: auto;" />
@@ -1971,7 +2041,15 @@ async function generateEarlyReminderEmailHTML(
               </span>
             </div>
             `
-        : ""
+        : isExternal
+          ? `
+            <div style="margin-top: 12px;">
+              <span style="display: inline-block; padding: 6px 16px; background-color: #16a34a; color: #ffffff; border-radius: 20px; font-size: 12px; font-weight: 700; text-transform: uppercase;">
+                EXTERNAL
+              </span>
+            </div>
+            `
+          : ""
       }
             
             <table width="100%" border="0" cellspacing="0" cellpadding="0" role="presentation" style="margin-top: 16px;">

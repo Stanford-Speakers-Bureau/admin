@@ -101,6 +101,10 @@ export async function GET(req: Request) {
       .from("tickets")
       .select("id", { count: "exact", head: true })
       .eq("type", "VIP");
+    let externalCountQuery = adminClient
+      .from("tickets")
+      .select("id", { count: "exact", head: true })
+      .eq("type", "EXTERNAL");
 
     if (eventId) {
       totalCountQuery = totalCountQuery.eq("event_id", eventId);
@@ -108,6 +112,7 @@ export async function GET(req: Request) {
       totalUnscannedQuery = totalUnscannedQuery.eq("event_id", eventId);
       standardCountQuery = standardCountQuery.eq("event_id", eventId);
       vipCountQuery = vipCountQuery.eq("event_id", eventId);
+      externalCountQuery = externalCountQuery.eq("event_id", eventId);
     }
 
     // Get filtered count (matches all current filters including email, type, scanned)
@@ -138,6 +143,7 @@ export async function GET(req: Request) {
       filteredCountResult,
       standardResult,
       vipResult,
+      externalResult,
     ] = await Promise.all([
       totalCountQuery,
       totalScannedQuery,
@@ -145,6 +151,7 @@ export async function GET(req: Request) {
       filteredCountQuery,
       standardCountQuery,
       vipCountQuery,
+      externalCountQuery,
     ]);
 
     return NextResponse.json({
@@ -155,6 +162,7 @@ export async function GET(req: Request) {
       filteredCount: filteredCountResult.count || 0,
       standardCount: standardResult.count || 0,
       vipCount: vipResult.count || 0,
+      externalCount: externalResult.count || 0,
       limit,
       offset,
     });
@@ -371,9 +379,9 @@ export async function PATCH(req: Request) {
       return NextResponse.json({ success: true, ticket });
     } else if (action === "updateType" || type) {
       // Update ticket type
-      if (type !== "VIP" && type !== "STANDARD") {
+      if (type !== "VIP" && type !== "STANDARD" && type !== "EXTERNAL") {
         return NextResponse.json(
-          { error: "Invalid ticket type. Must be 'VIP' or 'STANDARD'." },
+          { error: "Invalid ticket type. Must be 'VIP', 'STANDARD', or 'EXTERNAL'." },
           { status: 400 },
         );
       }

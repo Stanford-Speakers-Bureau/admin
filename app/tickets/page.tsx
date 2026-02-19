@@ -11,6 +11,7 @@ async function getInitialTickets(): Promise<{
   filteredCount: number;
   standardCount: number;
   vipCount: number;
+  externalCount: number;
 }> {
   // Don't load any tickets initially - require event selection
   return {
@@ -21,6 +22,7 @@ async function getInitialTickets(): Promise<{
     filteredCount: 0,
     standardCount: 0,
     vipCount: 0,
+    externalCount: 0,
   };
 }
 
@@ -60,6 +62,7 @@ export default async function AdminTicketsPage() {
       filteredCount,
       standardCount,
       vipCount,
+      externalCount,
     },
     events,
   ] = await Promise.all([getInitialTickets(), getEvents()]);
@@ -73,6 +76,7 @@ export default async function AdminTicketsPage() {
       initialFilteredCount={filteredCount}
       initialStandardCount={standardCount}
       initialVipCount={vipCount}
+      initialExternalCount={externalCount}
       initialEvents={events}
     />
   );
