@@ -52,6 +52,13 @@
       "head_sampling_rate": 1,
     },
   },
+  "hyperdrive": [
+    {
+      "binding": "HYPERDRIVE",
+      "id": "fe2e37aa56ae4bff83399fc005733ddd",
+      "localConnectionString": "postgresql://postgres:postgres@127.0.0.1:54322/postgres",
+    },
+  ],
   "vars": {
     "SUPABASE_URL": "https://qxevtucghgjbewpwntry.supabase.co",
     "NEXT_PUBLIC_BASE_URL": "https://stanfordspeakersbureau.com",
