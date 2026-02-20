@@ -901,7 +901,6 @@ export default function TicketManagementClient({
               )}
               Send
             </button>
-<<<<<<< Updated upstream
           </div>{selectedEventId && (() => {
             const currentEvent = events.find((e) => e.id === selectedEventId);
             const isOpen = currentEvent?.waitlist ?? false;
@@ -925,9 +924,6 @@ export default function TicketManagementClient({
               </button>
             );
           })()}
-=======
-          </div>
->>>>>>> Stashed changes
           <button
             onClick={() => fetchTickets()}
             disabled={isLoading}
