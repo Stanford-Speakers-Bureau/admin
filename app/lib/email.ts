@@ -2283,7 +2283,7 @@ export async function sendEarlyReminderEmail(
     : false;
 
   const subject = data.eventName
-    ? `[${isEventTomorrow ? "Tomorrow" : `This ${dayOfWeek}`} @ ${formattedDoorsOpen}] ${data.eventName}${data.eventVenue ? ` @ ${data.eventVenue}` : ""}`
+    ? `Can you still make it ${isEventTomorrow ? "Tomorrow" : `This ${dayOfWeek}`} @ ${formattedDoorsOpen}? ${data.eventName}${data.eventVenue ? ` @ ${data.eventVenue}` : ""}`
     : "Event Reminder";
   const textContent = generateEarlyReminderEmailText(data);
 
