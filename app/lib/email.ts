@@ -1522,7 +1522,7 @@ export async function sendDayOfReminderEmail(
     : null;
 
   const subject = data.eventName
-    ? `${data.eventName} today${formattedDoorsOpen ? ` at ${formattedDoorsOpen}` : ""}!`
+    ? `[${formattedDoorsOpen ? `${formattedDoorsOpen} ` : ""}TODAY!] Come see ${data.eventName}${data.eventVenue ? ` @ ${data.eventVenue}` : ""}`
     : "Event Reminder - Today!";
   const textContent = generateDayOfReminderEmailText(data);
 
