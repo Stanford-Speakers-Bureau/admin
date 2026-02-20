@@ -36,7 +36,7 @@ VALUES
 -- Insert test roles (admin and scanner)
 INSERT INTO public.roles (email, roles)
 VALUES
-  ('yumich@stanford.edu', 'admin'),
+  ('test@stanford.edu', 'admin'),
   ('scanner@stanford.edu', 'scanner'),
   ('both@stanford.edu', 'admin,scanner');
 

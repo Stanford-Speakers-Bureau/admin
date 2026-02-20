@@ -900,7 +900,30 @@ export default function TicketManagementClient({
               )}
               Send
             </button>
-          </div>
+t          </div>{selectedEventId && (() => {
+            const currentEvent = events.find((e) => e.id === selectedEventId);
+            const isOpen = currentEvent?.waitlist ?? false;
+            return (
+              <button
+                onClick={handleToggleWaitlist}
+                disabled={isTogglingWaitlist}
+                title={isOpen ? "Waitlist is open — click to close" : "Waitlist is closed — click to open"}
+                className={`px-4 py-2.5 rounded-xl border font-medium text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap ${
+                  isOpen
+                    ? "bg-amber-500/20 border-amber-500/40 text-amber-400 hover:bg-amber-500/30"
+                    : "bg-zinc-800 border-zinc-700 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200"
+                }`}
+              >
+                {isTogglingWaitlist ? (
+                  <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                ) : isOpen ? (
+                  "Waitlist: Open"
+                ) : (
+                  "Waitlist: Closed"
+                )}
+              </button>
+            );
+          })()}
           <button
             onClick={() => fetchTickets()}
             disabled={isLoading}
@@ -1214,14 +1237,13 @@ export default function TicketManagementClient({
           <label className="block text-sm font-medium text-zinc-300 mb-2">
             Filter by Event
           </label>
-          <div className="flex items-stretch gap-2">
-            <select
+          <select
               value={selectedEventId}
               onChange={(e) => {
                 setSelectedEventId(e.target.value);
                 setOffset(0);
               }}
-              className="flex-1 px-4 py-3 bg-zinc-900 border border-zinc-800 rounded-xl text-white focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50"
+              className="w-full px-4 py-3 bg-zinc-900 border border-zinc-800 rounded-xl text-white focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50"
             >
               <option value="">Select an event</option>
               {events.map((event) => (
@@ -1230,31 +1252,6 @@ export default function TicketManagementClient({
                 </option>
               ))}
             </select>
-            {selectedEventId && (() => {
-              const currentEvent = events.find((e) => e.id === selectedEventId);
-              const isOpen = currentEvent?.waitlist ?? false;
-              return (
-                <button
-                  onClick={handleToggleWaitlist}
-                  disabled={isTogglingWaitlist}
-                  title={isOpen ? "Waitlist is open — click to close" : "Waitlist is closed — click to open"}
-                  className={`px-3 py-3 rounded-xl border font-medium text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap ${
-                    isOpen
-                      ? "bg-amber-500/20 border-amber-500/40 text-amber-400 hover:bg-amber-500/30"
-                      : "bg-zinc-800 border-zinc-700 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200"
-                  }`}
-                >
-                  {isTogglingWaitlist ? (
-                    <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                  ) : isOpen ? (
-                    "Waitlist: Open"
-                  ) : (
-                    "Waitlist: Closed"
-                  )}
-                </button>
-              );
-            })()}
-          </div>
         </div>
         <div>
           <label className="block text-sm font-medium text-zinc-300 mb-2">
