@@ -319,11 +319,35 @@ export async function PATCH(req: Request) {
     }
 
     const body = await req.json();
-    const { id, live } = body;
+    const { id, live, waitlist } = body;
 
-    if (!id || typeof live !== "boolean") {
+    if (!id) {
       return NextResponse.json(
-        { error: "Event ID and live status are required" },
+        { error: "Event ID is required" },
+        { status: 400 },
+      );
+    }
+
+    if (typeof waitlist === "boolean") {
+      const [updatedEvent] = await db.update(events)
+        .set({ waitlistMode: waitlist })
+        .where(eq(events.id, id))
+        .returning();
+
+      const serialized = serializeEvent(updatedEvent);
+      const eventWithImage = {
+        ...serialized,
+        image_url: updatedEvent.img
+          ? await getSignedImageUrl(updatedEvent.img, 60 * 60)
+          : null,
+      };
+
+      return NextResponse.json({ success: true, event: eventWithImage });
+    }
+
+    if (typeof live !== "boolean") {
+      return NextResponse.json(
+        { error: "Either 'live' or 'waitlist' boolean is required" },
         { status: 400 },
       );
     }

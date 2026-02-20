@@ -31,10 +31,12 @@ type TicketManagementClientProps = {
   initialStandardCount: number;
   initialVipCount: number;
   initialExternalCount: number;
+  initialWaitlistCount: number;
   initialEvents: {
     id: string;
     name: string | null;
     start_time_date: string | null;
+    waitlist: boolean;
   }[];
 };
 
@@ -76,6 +78,7 @@ export default function TicketManagementClient({
   initialStandardCount,
   initialVipCount,
   initialExternalCount,
+  initialWaitlistCount,
   initialEvents,
 }: TicketManagementClientProps) {
   const defaultEventId = getNextEventId(initialEvents);
@@ -87,6 +90,9 @@ export default function TicketManagementClient({
   const [standardCount, setStandardCount] = useState(initialStandardCount);
   const [vipCount, setVipCount] = useState(initialVipCount);
   const [externalCount, setExternalCount] = useState(initialExternalCount);
+  const [waitlistCount, setWaitlistCount] = useState(initialWaitlistCount);
+  const [events, setEvents] = useState(initialEvents);
+  const [isTogglingWaitlist, setIsTogglingWaitlist] = useState(false);
   const [selectedEventId, setSelectedEventId] = useState<string>(defaultEventId);
   const [search, setSearch] = useState("");
   const [ticketTypeFilter, setTicketTypeFilter] = useState<string>("");
@@ -144,6 +150,7 @@ export default function TicketManagementClient({
       setStandardCount(0);
       setVipCount(0);
       setExternalCount(0);
+      setWaitlistCount(0);
       return;
     }
 
@@ -188,6 +195,7 @@ export default function TicketManagementClient({
       setStandardCount(data.standardCount || 0);
       setVipCount(data.vipCount || 0);
       setExternalCount(data.externalCount || 0);
+      setWaitlistCount(data.waitlistCount || 0);
     } catch (err) {
       console.error("Error fetching tickets:", err);
       setError(err instanceof Error ? err.message : "Failed to load tickets");
@@ -240,6 +248,8 @@ export default function TicketManagementClient({
         setStandardCount((prev) => prev - 1);
       } else if (ticketToDelete?.type === "EXTERNAL") {
         setExternalCount((prev) => prev - 1);
+      } else if (ticketToDelete?.type === "WAITLIST") {
+        setWaitlistCount((prev) => prev - 1);
       } else {
         setVipCount((prev) => prev - 1);
       }
@@ -306,10 +316,12 @@ export default function TicketManagementClient({
         if (oldType === "STANDARD") setStandardCount((prev) => prev - 1);
         else if (oldType === "VIP") setVipCount((prev) => prev - 1);
         else if (oldType === "EXTERNAL") setExternalCount((prev) => prev - 1);
+        else if (oldType === "WAITLIST") setWaitlistCount((prev) => prev - 1);
 
         if (newType === "STANDARD") setStandardCount((prev) => prev + 1);
         else if (newType === "VIP") setVipCount((prev) => prev + 1);
         else if (newType === "EXTERNAL") setExternalCount((prev) => prev + 1);
+        else if (newType === "WAITLIST") setWaitlistCount((prev) => prev + 1);
       }
       setSuccess("Ticket type updated successfully!");
     } catch (err) {
@@ -444,7 +456,7 @@ export default function TicketManagementClient({
       return;
     }
 
-    const selectedEvent = initialEvents.find((e) => e.id === selectedEventId);
+    const selectedEvent = events.find((e) => e.id === selectedEventId);
     const eventName = selectedEvent?.name || "this event";
 
     if (
@@ -537,7 +549,7 @@ export default function TicketManagementClient({
       return;
     }
 
-    const selectedEvent = initialEvents.find((e) => e.id === selectedEventId);
+    const selectedEvent = events.find((e) => e.id === selectedEventId);
     const eventName = selectedEvent?.name || "this event";
 
     if (
@@ -618,6 +630,46 @@ export default function TicketManagementClient({
       );
     } finally {
       setSendingEarlyReminderId(null);
+    }
+  }
+
+  async function handleToggleWaitlist() {
+    if (!selectedEventId) return;
+    const currentEvent = events.find((e) => e.id === selectedEventId);
+    if (!currentEvent) return;
+    const newWaitlist = !currentEvent.waitlist;
+
+    setIsTogglingWaitlist(true);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      const response = await fetch("/api/events", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: selectedEventId, waitlist: newWaitlist }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to update waitlist status");
+      }
+
+      setEvents((prev) =>
+        prev.map((e) =>
+          e.id === selectedEventId ? { ...e, waitlist: newWaitlist } : e,
+        ),
+      );
+      setSuccess(
+        `Waitlist ${newWaitlist ? "opened" : "closed"} for this event.`,
+      );
+    } catch (err) {
+      console.error("Error toggling waitlist:", err);
+      setError(
+        err instanceof Error ? err.message : "Failed to update waitlist status",
+      );
+    } finally {
+      setIsTogglingWaitlist(false);
     }
   }
 
@@ -702,6 +754,8 @@ export default function TicketManagementClient({
         setStandardCount((prev) => prev + successCount);
       } else if (newTicketType === "EXTERNAL") {
         setExternalCount((prev) => prev + successCount);
+      } else if (newTicketType === "WAITLIST") {
+        setWaitlistCount((prev) => prev + successCount);
       } else {
         setVipCount((prev) => prev + successCount);
       }
@@ -757,6 +811,12 @@ export default function TicketManagementClient({
                   <span className="text-zinc-400">External:</span>
                   <span className="text-green-400 font-semibold">
                     {externalCount}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-zinc-400">Waitlist:</span>
+                  <span className="text-amber-400 font-semibold">
+                    {waitlistCount}
                   </span>
                 </div>
                 <div className="flex items-center gap-2">
@@ -980,7 +1040,7 @@ export default function TicketManagementClient({
                   required
                 >
                   <option value="">Select an event</option>
-                  {initialEvents.map((event) => (
+                  {events.map((event) => (
                     <option key={event.id} value={event.id}>
                       {event.name || "Unnamed Event"}
                     </option>
@@ -999,6 +1059,7 @@ export default function TicketManagementClient({
                   <option value="VIP">VIP</option>
                   <option value="STANDARD">STANDARD</option>
                   <option value="EXTERNAL">EXTERNAL</option>
+                  <option value="WAITLIST">WAITLIST</option>
                 </select>
               </div>
             </div>
@@ -1153,21 +1214,47 @@ export default function TicketManagementClient({
           <label className="block text-sm font-medium text-zinc-300 mb-2">
             Filter by Event
           </label>
-          <select
-            value={selectedEventId}
-            onChange={(e) => {
-              setSelectedEventId(e.target.value);
-              setOffset(0);
-            }}
-            className="w-full px-4 py-3 bg-zinc-900 border border-zinc-800 rounded-xl text-white focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50"
-          >
-            <option value="">Select an event</option>
-            {initialEvents.map((event) => (
-              <option key={event.id} value={event.id}>
-                {event.name || "Unnamed Event"}
-              </option>
-            ))}
-          </select>
+          <div className="flex items-stretch gap-2">
+            <select
+              value={selectedEventId}
+              onChange={(e) => {
+                setSelectedEventId(e.target.value);
+                setOffset(0);
+              }}
+              className="flex-1 px-4 py-3 bg-zinc-900 border border-zinc-800 rounded-xl text-white focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50"
+            >
+              <option value="">Select an event</option>
+              {events.map((event) => (
+                <option key={event.id} value={event.id}>
+                  {event.name || "Unnamed Event"}
+                </option>
+              ))}
+            </select>
+            {selectedEventId && (() => {
+              const currentEvent = events.find((e) => e.id === selectedEventId);
+              const isOpen = currentEvent?.waitlist ?? false;
+              return (
+                <button
+                  onClick={handleToggleWaitlist}
+                  disabled={isTogglingWaitlist}
+                  title={isOpen ? "Waitlist is open — click to close" : "Waitlist is closed — click to open"}
+                  className={`px-3 py-3 rounded-xl border font-medium text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap ${
+                    isOpen
+                      ? "bg-amber-500/20 border-amber-500/40 text-amber-400 hover:bg-amber-500/30"
+                      : "bg-zinc-800 border-zinc-700 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200"
+                  }`}
+                >
+                  {isTogglingWaitlist ? (
+                    <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                  ) : isOpen ? (
+                    "Waitlist: Open"
+                  ) : (
+                    "Waitlist: Closed"
+                  )}
+                </button>
+              );
+            })()}
+          </div>
         </div>
         <div>
           <label className="block text-sm font-medium text-zinc-300 mb-2">
@@ -1199,6 +1286,7 @@ export default function TicketManagementClient({
             <option value="VIP">VIP</option>
             <option value="STANDARD">STANDARD</option>
             <option value="EXTERNAL">EXTERNAL</option>
+            <option value="WAITLIST">WAITLIST</option>
           </select>
         </div>
         <div>
@@ -1349,12 +1437,15 @@ export default function TicketManagementClient({
                           ? "bg-blue-500/20 text-blue-400 border-blue-500/30"
                           : ticket.type === "EXTERNAL"
                             ? "bg-green-500/20 text-green-400 border-green-500/30"
-                            : ""
+                            : ticket.type === "WAITLIST"
+                              ? "bg-amber-500/20 text-amber-400 border-amber-500/30"
+                              : ""
                           }`}
                       >
                         <option value="VIP">VIP</option>
                         <option value="STANDARD">STANDARD</option>
                         <option value="EXTERNAL">EXTERNAL</option>
+                        <option value="WAITLIST">WAITLIST</option>
                       </select>
                     </td>
                     <td className="hidden lg:table-cell px-3 sm:px-4 py-3 sm:py-4 whitespace-nowrap">

@@ -111,7 +111,7 @@ export async function GET(req: Request) {
     const baseWhereClause = baseConditions.length > 0 ? and(...baseConditions) : undefined;
 
     // Run all queries in parallel
-    const [ticketResults, [totalResult], [scannedResult], [unscannedResult], [filteredResult], [standardResult], [vipResult], [externalResult]] =
+    const [ticketResults, [totalResult], [scannedResult], [unscannedResult], [filteredResult], [standardResult], [vipResult], [externalResult], [waitlistResult]] =
       await Promise.all([
         db.query.tickets.findMany({
           where: whereClause,
@@ -128,6 +128,7 @@ export async function GET(req: Request) {
         db.select({ count: dbCount() }).from(tickets).where(baseWhereClause ? and(baseWhereClause, eq(tickets.type, "STANDARD")) : eq(tickets.type, "STANDARD")),
         db.select({ count: dbCount() }).from(tickets).where(baseWhereClause ? and(baseWhereClause, eq(tickets.type, "VIP")) : eq(tickets.type, "VIP")),
         db.select({ count: dbCount() }).from(tickets).where(baseWhereClause ? and(baseWhereClause, eq(tickets.type, "EXTERNAL")) : eq(tickets.type, "EXTERNAL")),
+        db.select({ count: dbCount() }).from(tickets).where(baseWhereClause ? and(baseWhereClause, eq(tickets.type, "WAITLIST")) : eq(tickets.type, "WAITLIST")),
       ]);
 
     return NextResponse.json({
@@ -139,6 +140,7 @@ export async function GET(req: Request) {
       standardCount: standardResult?.count ?? 0,
       vipCount: vipResult?.count ?? 0,
       externalCount: externalResult?.count ?? 0,
+      waitlistCount: waitlistResult?.count ?? 0,
       limit,
       offset,
     });
@@ -319,9 +321,9 @@ export async function PATCH(req: Request) {
       return NextResponse.json({ success: true, ticket: serializeTicket(ticket!) });
     } else if (action === "updateType" || type) {
       // Update ticket type
-      if (type !== "VIP" && type !== "STANDARD" && type !== "EXTERNAL") {
+      if (type !== "VIP" && type !== "STANDARD" && type !== "EXTERNAL" && type !== "WAITLIST") {
         return NextResponse.json(
-          { error: "Invalid ticket type. Must be 'VIP', 'STANDARD', or 'EXTERNAL'." },
+          { error: "Invalid ticket type. Must be 'VIP', 'STANDARD', 'EXTERNAL', or 'WAITLIST'." },
           { status: 400 },
         );
       }
@@ -884,7 +886,7 @@ export async function PATCH(req: Request) {
       return NextResponse.json(
         {
           error:
-            "Invalid action. Use 'updateName', 'unscan', 'updateType', 'updateScanned', 'resendEmail', 'sendDayOfReminders', 'sendDayOfReminder', 'sendEarlyReminders', or 'sendEarlyReminder'.",
+            "Invalid action. Use 'updateName', 'unscan', 'updateType', 'updateScanned', 'resendEmail', 'sendDayOfReminders', 'sendDayOfReminder', 'sendEarlyReminders', 'sendEarlyReminder'.",
         },
         { status: 400 },
       );

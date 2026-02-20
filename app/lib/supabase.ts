@@ -40,6 +40,7 @@ export type Event = {
   longitude?: number;
   address?: string;
   waitlist_chance?: string | null;
+  waitlist?: boolean | null;
   livestream?: boolean | null;
 };
 
@@ -71,6 +72,7 @@ export function serializeEvent(e: DBEvent): Event {
     longitude: Number(e.longitude),
     address: e.address,
     waitlist_chance: e.waitlistChance ?? null,
+    waitlist: e.waitlistMode ?? null,
     livestream: e.livestream ?? null,
   };
 }

@@ -13,6 +13,7 @@ async function getInitialTickets(): Promise<{
   standardCount: number;
   vipCount: number;
   externalCount: number;
+  waitlistCount: number;
 }> {
   // Don't load any tickets initially - require event selection
   return {
@@ -24,6 +25,7 @@ async function getInitialTickets(): Promise<{
     standardCount: 0,
     vipCount: 0,
     externalCount: 0,
+    waitlistCount: 0,
   };
 }
 
@@ -35,7 +37,7 @@ async function getEvents() {
     }
 
     const events = await db.query.events.findMany({
-      columns: { id: true, name: true, startTimeDate: true },
+      columns: { id: true, name: true, startTimeDate: true, waitlistMode: true },
       orderBy: (t, { desc }) => [desc(t.startTimeDate)],
     });
 
@@ -43,6 +45,7 @@ async function getEvents() {
       id: e.id,
       name: e.name,
       start_time_date: e.startTimeDate?.toISOString() ?? null,
+      waitlist: e.waitlistMode ?? false,
     }));
   } catch (error) {
     console.error("Failed to fetch events:", error);
@@ -61,6 +64,7 @@ export default async function AdminTicketsPage() {
       standardCount,
       vipCount,
       externalCount,
+      waitlistCount,
     },
     events,
   ] = await Promise.all([getInitialTickets(), getEvents()]);
@@ -75,6 +79,7 @@ export default async function AdminTicketsPage() {
       initialStandardCount={standardCount}
       initialVipCount={vipCount}
       initialExternalCount={externalCount}
+      initialWaitlistCount={waitlistCount}
       initialEvents={events}
     />
   );
