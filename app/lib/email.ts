@@ -1673,6 +1673,15 @@ async function generateEarlyReminderEmailHTML(
     }).format(new Date(doorsOpenTime))
     : "7:30 PM";
 
+  const dayLabel = formattedDate.includes("Friday") ? "Friday" : formattedDate.split(",")[0];
+  const _tomorrowDate = new Date();
+  _tomorrowDate.setDate(_tomorrowDate.getDate() + 1);
+  const isTomorrow = eventStartTime
+    ? new Date(eventStartTime).toLocaleDateString("en-US", { timeZone: PACIFIC_TIMEZONE }) ===
+      _tomorrowDate.toLocaleDateString("en-US", { timeZone: PACIFIC_TIMEZONE })
+    : false;
+  const dayPhrase = isTomorrow ? "TOMORROW" : `this ${dayLabel}`;
+
   const baseUrl =
     process.env.NEXT_PUBLIC_BASE_URL || "https://stanfordspeakersbureau.com";
   const eventUrl = eventRoute ? `${baseUrl}/events/${eventRoute}` : null;
@@ -1863,7 +1872,7 @@ async function generateEarlyReminderEmailHTML(
         </div>
         ${gmailBlendStart}
           <h2 class="header-subtitle" style="margin: 0 0 12px 0; color: #ffffff; font-size: 24px; font-weight: 600; letter-spacing: 0.5px;">Stanford Speakers Bureau</h2>
-          <h1 class="header-title" style="margin: 0; color: #ffffff; font-size: 28px; font-weight: 700;">${eventName} is this ${formattedDate.includes("Friday") ? "Friday" : formattedDate.split(",")[0]}!${promo?.title ? ` ${promo.title}` : ""}</h1>
+          <h1 class="header-title" style="margin: 0; color: #ffffff; font-size: 28px; font-weight: 700;">${eventName} is ${dayPhrase}!${promo?.title ? ` ${promo.title}` : ""}</h1>
         ${gmailBlendEnd}
       </td>
     </tr>
@@ -1899,7 +1908,7 @@ async function generateEarlyReminderEmailHTML(
     }
             ${gmailBlendStart}
               <p style="margin: 0 0 16px 0; color: #f4f4f5; font-size: 16px; line-height: 1.6;">
-                ${promo ? "Not interested? No worries, we're" : "We're"} so excited to welcome you this ${formattedDate.includes("Friday") ? "Friday" : formattedDate.split(",")[0]}! As a reminder, doors open at ${formattedDoorsOpen}. Late entry is not permitted. For security reasons, no bags will be permitted at the event.
+                ${promo ? "Not interested? No worries, we're" : "We're"} so excited to welcome you ${isTomorrow ? "tomorrow" : `this ${dayLabel}`}! As a reminder, doors open at ${formattedDoorsOpen}. Late entry is not permitted. For security reasons, no bags will be permitted at the event.
               </p>
               <p style="margin: 0 0 20px 0; color: #f4f4f5; font-size: 16px; line-height: 1.6;">
                 Life happens, and we understand plans can change. If you find yourself unable to attend, please take a moment to cancel your ticket using the link below. Your thoughtfulness helps us extend the opportunity to others who are excited to attend.
@@ -2170,6 +2179,15 @@ function generateEarlyReminderEmailText(
     }).format(new Date(doorsOpenTime))
     : "7:30 PM";
 
+  const dayLabel = formattedDate.includes("Friday") ? "Friday" : formattedDate.split(",")[0];
+  const _tomorrowDate = new Date();
+  _tomorrowDate.setDate(_tomorrowDate.getDate() + 1);
+  const isTomorrow = eventStartTime
+    ? new Date(eventStartTime).toLocaleDateString("en-US", { timeZone: PACIFIC_TIMEZONE }) ===
+      _tomorrowDate.toLocaleDateString("en-US", { timeZone: PACIFIC_TIMEZONE })
+    : false;
+  const dayPhrase = isTomorrow ? "TOMORROW" : `this ${dayLabel}`;
+
   const baseUrl =
     process.env.NEXT_PUBLIC_BASE_URL || "https://stanfordspeakersbureau.com";
   const eventUrl = eventRoute ? `${baseUrl}/events/${eventRoute}` : null;
@@ -2189,9 +2207,9 @@ ${promo.time ? `🕔 ${promo.time}` : ""}
     : "";
 
   return `
-${eventName} is this ${formattedDate.includes("Friday") ? "Friday" : formattedDate.split(",")[0]}!${promo?.title ? ` ${promo.title}` : ""}
+${eventName} is ${dayPhrase}!${promo?.title ? ` ${promo.title}` : ""}
 ${promoSection}
-${promo ? "Not interested? No worries, we're" : "We're"} so excited to welcome you this ${formattedDate.includes("Friday") ? "Friday" : formattedDate.split(",")[0]}! As a reminder, doors open at ${formattedDoorsOpen}. Late entry is not permitted. For security reasons, no bags will be permitted at the event.
+${promo ? "Not interested? No worries, we're" : "We're"} so excited to welcome you ${isTomorrow ? "tomorrow" : `this ${dayLabel}`}! As a reminder, doors open at ${formattedDoorsOpen}. Late entry is not permitted. For security reasons, no bags will be permitted at the event.
 
 Life happens, and we understand plans can change. If you find yourself unable to attend, please take a moment to cancel your ticket using the link below. Your thoughtfulness helps us extend the opportunity to others who are excited to attend.
 
@@ -2257,8 +2275,15 @@ export async function sendEarlyReminderEmail(
     }).format(new Date(data.eventStartTime))
     : "Friday";
 
+  const _tomorrowForSubject = new Date();
+  _tomorrowForSubject.setDate(_tomorrowForSubject.getDate() + 1);
+  const isEventTomorrow = data.eventStartTime
+    ? new Date(data.eventStartTime).toLocaleDateString("en-US", { timeZone: PACIFIC_TIMEZONE }) ===
+      _tomorrowForSubject.toLocaleDateString("en-US", { timeZone: PACIFIC_TIMEZONE })
+    : false;
+
   const subject = data.eventName
-    ? `${data.eventName} is this ${dayOfWeek}!${data.promo?.title ? ` ${data.promo.title}` : ""}`
+    ? `[${isEventTomorrow ? "Tomorrow" : `This ${dayOfWeek}`} @ ${formattedDoorsOpen}] ${data.eventName}${data.eventVenue ? ` @ ${data.eventVenue}` : ""}`
     : "Event Reminder";
   const textContent = generateEarlyReminderEmailText(data);
 
