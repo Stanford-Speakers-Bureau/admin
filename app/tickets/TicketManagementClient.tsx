@@ -844,7 +844,8 @@ export default function TicketManagementClient({
               )}
           </div>
         </div>
-        <div className="flex flex-wrap items-center gap-3 shrink-0">
+        <div className="flex flex-col items-end gap-2 shrink-0">
+          <div className="flex flex-wrap items-center gap-3">
           <div className="flex items-stretch rounded-xl overflow-hidden border border-zinc-600 bg-zinc-800/80 shadow-sm">
             <select
               value={massEmailType}
@@ -900,6 +901,7 @@ export default function TicketManagementClient({
               )}
               Send
             </button>
+<<<<<<< Updated upstream
           </div>{selectedEventId && (() => {
             const currentEvent = events.find((e) => e.id === selectedEventId);
             const isOpen = currentEvent?.waitlist ?? false;
@@ -923,6 +925,9 @@ export default function TicketManagementClient({
               </button>
             );
           })()}
+=======
+          </div>
+>>>>>>> Stashed changes
           <button
             onClick={() => fetchTickets()}
             disabled={isLoading}
@@ -963,6 +968,31 @@ export default function TicketManagementClient({
             </svg>
             Add Ticket
           </button>
+          </div>
+          {selectedEventId && (() => {
+            const currentEvent = events.find((e) => e.id === selectedEventId);
+            const isOpen = currentEvent?.waitlist ?? false;
+            return (
+              <button
+                onClick={handleToggleWaitlist}
+                disabled={isTogglingWaitlist}
+                title={isOpen ? "Waitlist is open — click to close" : "Waitlist is closed — click to open"}
+                className={`px-4 py-2.5 rounded-xl border font-medium text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap ${
+                  isOpen
+                    ? "bg-amber-500/20 border-amber-500/40 text-amber-400 hover:bg-amber-500/30"
+                    : "bg-zinc-800 border-zinc-700 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200"
+                }`}
+              >
+                {isTogglingWaitlist ? (
+                  <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                ) : isOpen ? (
+                  "Waitlist: Open"
+                ) : (
+                  "Waitlist: Closed"
+                )}
+              </button>
+            );
+          })()}
         </div>
       </div>
 

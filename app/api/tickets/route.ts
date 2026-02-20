@@ -8,7 +8,9 @@ import {
   sendDayOfReminderEmail,
   sendEarlyReminderEmail,
   sendTicketEmail,
+  sendWaitlistClosedEmail,
 } from "@/app/lib/email";
+import { PACIFIC_TIMEZONE } from "@/app/lib/constants";
 import { pullFromWaitlist } from "@/app/lib/waitlist";
 import { db, eq, and, or, ilike, count as dbCount, tickets, events, waitlist, referrals } from "@ssb/db";
 
@@ -70,10 +72,20 @@ const TICKET_WITH_EVENT = {
   event: { columns: { id: true, name: true, route: true, startTimeDate: true } },
 } as const;
 
-/** Extended event relation (includes venue/desc for emails) */
+/** Extended event relation (includes venue/desc/doorsOpen for emails) */
 const TICKET_WITH_EVENT_DETAILS = {
-  event: { columns: { id: true, name: true, route: true, startTimeDate: true, venue: true, venueLink: true, desc: true } },
+  event: { columns: { id: true, name: true, route: true, startTimeDate: true, venue: true, venueLink: true, desc: true, doorsOpen: true } },
 } as const;
+
+function formatDoorsOpenTime(doorsOpen: Date | null | undefined): string | undefined {
+  if (!doorsOpen) return undefined;
+  return new Intl.DateTimeFormat("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+    timeZone: PACIFIC_TIMEZONE,
+  }).format(new Date(doorsOpen));
+}
 
 /** Extended event relation with doors_open for reminders */
 const TICKET_WITH_DOORS_OPEN = {
@@ -369,18 +381,31 @@ export async function PATCH(req: Request) {
       // If the type changed, send updated ticket email
       if (typeChanged && ticket) {
         try {
-          await sendTicketEmail({
-            email: ticket.email,
-            name: ticket.name || null,
-            eventName: ticket.event?.name || "Event",
-            ticketType: ticket.type || "STANDARD",
-            eventStartTime: ticket.event?.startTimeDate?.toISOString() || null,
-            eventRoute: ticket.event?.route || null,
-            ticketId: ticket.id,
-            eventVenue: ticket.event?.venue || null,
-            eventVenueLink: ticket.event?.venueLink || null,
-            eventDescription: ticket.event?.desc || null,
-          });
+          if (ticket.type === "WAITLIST") {
+            await sendWaitlistClosedEmail({
+              email: ticket.email,
+              name: ticket.name || null,
+              eventName: ticket.event?.name || "Event",
+              eventStartTime: ticket.event?.startTimeDate?.toISOString() ?? null,
+              eventVenue: ticket.event?.venue,
+              eventVenueLink: ticket.event?.venueLink,
+              waitlistOpenTime: formatDoorsOpenTime(ticket.event?.doorsOpen),
+              ticketId: ticket.id,
+            });
+          } else {
+            await sendTicketEmail({
+              email: ticket.email,
+              name: ticket.name || null,
+              eventName: ticket.event?.name || "Event",
+              ticketType: ticket.type || "STANDARD",
+              eventStartTime: ticket.event?.startTimeDate?.toISOString() || null,
+              eventRoute: ticket.event?.route || null,
+              ticketId: ticket.id,
+              eventVenue: ticket.event?.venue || null,
+              eventVenueLink: ticket.event?.venueLink || null,
+              eventDescription: ticket.event?.desc || null,
+            });
+          }
         } catch (emailError) {
           console.error("Email sending error:", emailError);
           // Don't fail the update if email fails, just log it
@@ -924,7 +949,7 @@ export async function POST(req: Request) {
     // Check if event exists
     const event = await db.query.events.findFirst({
       where: eq(events.id, eventId),
-      columns: { id: true, name: true, capacity: true, reserved: true },
+      columns: { id: true, name: true, capacity: true, reserved: true, doorsOpen: true },
     });
 
     if (!event) {
@@ -996,18 +1021,31 @@ export async function POST(req: Request) {
       // Only send email if the type actually changed
       if (typeChanged && updatedTicket) {
         try {
-          await sendTicketEmail({
-            email: updatedTicket.email,
-            name: updatedTicket.name || null,
-            eventName: updatedTicket.event?.name || "Event",
-            ticketType: updatedTicket.type || "VIP",
-            eventStartTime: updatedTicket.event?.startTimeDate?.toISOString() || null,
-            eventRoute: updatedTicket.event?.route || null,
-            ticketId: updatedTicket.id,
-            eventVenue: updatedTicket.event?.venue || null,
-            eventVenueLink: updatedTicket.event?.venueLink || null,
-            eventDescription: updatedTicket.event?.desc || null,
-          });
+          if (updatedTicket.type === "WAITLIST") {
+            await sendWaitlistClosedEmail({
+              email: updatedTicket.email,
+              name: updatedTicket.name || null,
+              eventName: updatedTicket.event?.name || "Event",
+              eventStartTime: updatedTicket.event?.startTimeDate?.toISOString() ?? null,
+              eventVenue: updatedTicket.event?.venue,
+              eventVenueLink: updatedTicket.event?.venueLink,
+              waitlistOpenTime: formatDoorsOpenTime(updatedTicket.event?.doorsOpen),
+              ticketId: updatedTicket.id,
+            });
+          } else {
+            await sendTicketEmail({
+              email: updatedTicket.email,
+              name: updatedTicket.name || null,
+              eventName: updatedTicket.event?.name || "Event",
+              ticketType: updatedTicket.type || "VIP",
+              eventStartTime: updatedTicket.event?.startTimeDate?.toISOString() || null,
+              eventRoute: updatedTicket.event?.route || null,
+              ticketId: updatedTicket.id,
+              eventVenue: updatedTicket.event?.venue || null,
+              eventVenueLink: updatedTicket.event?.venueLink || null,
+              eventDescription: updatedTicket.event?.desc || null,
+            });
+          }
         } catch (emailError) {
           console.error("Email sending error (non-fatal):", emailError);
         }
@@ -1054,18 +1092,31 @@ export async function POST(req: Request) {
 
     // Send ticket confirmation email
     try {
-      await sendTicketEmail({
-        email: ticket!.email,
-        name: ticket!.name || null,
-        eventName: ticket!.event?.name || "Event",
-        ticketType: ticket!.type || "VIP",
-        eventStartTime: ticket!.event?.startTimeDate?.toISOString() || null,
-        eventRoute: ticket!.event?.route || null,
-        ticketId: ticket!.id,
-        eventVenue: ticket!.event?.venue || null,
-        eventVenueLink: ticket!.event?.venueLink || null,
-        eventDescription: ticket!.event?.desc || null,
-      });
+      if (ticket!.type === "WAITLIST") {
+        await sendWaitlistClosedEmail({
+          email: ticket!.email,
+          name: ticket!.name || null,
+          eventName: ticket!.event?.name || "Event",
+          eventStartTime: ticket!.event?.startTimeDate?.toISOString() ?? null,
+          eventVenue: ticket!.event?.venue,
+          eventVenueLink: ticket!.event?.venueLink,
+          waitlistOpenTime: formatDoorsOpenTime(event.doorsOpen),
+          ticketId: ticket!.id,
+        });
+      } else {
+        await sendTicketEmail({
+          email: ticket!.email,
+          name: ticket!.name || null,
+          eventName: ticket!.event?.name || "Event",
+          ticketType: ticket!.type || "VIP",
+          eventStartTime: ticket!.event?.startTimeDate?.toISOString() || null,
+          eventRoute: ticket!.event?.route || null,
+          ticketId: ticket!.id,
+          eventVenue: ticket!.event?.venue || null,
+          eventVenueLink: ticket!.event?.venueLink || null,
+          eventDescription: ticket!.event?.desc || null,
+        });
+      }
     } catch (emailError) {
       console.error("Email sending error:", emailError);
       // Ticket was created but email failed - return error

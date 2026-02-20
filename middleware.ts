@@ -1,8 +1,5 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
-import { createServerClient } from "@supabase/ssr";
-import { getSupabaseClient } from "./app/lib/supabase";
-
 export const runtime = "experimental-edge";
 
 // Maximum allowed request body size (1MB)
@@ -18,7 +15,7 @@ function getAllowedOrigins(request: NextRequest): string[] {
   const host = request.headers.get("host") || "";
   const isProduction = process.env.NODE_ENV === "production";
 
-  const origins = [`https://${host}`];
+  const origins = [`https://${host}`, `http://${host}`];
 
   // Only allow localhost in development
   if (!isProduction) {

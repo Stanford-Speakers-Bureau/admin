@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { verifyAdminRequest } from "@/app/lib/supabase";
 import { isValidUUID } from "@/app/lib/validation";
 import { sendWaitlistClosedEmail } from "@/app/lib/email";
-import { db, eq, waitlist, events } from "@ssb/db";
+import { PACIFIC_TIMEZONE } from "@/app/lib/constants";
+import { db, eq, inArray, waitlist, events, tickets } from "@ssb/db";
 
 export async function GET(req: Request) {
   try {
@@ -206,6 +207,7 @@ export async function POST(req: Request) {
         id: true,
         name: true,
         startTimeDate: true,
+        doorsOpen: true,
         venue: true,
         venueLink: true,
       },
@@ -218,7 +220,7 @@ export async function POST(req: Request) {
     // Fetch all waitlist entries for this event
     const waitlistEntries = await db.query.waitlist.findMany({
       where: eq(waitlist.eventId, eventId),
-      columns: { id: true, email: true },
+      columns: { id: true, email: true, name: true },
     });
 
     if (!waitlistEntries || waitlistEntries.length === 0) {
@@ -228,30 +230,61 @@ export async function POST(req: Request) {
       );
     }
 
-    // Send emails to all waitlist entries
+    // Enable in-person waitlist mode on the event
+    await db.update(events).set({ waitlistMode: true }).where(eq(events.id, eventId));
+
+    // Format doors open time from event, falling back to request body or default
+    const doorsOpenFormatted = event.doorsOpen
+      ? new Intl.DateTimeFormat("en-US", {
+          hour: "numeric",
+          minute: "2-digit",
+          hour12: true,
+          timeZone: PACIFIC_TIMEZONE,
+        }).format(new Date(event.doorsOpen))
+      : (waitlistOpenTime ?? "7:30 PM");
+
+    // Issue a WAITLIST ticket to each person and send the email
     let successCount = 0;
     let errorCount = 0;
     const errors: string[] = [];
+    const issuedWaitlistIds: string[] = [];
 
     for (const entry of waitlistEntries) {
       try {
+        // Create WAITLIST ticket
+        const [inserted] = await db.insert(tickets).values({
+          eventId,
+          email: entry.email,
+          name: entry.name ?? null,
+          type: "WAITLIST",
+        }).returning({ id: tickets.id });
+
         await sendWaitlistClosedEmail({
           email: entry.email,
+          name: entry.name,
           eventName: event.name || "Event",
           eventStartTime: event.startTimeDate?.toISOString() ?? null,
           eventVenue: event.venue,
           eventVenueLink: event.venueLink,
-          waitlistOpenTime: waitlistOpenTime || "7:30 PM",
+          waitlistOpenTime: doorsOpenFormatted,
           expectedCapacity: expectedCapacity || "100-200",
+          ticketId: inserted.id,
         });
+
+        issuedWaitlistIds.push(entry.id);
         successCount++;
       } catch (error) {
         errorCount++;
         const errorMessage =
           error instanceof Error ? error.message : "Unknown error";
         errors.push(`${entry.email}: ${errorMessage}`);
-        console.error(`Failed to send email to ${entry.email}:`, error);
+        console.error(`Failed to process waitlist entry ${entry.email}:`, error);
       }
+    }
+
+    // Remove successfully processed entries from the online waitlist
+    if (issuedWaitlistIds.length > 0) {
+      await db.delete(waitlist).where(inArray(waitlist.id, issuedWaitlistIds));
     }
 
     return NextResponse.json(

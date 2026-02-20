@@ -432,6 +432,7 @@ async function generateTicketEmailHTML(
       hour: "numeric",
       minute: "2-digit",
       hour12: true,
+      timeZoneName: "short",
       timeZone: PACIFIC_TIMEZONE,
     }).format(new Date(eventStartTime))
     : "TBA";
@@ -441,6 +442,7 @@ async function generateTicketEmailHTML(
       hour: "numeric",
       minute: "2-digit",
       hour12: true,
+      timeZoneName: "short",
       timeZone: PACIFIC_TIMEZONE,
     }).format(new Date(doorsOpenTime))
     : null;
@@ -470,6 +472,7 @@ async function generateTicketEmailHTML(
         hour: "numeric",
         minute: "2-digit",
         hour12: true,
+        timeZoneName: "short",
         timeZone: PACIFIC_TIMEZONE,
       })
     : "";
@@ -477,6 +480,7 @@ async function generateTicketEmailHTML(
     ? new Date(eventStartTime).toLocaleString("en-US", {
         month: "long",
         day: "numeric",
+        timeZone: PACIFIC_TIMEZONE,
       })
     : "";
   const attendeeName = data.name?.trim() || "you";
@@ -899,6 +903,7 @@ function generateTicketEmailText(data: TicketEmailData): string {
       hour: "numeric",
       minute: "2-digit",
       hour12: true,
+      timeZoneName: "short",
       timeZone: PACIFIC_TIMEZONE,
     }).format(new Date(eventStartTime))
     : "TBA";
@@ -908,6 +913,7 @@ function generateTicketEmailText(data: TicketEmailData): string {
       hour: "numeric",
       minute: "2-digit",
       hour12: true,
+      timeZoneName: "short",
       timeZone: PACIFIC_TIMEZONE,
     }).format(new Date(doorsOpenTime))
     : null;
@@ -972,6 +978,7 @@ async function generateDayOfReminderEmailHTML(
       hour: "numeric",
       minute: "2-digit",
       hour12: true,
+      timeZoneName: "short",
       timeZone: PACIFIC_TIMEZONE,
     }).format(new Date(eventStartTime))
     : "TBA";
@@ -981,6 +988,7 @@ async function generateDayOfReminderEmailHTML(
       hour: "numeric",
       minute: "2-digit",
       hour12: true,
+      timeZoneName: "short",
       timeZone: PACIFIC_TIMEZONE,
     }).format(new Date(doorsOpenTime))
     : null;
@@ -1010,6 +1018,7 @@ async function generateDayOfReminderEmailHTML(
         hour: "numeric",
         minute: "2-digit",
         hour12: true,
+        timeZoneName: "short",
         timeZone: PACIFIC_TIMEZONE,
       })
     : "";
@@ -1017,6 +1026,7 @@ async function generateDayOfReminderEmailHTML(
     ? new Date(eventStartTime).toLocaleString("en-US", {
         month: "long",
         day: "numeric",
+        timeZone: PACIFIC_TIMEZONE,
       })
     : "";
   const attendeeName = data.name?.trim() || "you";
@@ -1448,6 +1458,7 @@ function generateDayOfReminderEmailText(
       hour: "numeric",
       minute: "2-digit",
       hour12: true,
+      timeZoneName: "short",
       timeZone: PACIFIC_TIMEZONE,
     }).format(new Date(eventStartTime))
     : "TBA";
@@ -1457,6 +1468,7 @@ function generateDayOfReminderEmailText(
       hour: "numeric",
       minute: "2-digit",
       hour12: true,
+      timeZoneName: "short",
       timeZone: PACIFIC_TIMEZONE,
     }).format(new Date(doorsOpenTime))
     : null;
@@ -1517,6 +1529,7 @@ export async function sendDayOfReminderEmail(
       hour: "numeric",
       minute: "2-digit",
       hour12: true,
+      timeZoneName: "short",
       timeZone: PACIFIC_TIMEZONE,
     }).format(new Date(data.doorsOpenTime))
     : null;
@@ -1660,6 +1673,7 @@ async function generateEarlyReminderEmailHTML(
       hour: "numeric",
       minute: "2-digit",
       hour12: true,
+      timeZoneName: "short",
       timeZone: PACIFIC_TIMEZONE,
     }).format(new Date(eventStartTime))
     : "TBA";
@@ -1669,6 +1683,7 @@ async function generateEarlyReminderEmailHTML(
       hour: "numeric",
       minute: "2-digit",
       hour12: true,
+      timeZoneName: "short",
       timeZone: PACIFIC_TIMEZONE,
     }).format(new Date(doorsOpenTime))
     : "7:30 PM";
@@ -1707,6 +1722,7 @@ async function generateEarlyReminderEmailHTML(
         hour: "numeric",
         minute: "2-digit",
         hour12: true,
+        timeZoneName: "short",
         timeZone: PACIFIC_TIMEZONE,
       })
     : "";
@@ -1714,6 +1730,7 @@ async function generateEarlyReminderEmailHTML(
     ? new Date(eventStartTime).toLocaleString("en-US", {
         month: "long",
         day: "numeric",
+        timeZone: PACIFIC_TIMEZONE,
       })
     : "";
   const attendeeName = data.name?.trim() || "you";
@@ -2166,6 +2183,7 @@ function generateEarlyReminderEmailText(
       hour: "numeric",
       minute: "2-digit",
       hour12: true,
+      timeZoneName: "short",
       timeZone: PACIFIC_TIMEZONE,
     }).format(new Date(eventStartTime))
     : "TBA";
@@ -2175,6 +2193,7 @@ function generateEarlyReminderEmailText(
       hour: "numeric",
       minute: "2-digit",
       hour12: true,
+      timeZoneName: "short",
       timeZone: PACIFIC_TIMEZONE,
     }).format(new Date(doorsOpenTime))
     : "7:30 PM";
@@ -2263,6 +2282,7 @@ export async function sendEarlyReminderEmail(
       hour: "numeric",
       minute: "2-digit",
       hour12: true,
+      timeZoneName: "short",
       timeZone: PACIFIC_TIMEZONE,
     }).format(new Date(data.doorsOpenTime))
     : "7:30 PM";
@@ -2418,6 +2438,7 @@ function formatNotifyDate(dateStr: string | null): string {
     hour: "numeric",
     minute: "2-digit",
     hour12: true,
+    timeZoneName: "short",
     timeZone: PACIFIC_TIMEZONE,
   }).format(new Date(dateStr));
 }
@@ -3018,12 +3039,14 @@ export async function sendClaimTicketEmail(
 
 type WaitlistClosedEmailData = {
   email: string;
+  name?: string | null;
   eventName: string;
   eventStartTime: string | null;
   eventVenue?: string | null;
   eventVenueLink?: string | null;
   waitlistOpenTime?: string; // e.g., "7:30 PM"
   expectedCapacity?: string; // e.g., "100-200"
+  ticketId?: string; // WAITLIST ticket ID, if one was issued
 };
 
 /**
@@ -3031,15 +3054,19 @@ type WaitlistClosedEmailData = {
  */
 async function generateWaitlistClosedEmailHTML(
   data: WaitlistClosedEmailData,
+  options?: { qrCid?: string },
 ): Promise<string> {
   const {
+    name,
     eventName,
     eventStartTime,
     eventVenue,
     eventVenueLink,
     waitlistOpenTime = "7:30 PM",
     expectedCapacity = "100-200",
+    ticketId,
   } = data;
+  const qrImageSrc = options?.qrCid ? `cid:${options.qrCid}` : "";
 
   const formattedDate = eventStartTime
     ? new Intl.DateTimeFormat("en-US", {
@@ -3050,6 +3077,7 @@ async function generateWaitlistClosedEmailHTML(
       hour: "numeric",
       minute: "2-digit",
       hour12: true,
+      timeZoneName: "short",
       timeZone: PACIFIC_TIMEZONE,
     }).format(new Date(eventStartTime))
     : "TBA";
@@ -3170,12 +3198,22 @@ async function generateWaitlistClosedEmailHTML(
           
           <!-- Event Details Card -->
           <div class="details-card" style="background-color: #18181b; padding: 24px; margin-bottom: 24px; border-radius: 8px;">
-            
+
             ${gmailBlendStart}
               <h2 class="details-title" style="margin: 0 0 20px 0; color: #ffffff; font-size: 22px; font-weight: 600;">Event Details</h2>
             ${gmailBlendEnd}
-            
+
             <table role="presentation" style="width: 100%; border-collapse: collapse;">
+              ${name ? `
+              <tr>
+                <td class="details-label" style="padding: 8px 0; color: #a1a1aa; font-size: 14px; width: 120px; vertical-align: top;">
+                  ${gmailBlendStart}Name:${gmailBlendEnd}
+                </td>
+                <td class="details-value" style="padding: 8px 0; color: #f4f4f5; font-size: 14px; font-weight: 500;">
+                  ${gmailBlendStart}${name}${gmailBlendEnd}
+                </td>
+              </tr>
+              ` : ""}
               <tr>
                 <td class="details-label" style="padding: 8px 0; color: #a1a1aa; font-size: 14px; width: 120px; vertical-align: top;">
                   ${gmailBlendStart}Event:${gmailBlendEnd}
@@ -3208,8 +3246,37 @@ async function generateWaitlistClosedEmailHTML(
               `
       : ""
     }
+              ${ticketId ? `
+              <tr>
+                <td class="details-label" style="padding: 8px 0; color: #a1a1aa; font-size: 14px; vertical-align: top;">
+                  ${gmailBlendStart}Ticket Type:${gmailBlendEnd}
+                </td>
+                <td class="details-value" style="padding: 8px 0;">
+                  <span style="display: inline-block; padding: 4px 12px; background-color: #71717a; color: #ffffff; border-radius: 4px; font-size: 12px; font-weight: 600; text-transform: uppercase;">WAITLIST</span>
+                </td>
+              </tr>
+              <tr>
+                <td class="details-label" style="padding: 8px 0; color: #a1a1aa; font-size: 14px; vertical-align: top;">
+                  ${gmailBlendStart}Ticket ID:${gmailBlendEnd}
+                </td>
+                <td class="details-value" style="padding: 8px 0; color: #f4f4f5; font-size: 14px; font-family: monospace; word-break: break-all;">
+                  ${gmailBlendStart}${ticketId}${gmailBlendEnd}
+                </td>
+              </tr>
+              ` : ""}
             </table>
           </div>
+
+          ${qrImageSrc ? `
+          <!-- QR Code Section -->
+          <div class="qr-section" style="background-color: #18181b; padding: 24px; margin-bottom: 24px; text-align: center; border-radius: 8px; border: 2px solid #175dcd;">
+            ${gmailBlendStart}
+              <p style="margin: 0 0 16px 0; color: #f4f4f5; font-size: 16px; font-weight: 600;">Your Waitlist Ticket</p>
+              <p style="margin: 0 0 20px 0; color: #a1a1aa; font-size: 14px;">Show this QR code at the in-person waitlist to check in.</p>
+            ${gmailBlendEnd}
+            <img src="${qrImageSrc}" alt="Waitlist Ticket QR Code" class="qr-code-img" style="width: 300px; height: 300px; display: block; margin: 0 auto;" />
+          </div>
+          ` : ""}
         </div>
       </td>
     </tr>
@@ -3239,12 +3306,14 @@ async function generateWaitlistClosedEmailHTML(
  */
 function generateWaitlistClosedEmailText(data: WaitlistClosedEmailData): string {
   const {
+    name,
     eventName,
     eventStartTime,
     eventVenue,
     eventVenueLink,
     waitlistOpenTime = "7:30 PM",
     expectedCapacity = "100-200",
+    ticketId,
   } = data;
 
   const formattedDate = eventStartTime
@@ -3256,6 +3325,7 @@ function generateWaitlistClosedEmailText(data: WaitlistClosedEmailData): string 
       hour: "numeric",
       minute: "2-digit",
       hour12: true,
+      timeZoneName: "short",
       timeZone: PACIFIC_TIMEZONE,
     }).format(new Date(eventStartTime))
     : "TBA";
@@ -3268,9 +3338,10 @@ Good news! We're highly confident you will be able to get into ${eventName} via 
 It will be available starting at ${waitlistOpenTime} outside of ${eventVenue || "the venue"}. We anticipate letting ${expectedCapacity} people in from the in-person waitlist, and we recommend arriving early! For security reasons, no bags will be permitted at the event.
 
 Event Details:
-- Event: ${eventName}
+${name ? `- Name: ${name}\n` : ""}- Event: ${eventName}
 - Date & Time: ${formattedDate}
 ${eventVenue ? `- Location: ${eventVenue}${eventVenueLink ? ` (${eventVenueLink})` : ""}` : ""}
+${ticketId ? `- Ticket Type: WAITLIST\n- Ticket ID: ${ticketId}` : ""}
 
 Stanford Speakers Bureau
 For ADA accommodations or other questions, please email ${FROM_EMAIL}
@@ -3293,11 +3364,17 @@ export async function sendWaitlistClosedEmail(
 
   const subject = `Please come in-person for your ticket!`;
   const textContent = generateWaitlistClosedEmailText(data);
-  const htmlContent = await generateWaitlistClosedEmailHTML(data);
 
-  // Build MIME message
-  const mixBoundary = `mix_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+  // Generate QR code if a ticket was issued
+  const qrCid = data.ticketId ? `waitlist-qr-${data.ticketId}@stanfordspeakersbureau` : undefined;
+  const qrBuffer = data.ticketId ? await generateQRCodePngBuffer(data.ticketId) : null;
+
+  const htmlContent = await generateWaitlistClosedEmailHTML(data, {
+    qrCid: qrBuffer ? qrCid : undefined,
+  });
+
   const altBoundary = `alt_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+  const relBoundary = `rel_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 
   const lines: string[] = [];
   lines.push(
@@ -3313,19 +3390,45 @@ export async function sendWaitlistClosedEmail(
     "",
     textContent,
     "",
-    `--${altBoundary}`,
-    `Content-Type: text/html; charset=UTF-8`,
-    `Content-Transfer-Encoding: 7bit`,
-    "",
-    htmlContent,
-    "",
-    `--${altBoundary}--`,
-    "",
   );
 
-  const rawMessage = lines.join("\r\n");
+  if (qrBuffer && qrCid) {
+    const qrBase64 = wrapToMimeLines(qrBuffer.toString("base64"));
+    lines.push(
+      `--${altBoundary}`,
+      `Content-Type: multipart/related; boundary="${relBoundary}"`,
+      "",
+      `--${relBoundary}`,
+      `Content-Type: text/html; charset=UTF-8`,
+      `Content-Transfer-Encoding: 7bit`,
+      "",
+      htmlContent,
+      "",
+      `--${relBoundary}`,
+      `Content-Type: image/png; name="waitlist-qr.png"`,
+      `Content-Transfer-Encoding: base64`,
+      `Content-Disposition: inline; filename="waitlist-qr.png"`,
+      `Content-ID: <${qrCid}>`,
+      "",
+      qrBase64,
+      "",
+      `--${relBoundary}--`,
+      "",
+    );
+  } else {
+    lines.push(
+      `--${altBoundary}`,
+      `Content-Type: text/html; charset=UTF-8`,
+      `Content-Transfer-Encoding: 7bit`,
+      "",
+      htmlContent,
+      "",
+    );
+  }
 
-  await sendRawEmailViaSES(rawMessage);
+  lines.push(`--${altBoundary}--`, "");
+
+  await sendRawEmailViaSES(lines.join("\r\n"));
   console.log(`Waitlist closed email sent to ${data.email}`);
 }
 
