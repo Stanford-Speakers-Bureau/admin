@@ -21,71 +21,49 @@ export async function GET(
       );
     }
 
-    // Get event details to determine time range
+    // Get event capacity
     const event = await db.query.events.findFirst({
       where: eq(events.id, eventId),
-      columns: { releaseDate: true, startTimeDate: true },
+      columns: { capacity: true },
     });
 
     if (!event) {
       return NextResponse.json({ error: "Event not found" }, { status: 404 });
     }
 
-    // Determine time range
-    const startDate = event.releaseDate ?? new Date();
-    const endDate = event.startTimeDate ?? new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-
-    // Get all tickets for this event with created_at timestamps
+    // Get all tickets ordered by creation time
     const ticketResults = await db.query.tickets.findMany({
       where: eq(tickets.eventId, eventId),
-      columns: { createdAt: true },
+      columns: { createdAt: true, type: true },
       orderBy: (t, { asc }) => [asc(t.createdAt)],
     });
 
-    // Always use 1-hour intervals
-    const intervalHours = 1;
+    const totalTickets = ticketResults.length;
+    const vipCount = ticketResults.filter((t) => t.type === "VIP").length;
+    const standardCount = totalTickets - vipCount;
 
-    // Create intervals
-    const intervals: { time: string; count: number; cumulative: number }[] = [];
-    let currentTime = new Date(startDate);
-    let cumulativeCount = 0;
+    // Return individual timestamps — the client handles bucketing
+    const timestamps = ticketResults.map((t) => t.createdAt.toISOString());
 
-    while (currentTime < endDate) {
-      const intervalEnd = new Date(
-        currentTime.getTime() + intervalHours * 60 * 60 * 1000,
-      );
-      const intervalEndTime = intervalEnd > endDate ? endDate : intervalEnd;
-
-      // Count tickets in this interval
-      const intervalCount = ticketResults.filter((ticket) => {
-        return ticket.createdAt >= currentTime && ticket.createdAt < intervalEndTime;
-      }).length;
-
-      cumulativeCount += intervalCount;
-
-      intervals.push({
-        time: currentTime.toISOString(),
-        count: intervalCount,
-        cumulative: cumulativeCount,
-      });
-
-      currentTime = intervalEnd;
-    }
-
-    // Ensure we have at least one data point
-    if (intervals.length === 0) {
-      intervals.push({
-        time: new Date(startDate).toISOString(),
-        count: 0,
-        cumulative: 0,
-      });
-    }
+    // Compute milestones
+    const milestonePercents = [25, 50, 75, 100];
+    const milestones = milestonePercents.map((percent) => {
+      const ticketNumber = Math.ceil((percent / 100) * event.capacity);
+      const reached = totalTickets >= ticketNumber;
+      const reachedAt =
+        reached && ticketNumber > 0 && ticketNumber <= totalTickets
+          ? ticketResults[ticketNumber - 1].createdAt.toISOString()
+          : null;
+      return { percent, reached, ticketNumber, reachedAt };
+    });
 
     return NextResponse.json({
-      data: intervals,
-      startDate: new Date(startDate).toISOString(),
-      endDate: new Date(endDate).toISOString(),
-      totalTickets: ticketResults.length,
+      timestamps,
+      totalTickets,
+      capacity: event.capacity,
+      vipCount,
+      standardCount,
+      milestones,
     });
   } catch (error) {
     console.error("Ticket sales fetch error:", error);
