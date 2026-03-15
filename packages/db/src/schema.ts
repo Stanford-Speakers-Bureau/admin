@@ -41,6 +41,7 @@ export const events = pgTable("events", {
   hideTicketingDate: boolean("hide_ticketing_date").notNull().default(false),
   waitlistChance: text("waitlist_chance").notNull().default("High"),
   waitlistMode: boolean("waitlist").notNull().default(false),
+  referralsEnabled: boolean("referrals_enabled").notNull().default(false),
 });
 
 // ── Tickets ─────────────────────────────────────────────────────────────────

@@ -72,6 +72,7 @@ export type Event = {
   priority?: string | null;
   hide_ticketing_date?: boolean;
   livestream?: string | null;
+  referrals_enabled?: boolean;
 };
 
 type FormData = {
@@ -382,6 +383,39 @@ export default function AdminEventsClient({
     } catch (error) {
       console.error("Failed to toggle live status:", error);
       setError("Failed to update live status. Please try again.");
+    }
+  }
+
+  async function handleToggleReferrals(event: Event) {
+    const newReferrals = !event.referrals_enabled;
+
+    try {
+      const response = await fetch("/api/events", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: event.id, referrals: newReferrals }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok && data.event) {
+        const updatedEvent = data.event as Event;
+        setEvents((prev) =>
+          prev.map((e) =>
+            e.id === updatedEvent.id ? updatedEvent : e,
+          ),
+        );
+        setSuccess(
+          newReferrals
+            ? "Referrals enabled for this event!"
+            : "Referrals disabled for this event!",
+        );
+      } else {
+        setError(data.error || "Failed to update referrals status");
+      }
+    } catch (error) {
+      console.error("Failed to toggle referrals:", error);
+      setError("Failed to update referrals status. Please try again.");
     }
   }
 
@@ -1125,6 +1159,21 @@ export default function AdminEventsClient({
                           Set Live
                         </>
                       )}
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleToggleReferrals(event);
+                      }}
+                      className={`w-full flex items-center justify-center gap-2 px-4 py-2 rounded text-sm font-medium transition-colors ${event.referrals_enabled
+                        ? "bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 border border-emerald-500/30"
+                        : "bg-zinc-800 text-white hover:bg-zinc-700"
+                        }`}
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M7.217 10.907a2.25 2.25 0 1 0 0 2.186m0-2.186c.18.324.283.696.283 1.093s-.103.77-.283 1.093m0-2.186 9.566-5.314m-9.566 7.5 9.566 5.314m0 0a2.25 2.25 0 1 0 3.935 2.186 2.25 2.25 0 0 0-3.935-2.186Zm0-12.814a2.25 2.25 0 1 0 3.933-2.185 2.25 2.25 0 0 0-3.933 2.185Z" />
+                      </svg>
+                      {event.referrals_enabled ? "Referrals: On" : "Referrals: Off"}
                     </button>
                     <div className="flex items-center gap-2">
                       <button

@@ -331,13 +331,30 @@ export async function PATCH(req: Request) {
     }
 
     const body = await req.json();
-    const { id, live, waitlist } = body;
+    const { id, live, waitlist, referrals } = body;
 
     if (!id) {
       return NextResponse.json(
         { error: "Event ID is required" },
         { status: 400 },
       );
+    }
+
+    if (typeof referrals === "boolean") {
+      const [updatedEvent] = await db.update(events)
+        .set({ referralsEnabled: referrals })
+        .where(eq(events.id, id))
+        .returning();
+
+      const serialized = serializeEvent(updatedEvent);
+      const eventWithImage = {
+        ...serialized,
+        image_url: updatedEvent.img
+          ? await getSignedImageUrl(updatedEvent.img, 60 * 60)
+          : null,
+      };
+
+      return NextResponse.json({ success: true, event: eventWithImage });
     }
 
     if (typeof waitlist === "boolean") {
