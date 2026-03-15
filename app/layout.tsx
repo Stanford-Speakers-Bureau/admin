@@ -1,4 +1,3 @@
-import { redirect } from "next/navigation";
 import AdminLayoutClient from "./AdminLayoutClient";
 import { verifyAdminRequest } from "@/app/lib/supabase";
 import { db, eq, events } from "@ssb/db";

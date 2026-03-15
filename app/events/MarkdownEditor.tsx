@@ -3,6 +3,8 @@
 import { useRef, useState, useCallback } from "react";
 import ReactMarkdown from "react-markdown";
 import rehypeRaw from "rehype-raw";
+import rehypeSanitize from "rehype-sanitize";
+import { sanitizeSchema } from "@/app/lib/sanitize";
 
 type MarkdownEditorProps = {
   value: string;
@@ -10,16 +12,6 @@ type MarkdownEditorProps = {
   placeholder?: string;
   rows?: number;
   label: string;
-};
-
-type ToolbarAction = {
-  label: string;
-  icon: React.ReactNode;
-  action: (
-    value: string,
-    selectionStart: number,
-    selectionEnd: number,
-  ) => { newValue: string; cursorStart: number; cursorEnd: number };
 };
 
 export default function MarkdownEditor({
@@ -150,7 +142,7 @@ export default function MarkdownEditor({
         <div className="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white min-h-[calc(1.5rem*var(--rows)+1.5rem)]" style={{ "--rows": rows } as React.CSSProperties}>
           {value ? (
             <div className="prose prose-sm prose-invert prose-p:text-zinc-300 prose-p:leading-relaxed prose-a:text-emerald-400 prose-a:underline prose-strong:text-white prose-em:text-zinc-200 max-w-none">
-              <ReactMarkdown rehypePlugins={[rehypeRaw]}>{value}</ReactMarkdown>
+              <ReactMarkdown rehypePlugins={[rehypeRaw, [rehypeSanitize, sanitizeSchema]]}>{value}</ReactMarkdown>
             </div>
           ) : (
             <p className="text-zinc-500">{placeholder || "Nothing to preview"}</p>
