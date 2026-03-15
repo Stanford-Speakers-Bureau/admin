@@ -30,7 +30,6 @@ export type Event = {
   venue_link: string | null;
   release_date: string | null;
   ticketing_date?: string | null;
-  banner: boolean | null;
   start_time_date: string | null;
   doors_open: string | null;
   route: string | null;
@@ -41,7 +40,9 @@ export type Event = {
   address?: string;
   waitlist_chance?: string | null;
   waitlist?: boolean | null;
-  livestream?: boolean | null;
+  livestream?: string | null;
+  priority?: string | null;
+  hide_ticketing_date?: boolean;
 };
 
 /**
@@ -62,7 +63,6 @@ export function serializeEvent(e: DBEvent): Event {
     venue_link: e.venueLink,
     release_date: e.releaseDate?.toISOString() ?? null,
     ticketing_date: e.ticketingDate?.toISOString() ?? null,
-    banner: e.banner,
     start_time_date: e.startTimeDate?.toISOString() ?? null,
     doors_open: e.doorsOpen?.toISOString() ?? null,
     route: e.route,
@@ -74,6 +74,8 @@ export function serializeEvent(e: DBEvent): Event {
     waitlist_chance: e.waitlistChance ?? null,
     waitlist: e.waitlistMode ?? null,
     livestream: e.livestream ?? null,
+    priority: e.priority ?? null,
+    hide_ticketing_date: e.hideTicketingDate ?? false,
   };
 }
 

@@ -41,7 +41,9 @@ export async function POST(req: Request) {
     const start_time_date = formData.get("start_time_date") as string;
     const doors_open = formData.get("doors_open") as string;
     const route = formData.get("route") as string;
-    const banner = formData.get("banner") === "true";
+    const priority = formData.get("priority") as string;
+    const hide_ticketing_date = formData.get("hide_ticketing_date") === "true";
+    const livestream = formData.get("livestream") as string;
     const latitude = formData.get("latitude") as string;
     const longitude = formData.get("longitude") as string;
     const address = formData.get("address") as string;
@@ -59,6 +61,14 @@ export async function POST(req: Request) {
     if (capacity && !isValidCapacity(capacity)) {
       return NextResponse.json(
         { error: "Invalid capacity value" },
+        { status: 400 },
+      );
+    }
+
+    // Validate livestream URL
+    if (livestream && !isValidUrl(livestream)) {
+      return NextResponse.json(
+        { error: "Invalid livestream URL" },
         { status: 400 },
       );
     }
@@ -217,7 +227,9 @@ export async function POST(req: Request) {
         ? fromZonedTime(doors_open, PACIFIC_TIMEZONE)
         : null,
       route: route || null,
-      banner: banner,
+      priority: priority || null,
+      hideTicketingDate: hide_ticketing_date,
+      livestream: livestream || null,
       latitude: parseFloat(latitude),
       longitude: parseFloat(longitude),
       address: address || null,

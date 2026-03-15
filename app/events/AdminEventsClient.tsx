@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { PACIFIC_TIMEZONE } from "@/app/lib/constants";
 import TicketSalesGraph from "./TicketSalesGraph";
+import MarkdownEditor from "./MarkdownEditor";
 
 function formatDateTimeForInput(dateString: string | null): string {
   if (!dateString) return "";
@@ -60,7 +61,6 @@ export type Event = {
   venue_link: string | null;
   release_date: string | null;
   ticketing_date?: string | null;
-  banner: boolean | null;
   start_time_date: string | null;
   doors_open: string | null;
   route: string | null;
@@ -69,6 +69,9 @@ export type Event = {
   address?: string | null;
   image_url?: string | null;
   live?: boolean | null;
+  priority?: string | null;
+  hide_ticketing_date?: boolean;
+  livestream?: string | null;
 };
 
 type FormData = {
@@ -85,7 +88,9 @@ type FormData = {
   start_time_date: string;
   doors_open: string;
   route: string;
-  banner: boolean;
+  priority: string;
+  hide_ticketing_date: boolean;
+  livestream: string;
   latitude: string;
   longitude: string;
   address: string;
@@ -105,7 +110,9 @@ const emptyForm: FormData = {
   start_time_date: "",
   doors_open: "",
   route: "",
-  banner: false,
+  priority: "This event is only open to Stanford affiliates",
+  hide_ticketing_date: false,
+  livestream: "",
   latitude: "",
   longitude: "",
   address: "",
@@ -208,7 +215,9 @@ export default function AdminEventsClient({
       start_time_date: formatDateTimeForInput(event.start_time_date),
       doors_open: formatDateTimeForInput(event.doors_open),
       route: event.route || "",
-      banner: event.banner || false,
+      priority: event.priority || "This event is only open to Stanford affiliates",
+      hide_ticketing_date: event.hide_ticketing_date || false,
+      livestream: event.livestream || "",
       latitude: event.latitude?.toString() || "",
       longitude: event.longitude?.toString() || "",
       address: event.address || "",
@@ -281,7 +290,9 @@ export default function AdminEventsClient({
       submitData.append("start_time_date", formData.start_time_date);
       submitData.append("doors_open", formData.doors_open);
       submitData.append("route", formData.route);
-      submitData.append("banner", formData.banner.toString());
+      submitData.append("priority", formData.priority);
+      submitData.append("hide_ticketing_date", formData.hide_ticketing_date.toString());
+      submitData.append("livestream", formData.livestream);
       submitData.append("latitude", formData.latitude);
       submitData.append("longitude", formData.longitude);
       submitData.append("address", formData.address);
@@ -786,57 +797,68 @@ export default function AdminEventsClient({
                 />
               </div>
 
-              {/* Show Banner */}
+              {/* Priority Notice */}
+              <MarkdownEditor
+                label="Priority Notice"
+                value={formData.priority}
+                onChange={(v) => setFormData({ ...formData, priority: v })}
+                placeholder="e.g. This event is only open to Stanford affiliates"
+                rows={2}
+              />
+
+              {/* Hide Ticketing Date */}
               <div className="flex items-center gap-3">
                 <input
                   type="checkbox"
-                  id="banner"
-                  checked={formData.banner}
+                  id="hide_ticketing_date"
+                  checked={formData.hide_ticketing_date}
                   onChange={(e) =>
-                    setFormData({ ...formData, banner: e.target.checked })
+                    setFormData({ ...formData, hide_ticketing_date: e.target.checked })
                   }
                   className="w-5 h-5 rounded border-zinc-600 bg-zinc-800 text-emerald-500 focus:ring-emerald-500/50"
                 />
                 <label
-                  htmlFor="banner"
+                  htmlFor="hide_ticketing_date"
                   className="text-sm font-medium text-zinc-300"
                 >
-                  Show in Banner
+                  Hide Ticketing Date
                 </label>
+              </div>
+
+              {/* Livestream URL */}
+              <div>
+                <label className="block text-sm font-medium text-zinc-300 mb-2">
+                  Livestream URL
+                </label>
+                <input
+                  type="text"
+                  value={formData.livestream}
+                  onChange={(e) =>
+                    setFormData({ ...formData, livestream: e.target.value })
+                  }
+                  placeholder="https://youtube.com/..."
+                  className="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50"
+                />
               </div>
             </div>
 
             {/* Tagline */}
-            <div>
-              <label className="block text-sm font-medium text-zinc-300 mb-2">
-                Tagline
-              </label>
-              <input
-                type="text"
-                value={formData.tagline}
-                onChange={(e) =>
-                  setFormData({ ...formData, tagline: e.target.value })
-                }
-                placeholder="Short tagline for the speaker..."
-                className="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50"
-              />
-            </div>
+            <MarkdownEditor
+              label="Tagline"
+              value={formData.tagline}
+              onChange={(v) => setFormData({ ...formData, tagline: v })}
+              placeholder="Short tagline for the speaker..."
+              rows={2}
+            />
 
             {/* Description */}
-            <div>
-              <label className="block text-sm font-medium text-zinc-300 mb-2">
-                Description
-              </label>
-              <textarea
-                value={formData.desc}
-                onChange={(e) =>
-                  setFormData({ ...formData, desc: e.target.value })
-                }
-                placeholder="Event description..."
-                rows={4}
-                className="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 resize-none"
-              />
-            </div>
+            <MarkdownEditor
+              label="Description"
+              value={formData.desc}
+              onChange={(v) => setFormData({ ...formData, desc: v })}
+              placeholder="Event description..."
+              rows={4}
+            />
 
             {/* Image Upload */}
             <div>
@@ -987,11 +1009,6 @@ export default function AdminEventsClient({
               >
                 <div className="relative h-48 bg-zinc-800">
                   <EventCardImage event={event} />
-                  {event.banner && (
-                    <div className="absolute top-3 left-3 px-2 py-1 bg-emerald-500 text-white text-xs font-medium rounded-full z-10">
-                      Banner
-                    </div>
-                  )}
                   {event.live && (
                     <div className="absolute top-3 right-3 px-2 py-1 bg-red-500 text-white text-xs font-medium rounded-full z-10 flex items-center gap-1">
                       <svg
