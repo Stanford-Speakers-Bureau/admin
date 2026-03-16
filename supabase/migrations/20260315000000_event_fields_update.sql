@@ -9,4 +9,6 @@ ALTER TABLE "public"."events" ADD COLUMN IF NOT EXISTS "hide_ticketing_date" boo
 ALTER TABLE "public"."events" ALTER COLUMN "livestream" DROP DEFAULT;
 ALTER TABLE "public"."events" ALTER COLUMN "livestream" TYPE text USING NULL;
 
-ALTER TABLE "public"."events" ADD COLUMN IF NOT EXISTS "referrals_enabled" boolean NOT NULL DEFAULT false;      
+ALTER TABLE "public"."events" ADD COLUMN IF NOT EXISTS "referrals_enabled" boolean NOT NULL DEFAULT false;
+
+ALTER TABLE "public"."events" ADD COLUMN IF NOT EXISTS "referrals_enabled" boolean NOT NULL DEFAULT false;
