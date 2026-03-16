@@ -4,7 +4,7 @@ import {
   sendTicketsAvailableNowEmail,
   sendTicketsAvailableInEmail,
 } from "@/app/lib/email";
-import { db, eq, events, notify } from "@ssb/db";
+import { db, eq, events, notify, tickets } from "@ssb/db";
 
 export async function POST(req: Request) {
   try {
@@ -15,7 +15,7 @@ export async function POST(req: Request) {
 
     let body: {
       eventId?: string;
-      variant?: "now" | "in";
+      variant?: "now" | "in" | "claim";
       approxTimeUntilAvailable?: string;
       singleEmail?: string;
     };
@@ -33,9 +33,9 @@ export async function POST(req: Request) {
         { status: 400 },
       );
     }
-    if (!variant || (variant !== "now" && variant !== "in")) {
+    if (!variant || (variant !== "now" && variant !== "in" && variant !== "claim")) {
       return NextResponse.json(
-        { error: 'variant must be "now" or "in"' },
+        { error: 'variant must be "now", "in", or "claim"' },
         { status: 400 },
       );
     }
@@ -84,9 +84,24 @@ export async function POST(req: Request) {
       emails = [...new Set(notifications.map((n) => n.email.toLowerCase()))];
     }
 
+    // For "claim" variant, filter out emails that already have tickets
+    let skipped = 0;
+    if (variant === "claim") {
+      const ticketResults = await db.query.tickets.findMany({
+        where: eq(tickets.eventId, eventId),
+        columns: { email: true },
+      });
+      const ticketEmailSet = new Set(
+        ticketResults.map((t) => t.email.toLowerCase()),
+      );
+      const originalCount = emails.length;
+      emails = emails.filter((e) => !ticketEmailSet.has(e));
+      skipped = originalCount - emails.length;
+    }
+
     if (emails.length === 0) {
       return NextResponse.json(
-        { error: "No recipients to send to", sent: 0, failed: 0 },
+        { error: "No recipients to send to", sent: 0, failed: 0, skipped },
         { status: 200 },
       );
     }
@@ -107,7 +122,7 @@ export async function POST(req: Request) {
       const batchStartTime = Date.now();
       const batch = emails.slice(i, i + BATCH_SIZE);
       const batchPromises = batch.map((email) =>
-        (variant === "now"
+        (variant === "now" || variant === "claim"
           ? sendTicketsAvailableNowEmail({
               email,
               eventName,
@@ -153,7 +168,7 @@ export async function POST(req: Request) {
       }
     }
 
-    return NextResponse.json({ sent, failed });
+    return NextResponse.json({ sent, failed, skipped });
   } catch (err) {
     console.error("Notify send error:", err);
     return NextResponse.json(

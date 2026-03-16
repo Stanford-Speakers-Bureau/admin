@@ -43,6 +43,7 @@ export async function POST(req: Request) {
     const route = formData.get("route") as string;
     const priority = formData.get("priority") as string;
     const hide_ticketing_date = formData.get("hide_ticketing_date") === "true";
+    const referrals_enabled = formData.get("referrals_enabled") === "true";
     const livestream = formData.get("livestream") as string;
     const latitude = formData.get("latitude") as string;
     const longitude = formData.get("longitude") as string;
@@ -229,6 +230,7 @@ export async function POST(req: Request) {
       route: route || null,
       priority: priority || null,
       hideTicketingDate: hide_ticketing_date,
+      referralsEnabled: referrals_enabled,
       livestream: livestream || null,
       latitude: parseFloat(latitude),
       longitude: parseFloat(longitude),
@@ -331,7 +333,7 @@ export async function PATCH(req: Request) {
     }
 
     const body = await req.json();
-    const { id, live, waitlist, referrals } = body;
+    const { id, live, standbyEnabled } = body;
 
     if (!id) {
       return NextResponse.json(
@@ -340,26 +342,9 @@ export async function PATCH(req: Request) {
       );
     }
 
-    if (typeof referrals === "boolean") {
+    if (typeof standbyEnabled === "boolean") {
       const [updatedEvent] = await db.update(events)
-        .set({ referralsEnabled: referrals })
-        .where(eq(events.id, id))
-        .returning();
-
-      const serialized = serializeEvent(updatedEvent);
-      const eventWithImage = {
-        ...serialized,
-        image_url: updatedEvent.img
-          ? await getSignedImageUrl(updatedEvent.img, 60 * 60)
-          : null,
-      };
-
-      return NextResponse.json({ success: true, event: eventWithImage });
-    }
-
-    if (typeof waitlist === "boolean") {
-      const [updatedEvent] = await db.update(events)
-        .set({ waitlistMode: waitlist })
+        .set({ standbyEnabled })
         .where(eq(events.id, id))
         .returning();
 
@@ -376,7 +361,7 @@ export async function PATCH(req: Request) {
 
     if (typeof live !== "boolean") {
       return NextResponse.json(
-        { error: "Either 'live' or 'waitlist' boolean is required" },
+        { error: "Either 'live' or 'standbyEnabled' boolean is required" },
         { status: 400 },
       );
     }

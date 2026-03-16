@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { verifyAdminRequest } from "@/app/lib/supabase";
 import { isValidUUID } from "@/app/lib/validation";
-import { sendWaitlistClosedEmail } from "@/app/lib/email";
+import { sendStandbyLineEmail } from "@/app/lib/email";
 import { PACIFIC_TIMEZONE } from "@/app/lib/constants";
 import { db, eq, inArray, waitlist, events, tickets } from "@ssb/db";
 
@@ -34,6 +34,7 @@ export async function GET(req: Request) {
           reserved: true,
           startTimeDate: true,
           venue: true,
+          standbyEnabled: true,
         },
       });
 
@@ -64,6 +65,7 @@ export async function GET(req: Request) {
             reserved: event.reserved ?? null,
             start_time_date: event.startTimeDate?.toISOString() ?? null,
             venue: event.venue,
+            standbyMode: event.standbyEnabled,
           },
           waitlist: waitlistEntries.map((e) => ({
             id: e.id,
@@ -230,9 +232,6 @@ export async function POST(req: Request) {
       );
     }
 
-    // Enable in-person waitlist mode on the event
-    await db.update(events).set({ waitlistMode: true }).where(eq(events.id, eventId));
-
     // Format doors open time from event, falling back to request body or default
     const doorsOpenFormatted = event.doorsOpen
       ? new Intl.DateTimeFormat("en-US", {
@@ -256,17 +255,17 @@ export async function POST(req: Request) {
           eventId,
           email: entry.email,
           name: entry.name ?? null,
-          type: "WAITLIST",
+          type: "STANDBY",
         }).returning({ id: tickets.id });
 
-        await sendWaitlistClosedEmail({
+        await sendStandbyLineEmail({
           email: entry.email,
           name: entry.name,
           eventName: event.name || "Event",
           eventStartTime: event.startTimeDate?.toISOString() ?? null,
           eventVenue: event.venue,
           eventVenueLink: event.venueLink,
-          waitlistOpenTime: doorsOpenFormatted,
+          standbyOpenTime: doorsOpenFormatted,
           expectedCapacity: expectedCapacity || "100-200",
           ticketId: inserted.id,
         });

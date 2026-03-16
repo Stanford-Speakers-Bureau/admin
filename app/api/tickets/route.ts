@@ -8,7 +8,7 @@ import {
   sendDayOfReminderEmail,
   sendEarlyReminderEmail,
   sendTicketEmail,
-  sendWaitlistClosedEmail,
+  sendStandbyLineEmail,
 } from "@/app/lib/email";
 import { PACIFIC_TIMEZONE } from "@/app/lib/constants";
 import { pullFromWaitlist } from "@/app/lib/waitlist";
@@ -140,7 +140,7 @@ export async function GET(req: Request) {
         db.select({ count: dbCount() }).from(tickets).where(baseWhereClause ? and(baseWhereClause, eq(tickets.type, "STANDARD")) : eq(tickets.type, "STANDARD")),
         db.select({ count: dbCount() }).from(tickets).where(baseWhereClause ? and(baseWhereClause, eq(tickets.type, "VIP")) : eq(tickets.type, "VIP")),
         db.select({ count: dbCount() }).from(tickets).where(baseWhereClause ? and(baseWhereClause, eq(tickets.type, "EXTERNAL")) : eq(tickets.type, "EXTERNAL")),
-        db.select({ count: dbCount() }).from(tickets).where(baseWhereClause ? and(baseWhereClause, eq(tickets.type, "WAITLIST")) : eq(tickets.type, "WAITLIST")),
+        db.select({ count: dbCount() }).from(tickets).where(baseWhereClause ? and(baseWhereClause, eq(tickets.type, "STANDBY")) : eq(tickets.type, "STANDBY")),
       ]);
 
     return NextResponse.json({
@@ -152,7 +152,7 @@ export async function GET(req: Request) {
       standardCount: standardResult?.count ?? 0,
       vipCount: vipResult?.count ?? 0,
       externalCount: externalResult?.count ?? 0,
-      waitlistCount: waitlistResult?.count ?? 0,
+      standbyCount: waitlistResult?.count ?? 0,
       limit,
       offset,
     });
@@ -333,9 +333,9 @@ export async function PATCH(req: Request) {
       return NextResponse.json({ success: true, ticket: serializeTicket(ticket!) });
     } else if (action === "updateType" || type) {
       // Update ticket type
-      if (type !== "VIP" && type !== "STANDARD" && type !== "EXTERNAL" && type !== "WAITLIST") {
+      if (type !== "VIP" && type !== "STANDARD" && type !== "EXTERNAL" && type !== "STANDBY") {
         return NextResponse.json(
-          { error: "Invalid ticket type. Must be 'VIP', 'STANDARD', 'EXTERNAL', or 'WAITLIST'." },
+          { error: "Invalid ticket type. Must be 'VIP', 'STANDARD', 'EXTERNAL', or 'STANDBY'." },
           { status: 400 },
         );
       }
@@ -381,15 +381,15 @@ export async function PATCH(req: Request) {
       // If the type changed, send updated ticket email
       if (typeChanged && ticket) {
         try {
-          if (ticket.type === "WAITLIST") {
-            await sendWaitlistClosedEmail({
+          if (ticket.type === "STANDBY") {
+            await sendStandbyLineEmail({
               email: ticket.email,
               name: ticket.name || null,
               eventName: ticket.event?.name || "Event",
               eventStartTime: ticket.event?.startTimeDate?.toISOString() ?? null,
               eventVenue: ticket.event?.venue,
               eventVenueLink: ticket.event?.venueLink,
-              waitlistOpenTime: formatDoorsOpenTime(ticket.event?.doorsOpen),
+              standbyOpenTime: formatDoorsOpenTime(ticket.event?.doorsOpen),
               ticketId: ticket.id,
             });
           } else {
@@ -1021,15 +1021,15 @@ export async function POST(req: Request) {
       // Only send email if the type actually changed
       if (typeChanged && updatedTicket) {
         try {
-          if (updatedTicket.type === "WAITLIST") {
-            await sendWaitlistClosedEmail({
+          if (updatedTicket.type === "STANDBY") {
+            await sendStandbyLineEmail({
               email: updatedTicket.email,
               name: updatedTicket.name || null,
               eventName: updatedTicket.event?.name || "Event",
               eventStartTime: updatedTicket.event?.startTimeDate?.toISOString() ?? null,
               eventVenue: updatedTicket.event?.venue,
               eventVenueLink: updatedTicket.event?.venueLink,
-              waitlistOpenTime: formatDoorsOpenTime(updatedTicket.event?.doorsOpen),
+              standbyOpenTime: formatDoorsOpenTime(updatedTicket.event?.doorsOpen),
               ticketId: updatedTicket.id,
             });
           } else {
@@ -1092,15 +1092,15 @@ export async function POST(req: Request) {
 
     // Send ticket confirmation email
     try {
-      if (ticket!.type === "WAITLIST") {
-        await sendWaitlistClosedEmail({
+      if (ticket!.type === "STANDBY") {
+        await sendStandbyLineEmail({
           email: ticket!.email,
           name: ticket!.name || null,
           eventName: ticket!.event?.name || "Event",
           eventStartTime: ticket!.event?.startTimeDate?.toISOString() ?? null,
           eventVenue: ticket!.event?.venue,
           eventVenueLink: ticket!.event?.venueLink,
-          waitlistOpenTime: formatDoorsOpenTime(event.doorsOpen),
+          standbyOpenTime: formatDoorsOpenTime(event.doorsOpen),
           ticketId: ticket!.id,
         });
       } else {

@@ -1193,7 +1193,7 @@ async function generateDayOfReminderEmailHTML(
         <div class="email-content" style="padding: 0; max-width: 600px; margin: 0 auto;">
           
           ${getImportantNoticeHTML(gmailBlendStart, gmailBlendEnd, [
-            `If you have friends without tickets, they should come and wait on the in-person waitlist`,
+            `If you have friends without tickets, they should come and wait on the standby line`,
           ], eventUrl)}
           
           ${gmailBlendStart}
@@ -3037,23 +3037,23 @@ export async function sendClaimTicketEmail(
   console.log(`Claim ticket email sent to ${data.email}`);
 }
 
-type WaitlistClosedEmailData = {
+type StandbyLineEmailData = {
   email: string;
   name?: string | null;
   eventName: string;
   eventStartTime: string | null;
   eventVenue?: string | null;
   eventVenueLink?: string | null;
-  waitlistOpenTime?: string; // e.g., "7:30 PM"
+  standbyOpenTime?: string; // e.g., "7:30 PM"
   expectedCapacity?: string; // e.g., "100-200"
-  ticketId?: string; // WAITLIST ticket ID, if one was issued
+  ticketId?: string; // STANDBY ticket ID, if one was issued
 };
 
 /**
  * Generate HTML email content for waitlist closed notification
  */
-async function generateWaitlistClosedEmailHTML(
-  data: WaitlistClosedEmailData,
+async function generateStandbyLineEmailHTML(
+  data: StandbyLineEmailData,
   options?: { qrCid?: string },
 ): Promise<string> {
   const {
@@ -3062,7 +3062,7 @@ async function generateWaitlistClosedEmailHTML(
     eventStartTime,
     eventVenue,
     eventVenueLink,
-    waitlistOpenTime = "7:30 PM",
+    standbyOpenTime = "7:30 PM",
     expectedCapacity = "100-200",
     ticketId,
   } = data;
@@ -3189,10 +3189,10 @@ async function generateWaitlistClosedEmailHTML(
           
           ${gmailBlendStart}
             <p style="margin: 0 0 24px 0; color: #f4f4f5; font-size: 16px; line-height: 1.6;">
-              Good news! We're highly confident you will be able to get into ${eventName} via the in-person waitlist!
+              Good news! We're highly confident you will be able to get into ${eventName} via the standby line!
             </p>
             <p style="margin: 0 0 24px 0; color: #f4f4f5; font-size: 16px; line-height: 1.6;">
-              It will be available starting at ${waitlistOpenTime} outside of ${eventVenue || "the venue"}. We anticipate letting ${expectedCapacity} people in from the in-person waitlist, and we recommend arriving early! For security reasons, no bags will be permitted at the event.
+              It will be available starting at ${standbyOpenTime} outside of ${eventVenue || "the venue"}. We anticipate letting ${expectedCapacity} people in from the standby line, and we recommend arriving early! For security reasons, no bags will be permitted at the event.
             </p>
           ${gmailBlendEnd}
           
@@ -3252,7 +3252,7 @@ async function generateWaitlistClosedEmailHTML(
                   ${gmailBlendStart}Ticket Type:${gmailBlendEnd}
                 </td>
                 <td class="details-value" style="padding: 8px 0;">
-                  <span style="display: inline-block; padding: 4px 12px; background-color: #71717a; color: #ffffff; border-radius: 4px; font-size: 12px; font-weight: 600; text-transform: uppercase;">WAITLIST</span>
+                  <span style="display: inline-block; padding: 4px 12px; background-color: #71717a; color: #ffffff; border-radius: 4px; font-size: 12px; font-weight: 600; text-transform: uppercase;">STANDBY</span>
                 </td>
               </tr>
               <tr>
@@ -3271,10 +3271,10 @@ async function generateWaitlistClosedEmailHTML(
           <!-- QR Code Section -->
           <div class="qr-section" style="background-color: #18181b; padding: 24px; margin-bottom: 24px; text-align: center; border-radius: 8px; border: 2px solid #175dcd;">
             ${gmailBlendStart}
-              <p style="margin: 0 0 16px 0; color: #f4f4f5; font-size: 16px; font-weight: 600;">Your Waitlist Ticket</p>
-              <p style="margin: 0 0 20px 0; color: #a1a1aa; font-size: 14px;">Show this QR code at the in-person waitlist to check in.</p>
+              <p style="margin: 0 0 16px 0; color: #f4f4f5; font-size: 16px; font-weight: 600;">Your Standby Ticket</p>
+              <p style="margin: 0 0 20px 0; color: #a1a1aa; font-size: 14px;">Show this QR code at the standby line to check in.</p>
             ${gmailBlendEnd}
-            <img src="${qrImageSrc}" alt="Waitlist Ticket QR Code" class="qr-code-img" style="width: 300px; height: 300px; display: block; margin: 0 auto;" />
+            <img src="${qrImageSrc}" alt="Standby Ticket QR Code" class="qr-code-img" style="width: 300px; height: 300px; display: block; margin: 0 auto;" />
           </div>
           ` : ""}
         </div>
@@ -3304,14 +3304,14 @@ async function generateWaitlistClosedEmailHTML(
 /**
  * Generate plain text email content for waitlist closed notification
  */
-function generateWaitlistClosedEmailText(data: WaitlistClosedEmailData): string {
+function generateStandbyLineEmailText(data: StandbyLineEmailData): string {
   const {
     name,
     eventName,
     eventStartTime,
     eventVenue,
     eventVenueLink,
-    waitlistOpenTime = "7:30 PM",
+    standbyOpenTime = "7:30 PM",
     expectedCapacity = "100-200",
     ticketId,
   } = data;
@@ -3333,15 +3333,15 @@ function generateWaitlistClosedEmailText(data: WaitlistClosedEmailData): string 
   return `
 Please come in-person for your ticket!
 
-Good news! We're highly confident you will be able to get into ${eventName} via the in-person waitlist!
+Good news! We're highly confident you will be able to get into ${eventName} via the standby line!
 
-It will be available starting at ${waitlistOpenTime} outside of ${eventVenue || "the venue"}. We anticipate letting ${expectedCapacity} people in from the in-person waitlist, and we recommend arriving early! For security reasons, no bags will be permitted at the event.
+It will be available starting at ${standbyOpenTime} outside of ${eventVenue || "the venue"}. We anticipate letting ${expectedCapacity} people in from the standby line, and we recommend arriving early! For security reasons, no bags will be permitted at the event.
 
 Event Details:
 ${name ? `- Name: ${name}\n` : ""}- Event: ${eventName}
 - Date & Time: ${formattedDate}
 ${eventVenue ? `- Location: ${eventVenue}${eventVenueLink ? ` (${eventVenueLink})` : ""}` : ""}
-${ticketId ? `- Ticket Type: WAITLIST\n- Ticket ID: ${ticketId}` : ""}
+${ticketId ? `- Ticket Type: STANDBY\n- Ticket ID: ${ticketId}` : ""}
 
 Stanford Speakers Bureau
 For ADA accommodations or other questions, please email ${FROM_EMAIL}
@@ -3351,25 +3351,25 @@ For ADA accommodations or other questions, please email ${FROM_EMAIL}
 /**
  * Send waitlist closed email via AWS SES
  */
-export async function sendWaitlistClosedEmail(
-  data: WaitlistClosedEmailData,
+export async function sendStandbyLineEmail(
+  data: StandbyLineEmailData,
 ): Promise<void> {
   // Check if email sending is disabled
   if (process.env.DISABLE_EMAIL?.toLowerCase().trim() == "true") {
     console.log(
-      `Email sending is disabled (DISABLE_EMAIL=true). Skipping waitlist closed email to ${data.email}`,
+      `Email sending is disabled (DISABLE_EMAIL=true). Skipping standby line email to ${data.email}`,
     );
     return;
   }
 
   const subject = `Please come in-person for your ticket!`;
-  const textContent = generateWaitlistClosedEmailText(data);
+  const textContent = generateStandbyLineEmailText(data);
 
   // Generate QR code if a ticket was issued
-  const qrCid = data.ticketId ? `waitlist-qr-${data.ticketId}@stanfordspeakersbureau` : undefined;
+  const qrCid = data.ticketId ? `standby-qr-${data.ticketId}@stanfordspeakersbureau` : undefined;
   const qrBuffer = data.ticketId ? await generateQRCodePngBuffer(data.ticketId) : null;
 
-  const htmlContent = await generateWaitlistClosedEmailHTML(data, {
+  const htmlContent = await generateStandbyLineEmailHTML(data, {
     qrCid: qrBuffer ? qrCid : undefined,
   });
 
@@ -3405,9 +3405,9 @@ export async function sendWaitlistClosedEmail(
       htmlContent,
       "",
       `--${relBoundary}`,
-      `Content-Type: image/png; name="waitlist-qr.png"`,
+      `Content-Type: image/png; name="standby-qr.png"`,
       `Content-Transfer-Encoding: base64`,
-      `Content-Disposition: inline; filename="waitlist-qr.png"`,
+      `Content-Disposition: inline; filename="standby-qr.png"`,
       `Content-ID: <${qrCid}>`,
       "",
       qrBase64,
@@ -3429,7 +3429,7 @@ export async function sendWaitlistClosedEmail(
   lines.push(`--${altBoundary}--`, "");
 
   await sendRawEmailViaSES(lines.join("\r\n"));
-  console.log(`Waitlist closed email sent to ${data.email}`);
+  console.log(`Standby line email sent to ${data.email}`);
 }
 
 /**

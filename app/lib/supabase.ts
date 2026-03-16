@@ -39,7 +39,7 @@ export type Event = {
   longitude?: number;
   address?: string;
   waitlist_chance?: string | null;
-  waitlist?: boolean | null;
+  standby_enabled?: boolean | null;
   livestream?: string | null;
   priority?: string | null;
   hide_ticketing_date?: boolean;
@@ -73,7 +73,7 @@ export function serializeEvent(e: DBEvent): Event {
     longitude: Number(e.longitude),
     address: e.address,
     waitlist_chance: e.waitlistChance ?? null,
-    waitlist: e.waitlistMode ?? null,
+    standby_enabled: e.standbyEnabled ?? null,
     livestream: e.livestream ?? null,
     priority: e.priority ?? null,
     hide_ticketing_date: e.hideTicketingDate ?? false,

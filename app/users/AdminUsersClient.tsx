@@ -157,7 +157,7 @@ export default function AdminUsersClient({
   }
 
   return (
-    <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8">
+    <div className="px-4 sm:px-6 py-8">
       <div className="mb-8">
         <h1 className="text-2xl sm:text-3xl font-bold text-white font-serif mb-2">
           User Management

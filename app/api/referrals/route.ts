@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { verifyAdminRequest } from "@/app/lib/supabase";
-import { db, eq, and, isNotNull, referrals, tickets } from "@ssb/db";
+import { isValidUUID } from "@/app/lib/validation";
+import { db, eq, and, isNotNull, referrals, tickets, events } from "@ssb/db";
 
 export async function GET(req: Request) {
   try {
@@ -106,23 +107,66 @@ export async function GET(req: Request) {
       }))
       .sort((a, b) => b.count - a.count);
 
-    // Get event data from first referral
-    const eventData = referralResults[0]?.event
-      ? {
-          id: referralResults[0].event.id,
-          name: referralResults[0].event.name ?? null,
-          route: referralResults[0].event.route ?? null,
-          start_time_date: referralResults[0].event.startTimeDate?.toISOString() ?? null,
-        }
-      : null;
+    // Query event directly for full data including referralsEnabled
+    const event = await db.query.events.findFirst({
+      where: eq(events.id, eventId),
+      columns: { id: true, name: true, route: true, startTimeDate: true, referralsEnabled: true },
+    });
 
     return NextResponse.json({
       leaderboard,
-      event: eventData,
+      event: event
+        ? {
+            id: event.id,
+            name: event.name ?? null,
+            route: event.route ?? null,
+            start_time_date: event.startTimeDate?.toISOString() ?? null,
+            referrals_enabled: event.referralsEnabled,
+          }
+        : null,
       grouped: false,
     });
   } catch (error) {
     console.error("Referral leaderboard fetch error:", error);
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 },
+    );
+  }
+}
+
+export async function PATCH(req: Request) {
+  try {
+    const auth = await verifyAdminRequest();
+    if (!auth.authorized) {
+      return NextResponse.json({ error: auth.error }, { status: 401 });
+    }
+
+    const body = await req.json();
+    const { eventId, referrals_enabled } = body;
+
+    if (!eventId || typeof eventId !== "string" || !isValidUUID(eventId)) {
+      return NextResponse.json(
+        { error: "Valid eventId is required" },
+        { status: 400 },
+      );
+    }
+
+    if (typeof referrals_enabled !== "boolean") {
+      return NextResponse.json(
+        { error: "referrals_enabled must be a boolean" },
+        { status: 400 },
+      );
+    }
+
+    await db
+      .update(events)
+      .set({ referralsEnabled: referrals_enabled })
+      .where(eq(events.id, eventId));
+
+    return NextResponse.json({ success: true, referrals_enabled });
+  } catch (error) {
+    console.error("Referral toggle error:", error);
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 },
