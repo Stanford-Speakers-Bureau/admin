@@ -3050,7 +3050,7 @@ type StandbyLineEmailData = {
 };
 
 /**
- * Generate HTML email content for waitlist closed notification
+ * Generate HTML email content for standby line notification
  */
 async function generateStandbyLineEmailHTML(
   data: StandbyLineEmailData,
@@ -3302,7 +3302,7 @@ async function generateStandbyLineEmailHTML(
 }
 
 /**
- * Generate plain text email content for waitlist closed notification
+ * Generate plain text email content for standby line notification
  */
 function generateStandbyLineEmailText(data: StandbyLineEmailData): string {
   const {
@@ -3349,7 +3349,7 @@ For ADA accommodations or other questions, please email ${FROM_EMAIL}
 }
 
 /**
- * Send waitlist closed email via AWS SES
+ * Send standby line email via AWS SES
  */
 export async function sendStandbyLineEmail(
   data: StandbyLineEmailData,

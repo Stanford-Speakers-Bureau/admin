@@ -297,21 +297,11 @@ export default function AdminEventsClient({
                 </div>
                 <div className="flex flex-col gap-2">
                   <button
-                    onClick={() => handleSelectAndViewSales(event)}
-                    className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 border border-blue-500/30 rounded text-sm font-medium transition-colors"
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                    </svg>
-                    View Sales
-                  </button>
-                  <button
                     onClick={() => handleToggleLive(event)}
-                    className={`w-full flex items-center justify-center gap-2 px-4 py-2 rounded text-sm font-medium transition-colors ${
-                      event.live
+                    className={`w-full flex items-center justify-center gap-2 px-4 py-2 rounded text-sm font-medium transition-colors ${event.live
                         ? "bg-red-500/20 text-red-400 hover:bg-red-500/30 border border-red-500/30"
                         : "bg-zinc-800 text-white hover:bg-zinc-700"
-                    }`}
+                      }`}
                   >
                     {event.live ? (
                       <>

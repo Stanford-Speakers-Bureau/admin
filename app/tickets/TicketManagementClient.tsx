@@ -1057,7 +1057,7 @@ export default function TicketManagementClient({
                   <option value="VIP">VIP</option>
                   <option value="STANDARD">STANDARD</option>
                   <option value="EXTERNAL">EXTERNAL</option>
-                  <option value="STANDBY">WAITLIST</option>
+                  <option value="STANDBY">STANDBY</option>
                 </select>
               </div>
             </div>
@@ -1238,7 +1238,7 @@ export default function TicketManagementClient({
             <option value="VIP">VIP</option>
             <option value="STANDARD">STANDARD</option>
             <option value="EXTERNAL">EXTERNAL</option>
-            <option value="STANDBY">WAITLIST</option>
+            <option value="STANDBY">STANDBY</option>
           </select>
         </div>
         <div>
@@ -1397,7 +1397,7 @@ export default function TicketManagementClient({
                         <option value="VIP">VIP</option>
                         <option value="STANDARD">STANDARD</option>
                         <option value="EXTERNAL">EXTERNAL</option>
-                        <option value="STANDBY">WAITLIST</option>
+                        <option value="STANDBY">STANDBY</option>
                       </select>
                     </td>
                     <td className="hidden lg:table-cell px-3 sm:px-4 py-3 sm:py-4 whitespace-nowrap">

@@ -242,15 +242,15 @@ export async function POST(req: Request) {
         }).format(new Date(event.doorsOpen))
       : (waitlistOpenTime ?? "7:30 PM");
 
-    // Issue a WAITLIST ticket to each person and send the email
+    // Issue a STANDBY ticket to each person and send the email
     let successCount = 0;
     let errorCount = 0;
     const errors: string[] = [];
-    const issuedWaitlistIds: string[] = [];
+    const issuedStandbyIds: string[] = [];
 
     for (const entry of waitlistEntries) {
       try {
-        // Create WAITLIST ticket
+        // Create STANDBY ticket
         const [inserted] = await db.insert(tickets).values({
           eventId,
           email: entry.email,
@@ -270,20 +270,20 @@ export async function POST(req: Request) {
           ticketId: inserted.id,
         });
 
-        issuedWaitlistIds.push(entry.id);
+        issuedStandbyIds.push(entry.id);
         successCount++;
       } catch (error) {
         errorCount++;
         const errorMessage =
           error instanceof Error ? error.message : "Unknown error";
         errors.push(`${entry.email}: ${errorMessage}`);
-        console.error(`Failed to process waitlist entry ${entry.email}:`, error);
+        console.error(`Failed to issue standby ticket for ${entry.email}:`, error);
       }
     }
 
     // Remove successfully processed entries from the online waitlist
-    if (issuedWaitlistIds.length > 0) {
-      await db.delete(waitlist).where(inArray(waitlist.id, issuedWaitlistIds));
+    if (issuedStandbyIds.length > 0) {
+      await db.delete(waitlist).where(inArray(waitlist.id, issuedStandbyIds));
     }
 
     return NextResponse.json(
