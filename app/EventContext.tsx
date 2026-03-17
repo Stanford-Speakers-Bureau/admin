@@ -7,6 +7,7 @@ export type EventOption = {
   name: string | null;
   start_time_date: string | null;
   standbyEnabled: boolean;
+  live: boolean;
 };
 
 type EventContextType = {

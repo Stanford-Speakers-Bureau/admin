@@ -8,7 +8,7 @@ type NavItem = {
   href: string;
   label: string;
   icon: string;
-  group: "top" | "events" | "admin";
+  group: "top" | "events" | "analytics" | "admin";
 };
 
 type AdminLayoutClientProps = {
@@ -23,6 +23,8 @@ type AdminLayoutClientProps = {
 const EVENT_SCOPED_PATHS = [
   "/events/edit",
   "/sales",
+  "/check-in",
+  "/summary",
   "/tickets",
   "/waitlist",
   "/referrals",
@@ -50,6 +52,7 @@ export default function AdminLayoutClient({
 
   const topItems = navItems.filter((i) => i.group === "top");
   const eventItems = navItems.filter((i) => i.group === "events");
+  const analyticsItems = navItems.filter((i) => i.group === "analytics");
   const adminItems = navItems.filter((i) => i.group === "admin");
 
   function handleEventChange(newEventId: string) {
@@ -150,6 +153,43 @@ export default function AdminLayoutClient({
             Events
           </span>
           {eventItems.map((item) => {
+            const active = isNavActive(item);
+            return (
+              <Link
+                key={item.href}
+                href={navHref(item)}
+                prefetch={false}
+                title={item.label}
+                className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                  active
+                    ? "bg-rose-500/10 text-rose-400"
+                    : "text-zinc-400 hover:text-white hover:bg-zinc-800"
+                }`}
+              >
+                <svg
+                  className="w-5 h-5 shrink-0"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d={item.icon}
+                  />
+                </svg>
+                <span className="hidden lg:block">{item.label}</span>
+              </Link>
+            );
+          })}
+
+          <div className="my-3 border-t border-zinc-800" />
+
+          <span className="hidden lg:block px-3 pb-1 text-xs font-semibold text-zinc-500 uppercase tracking-wider">
+            Analytics
+          </span>
+          {analyticsItems.map((item) => {
             const active = isNavActive(item);
             return (
               <Link

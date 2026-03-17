@@ -61,7 +61,7 @@ export default function TicketManagementClient({
   initialExternalCount,
   initialStandbyCount,
 }: TicketManagementClientProps) {
-  const { events, selectedEventId, setSelectedEventId, updateEvent } = useEventContext();
+  const { events, selectedEventId, setSelectedEventId } = useEventContext();
   const [tickets, setTickets] = useState<Ticket[]>(initialTickets);
   const [total, setTotal] = useState(initialTotal);
   const [scannedCount, setScannedCount] = useState(initialScannedCount);
@@ -71,7 +71,6 @@ export default function TicketManagementClient({
   const [vipCount, setVipCount] = useState(initialVipCount);
   const [externalCount, setExternalCount] = useState(initialExternalCount);
   const [standbyCount, setStandbyCount] = useState(initialStandbyCount);
-  const [isTogglingWaitlist, setIsTogglingWaitlist] = useState(false);
   const [search, setSearch] = useState("");
   const [ticketTypeFilter, setTicketTypeFilter] = useState<string>("");
   const [scannedFilter, setScannedFilter] = useState<string>("");
@@ -611,42 +610,6 @@ export default function TicketManagementClient({
     }
   }
 
-  async function handleToggleWaitlist() {
-    if (!selectedEventId) return;
-    const currentEvent = events.find((e) => e.id === selectedEventId);
-    if (!currentEvent) return;
-    const newValue = !currentEvent.standbyEnabled;
-
-    setIsTogglingWaitlist(true);
-    setError(null);
-    setSuccess(null);
-
-    try {
-      const response = await fetch("/api/events", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: selectedEventId, standbyEnabled: newValue }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || "Failed to update standby status");
-      }
-
-      updateEvent(selectedEventId, { standbyEnabled: newValue });
-      setSuccess(
-        `Standby ${newValue ? "enabled" : "disabled"} for this event.`,
-      );
-    } catch (err) {
-      console.error("Error toggling standby:", err);
-      setError(
-        err instanceof Error ? err.message : "Failed to update standby status",
-      );
-    } finally {
-      setIsTogglingWaitlist(false);
-    }
-  }
-
   async function handleAddTicket(e: React.FormEvent) {
     e.preventDefault();
 
@@ -875,29 +838,7 @@ export default function TicketManagementClient({
               )}
               Send
             </button>
-          </div>{selectedEventId && (() => {
-            const currentEvent = events.find((e) => e.id === selectedEventId);
-            const isOpen = currentEvent?.standbyEnabled ?? false;
-            return (
-              <button
-                onClick={handleToggleWaitlist}
-                disabled={isTogglingWaitlist}
-                title={isOpen ? "Standby is enabled — click to disable" : "Standby is disabled — click to enable"}
-                className={`px-4 py-2.5 rounded-xl border font-medium text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap ${isOpen
-                    ? "bg-amber-500/20 border-amber-500/40 text-amber-400 hover:bg-amber-500/30"
-                    : "bg-zinc-800 border-zinc-700 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200"
-                  }`}
-              >
-                {isTogglingWaitlist ? (
-                  <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                ) : isOpen ? (
-                  "Waitlist: Open"
-                ) : (
-                  "Waitlist: Closed"
-                )}
-              </button>
-            );
-          })()}
+          </div>
           <button
             onClick={() => fetchTickets()}
             disabled={isLoading}

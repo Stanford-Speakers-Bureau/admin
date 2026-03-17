@@ -50,7 +50,81 @@ export type Event = {
   hide_ticketing_date?: boolean;
   livestream?: string | null;
   referrals_enabled?: boolean;
+  standby_enabled?: boolean | null;
+  tickets_sold?: number;
+  waitlist_count?: number;
+  standby_count?: number;
 };
+
+type EventStatus = {
+  label: string;
+  color: string;
+};
+
+function getEventStatus(event: Event): EventStatus {
+  const now = new Date();
+
+  // Mystery event: no name and release_date in future
+  const isMystery =
+    !event.name &&
+    event.release_date &&
+    new Date(event.release_date) > now;
+
+  const eventStart = event.start_time_date
+    ? new Date(event.start_time_date)
+    : null;
+  const sixHoursAfterStart = eventStart
+    ? new Date(eventStart.getTime() + 6 * 60 * 60 * 1000)
+    : null;
+
+  if (sixHoursAfterStart && now >= sixHoursAfterStart) {
+    return { label: "Event Over", color: "text-zinc-500" };
+  }
+
+  if (event.live) {
+    return { label: "Happening Now", color: "text-emerald-400" };
+  }
+
+  if (eventStart && now >= eventStart) {
+    return { label: "Event Started", color: "text-emerald-400" };
+  }
+
+  if (isMystery) {
+    return { label: "Mystery Speaker", color: "text-purple-400" };
+  }
+
+  const maxPublic = Math.max(0, event.capacity - (event.reserved || 0));
+  const isSoldOut =
+    event.capacity > 0 && (event.tickets_sold || 0) >= maxPublic;
+
+  if (isSoldOut && event.standby_enabled) {
+    return { label: "Standby Line Open", color: "text-amber-400" };
+  }
+
+  if (isSoldOut) {
+    return { label: "Sold Out", color: "text-orange-400" };
+  }
+
+  const ticketingDate = event.ticketing_date
+    ? new Date(event.ticketing_date)
+    : null;
+  if (ticketingDate && now < ticketingDate) {
+    if (event.hide_ticketing_date) {
+      return { label: "Tickets Drop (Hidden)", color: "text-blue-400" };
+    }
+    const formatted = new Intl.DateTimeFormat("en-US", {
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+      timeZone: PACIFIC_TIMEZONE,
+    }).format(ticketingDate);
+    return { label: `Tickets Drop ${formatted}`, color: "text-blue-400" };
+  }
+
+  return { label: "Tickets Available", color: "text-emerald-400" };
+}
 
 type EventCardImageProps = {
   event: Event;
@@ -124,40 +198,6 @@ export default function AdminEventsClient({
   const [events, setEvents] = useState<Event[]>(initialEvents);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-
-  async function handleToggleLive(event: Event) {
-    const newLiveStatus = !event.live;
-
-    try {
-      const response = await fetch("/api/events", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: event.id, live: newLiveStatus }),
-      });
-
-      const data = await response.json();
-
-      if (response.ok && data.event) {
-        const updatedEvent = data.event as Event;
-        setEvents((prev) =>
-          prev.map((e) =>
-            e.id === updatedEvent.id ? updatedEvent : { ...e, live: false },
-          ),
-        );
-        setSuccess(
-          newLiveStatus
-            ? "Event set to live successfully!"
-            : "Event set to not live successfully!",
-        );
-        router.refresh();
-      } else {
-        setError(data.error || "Failed to update live status");
-      }
-    } catch (err) {
-      console.error("Failed to toggle live status:", err);
-      setError("Failed to update live status. Please try again.");
-    }
-  }
 
   async function handleDelete(id: string) {
     if (!confirm("Are you sure you want to delete this event?")) return;
@@ -281,7 +321,7 @@ export default function AdminEventsClient({
                 <h3 className="text-lg font-semibold text-white mb-1 truncate">
                   {event.name || "Mystery Speaker"}
                 </h3>
-                <div className="flex items-center gap-3 text-sm text-zinc-500 mb-4">
+                <div className="flex items-center gap-3 text-sm text-zinc-500 mb-1">
                   <span className="flex items-center gap-1">
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
@@ -292,33 +332,13 @@ export default function AdminEventsClient({
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
                     </svg>
-                    {event.capacity}
+                    {event.tickets_sold ?? 0}/{event.capacity}
                   </span>
                 </div>
+                <p className={`text-xs font-medium mb-4 ${getEventStatus(event).color}`}>
+                  {getEventStatus(event).label}
+                </p>
                 <div className="flex flex-col gap-2">
-                  <button
-                    onClick={() => handleToggleLive(event)}
-                    className={`w-full flex items-center justify-center gap-2 px-4 py-2 rounded text-sm font-medium transition-colors ${event.live
-                        ? "bg-red-500/20 text-red-400 hover:bg-red-500/30 border border-red-500/30"
-                        : "bg-zinc-800 text-white hover:bg-zinc-700"
-                      }`}
-                  >
-                    {event.live ? (
-                      <>
-                        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                          <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8 7a1 1 0 012 0v4a1 1 0 11-2 0V7zM12 9a1 1 0 10-2 0v2a1 1 0 102 0V9z" clipRule="evenodd" />
-                        </svg>
-                        Set Not Live
-                      </>
-                    ) : (
-                      <>
-                        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                          <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" />
-                        </svg>
-                        Set Live
-                      </>
-                    )}
-                  </button>
                   <div className="flex items-center gap-2">
                     <button
                       onClick={() => handleSelectAndEdit(event)}

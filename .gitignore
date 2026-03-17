@@ -44,3 +44,6 @@ next-env.d.ts
 .open-next
 .dev.vars
 packages/db/node_modules
+
+# snaplet
+.snaplet

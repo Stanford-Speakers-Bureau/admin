@@ -13,6 +13,13 @@ type WaitlistEntry = {
   created_at: string;
 };
 
+type StandbyTicket = {
+  id: string;
+  email: string;
+  name: string | null;
+  created_at: string;
+};
+
 function formatDisplayDate(dateString: string | null): string {
   if (!dateString) return "N/A";
   const date = new Date(dateString);
@@ -42,6 +49,8 @@ export default function WaitlistViewerClient() {
   const [expectedCapacity, setExpectedCapacity] = useState("100-200");
   const [notifySuccess, setNotifySuccess] = useState<string | null>(null);
   const [notifyError, setNotifyError] = useState<string | null>(null);
+  const [standbyTickets, setStandbyTickets] = useState<StandbyTicket[]>([]);
+  const [ticketsStillAvailable, setTicketsStillAvailable] = useState(false);
 
   const selectedEvent = events.find((e) => e.id === selectedEventId);
   const isStandbyMode = selectedEvent?.standbyEnabled ?? false;
@@ -49,6 +58,8 @@ export default function WaitlistViewerClient() {
   async function fetchWaitlist() {
     if (!selectedEventId) {
       setWaitlist([]);
+      setStandbyTickets([]);
+      setTicketsStillAvailable(false);
       return;
     }
 
@@ -56,29 +67,62 @@ export default function WaitlistViewerClient() {
     setError(null);
 
     try {
-      const params = new URLSearchParams();
-      params.append("eventId", selectedEventId);
+      // Fetch waitlist entries, standby tickets, and ticket counts in parallel
+      const [waitlistRes, standbyRes] = await Promise.all([
+        fetch(`/api/waitlist?eventId=${selectedEventId}`),
+        fetch(`/api/tickets?eventId=${selectedEventId}&type=STANDBY&limit=1000`),
+      ]);
 
-      const response = await fetch(`/api/waitlist?${params}`);
-
-      if (!response.ok) {
+      if (!waitlistRes.ok) {
         let errorMessage = "Failed to fetch waitlist";
         try {
-          const errorData = await response.json();
+          const errorData = await waitlistRes.json();
           errorMessage = errorData.error || errorMessage;
         } catch {
-          errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+          errorMessage = `HTTP ${waitlistRes.status}: ${waitlistRes.statusText}`;
         }
         throw new Error(errorMessage);
       }
 
-      const contentType = response.headers.get("content-type");
+      const contentType = waitlistRes.headers.get("content-type");
       if (!contentType || !contentType.includes("application/json")) {
         throw new Error("Invalid response format from server");
       }
 
-      const data = await response.json();
-      setWaitlist(data.waitlist || []);
+      const waitlistData = await waitlistRes.json();
+      setWaitlist(waitlistData.waitlist || []);
+
+      // Check ticket availability using event capacity from waitlist response
+      const eventData = waitlistData.event;
+      if (eventData) {
+        const maxPublic = Math.max(0, (eventData.capacity || 0) - (eventData.reserved || 0));
+        // We need total ticket count — use standby response which has total
+        if (standbyRes.ok) {
+          const standbyData = await standbyRes.json();
+          const standbyList: StandbyTicket[] = (standbyData.tickets || []).map((t: any) => ({
+            id: t.id,
+            email: t.email,
+            name: t.name,
+            created_at: t.created_at,
+          }));
+          setStandbyTickets(standbyList);
+
+          // total from the standby response is the total ticket count for the event (unfiltered)
+          const totalTickets = standbyData.total ?? 0;
+          setTicketsStillAvailable(totalTickets < maxPublic);
+        }
+      } else {
+        if (standbyRes.ok) {
+          const standbyData = await standbyRes.json();
+          setStandbyTickets((standbyData.tickets || []).map((t: any) => ({
+            id: t.id,
+            email: t.email,
+            name: t.name,
+            created_at: t.created_at,
+          })));
+        }
+        setTicketsStillAvailable(false);
+      }
     } catch (err) {
       console.error("Error fetching waitlist:", err);
       setError(err instanceof Error ? err.message : "Failed to load waitlist");
@@ -316,6 +360,17 @@ export default function WaitlistViewerClient() {
         </div>
       )}
 
+      {isStandbyMode && ticketsStillAvailable && selectedEventId && (
+        <div className="mb-6 p-4 bg-amber-500/10 border border-amber-500/30 rounded-xl flex items-center gap-3">
+          <svg className="w-5 h-5 text-amber-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
+          </svg>
+          <p className="text-amber-400 text-sm">
+            Standby line is active but regular tickets are still available. Users can still get standard tickets.
+          </p>
+        </div>
+      )}
+
       {!selectedEventId ? (
         <div className="text-center py-16 bg-zinc-900/50 rounded-2xl border border-zinc-800">
           <div className="w-16 h-16 bg-zinc-800 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -428,6 +483,66 @@ export default function WaitlistViewerClient() {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-zinc-400 text-sm">
                       {formatDisplayDate(entry.created_at)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Standby Tickets Table */}
+      {isStandbyMode && standbyTickets.length > 0 && selectedEventId && (
+        <div className="mt-6 bg-zinc-900 rounded-2xl border border-zinc-800 overflow-hidden">
+          <div className="p-6 border-b border-zinc-800">
+            <div className="flex items-center gap-4 text-sm text-zinc-400">
+              <span>
+                Standby Tickets:{" "}
+                <span className="text-amber-400 font-semibold">
+                  {standbyTickets.length}
+                </span>
+              </span>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-zinc-800 bg-zinc-800/50">
+                  <th className="text-left px-6 py-3 text-xs font-medium text-zinc-400 uppercase tracking-wider">
+                    #
+                  </th>
+                  <th className="text-left px-6 py-3 text-xs font-medium text-zinc-400 uppercase tracking-wider">
+                    Name
+                  </th>
+                  <th className="text-left px-6 py-3 text-xs font-medium text-zinc-400 uppercase tracking-wider">
+                    Email
+                  </th>
+                  <th className="text-left px-6 py-3 text-xs font-medium text-zinc-400 uppercase tracking-wider">
+                    Issued
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-800">
+                {standbyTickets.map((ticket, index) => (
+                  <tr
+                    key={ticket.id}
+                    className="hover:bg-zinc-800/30 transition-colors"
+                  >
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-amber-500/10 text-amber-400 font-semibold text-sm border border-amber-500/20">
+                        {index + 1}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-white">
+                      {ticket.name || "\u2014"}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-white font-medium">
+                      {ticket.email}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-zinc-400 text-sm">
+                      {formatDisplayDate(ticket.created_at)}
                     </td>
                   </tr>
                 ))}
