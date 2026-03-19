@@ -12,4 +12,4 @@ ALTER TABLE "public"."events" ALTER COLUMN "livestream" TYPE text USING NULL;
 ALTER TABLE "public"."events" ADD COLUMN IF NOT EXISTS "referrals_enabled" boolean NOT NULL DEFAULT false;
 
 UPDATE "public"."tickets" SET type = 'STANDBY' WHERE type = 'WAITLIST';
-ALTER TABLE events RENAME COLUMN waitlist TO standby_enabled;
+ALTER TABLE "public"."events" RENAME COLUMN waitlist TO standby_enabled;

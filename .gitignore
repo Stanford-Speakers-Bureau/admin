@@ -47,3 +47,6 @@ packages/db/node_modules
 
 # snaplet
 .snaplet
+
+# supabase
+supabase/.temp/

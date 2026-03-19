@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { verifyAdminRequest } from "@/app/lib/supabase";
+import { isValidUUID } from "@/app/lib/validation";
 import { db, eq, events, tickets, waitlist, count } from "@ssb/db";
 
 export async function GET(
@@ -14,9 +15,9 @@ export async function GET(
 
     const { eventId } = await params;
 
-    if (!eventId) {
+    if (!eventId || !isValidUUID(eventId)) {
       return NextResponse.json(
-        { error: "Event ID is required" },
+        { error: "Valid event ID is required" },
         { status: 400 },
       );
     }

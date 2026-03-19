@@ -1,41 +1,8 @@
 import AdminEventsClient, { Event } from "./AdminEventsClient";
 import { getSignedImageUrl, verifyAdminRequest, serializeEvent } from "@/app/lib/supabase";
-import { db, eq, and, count as dbCount, tickets, waitlist } from "@ssb/db";
+import { db, eq, count as dbCount, tickets, waitlist } from "@ssb/db";
 
 export const dynamic = "force-dynamic";
-
-async function getTicketCount(eventId: string): Promise<number> {
-  try {
-    const [result] = await db.select({ count: dbCount() })
-      .from(tickets)
-      .where(eq(tickets.eventId, eventId));
-    return result?.count ?? 0;
-  } catch {
-    return 0;
-  }
-}
-
-async function getWaitlistCount(eventId: string): Promise<number> {
-  try {
-    const [result] = await db.select({ count: dbCount() })
-      .from(waitlist)
-      .where(eq(waitlist.eventId, eventId));
-    return result?.count ?? 0;
-  } catch {
-    return 0;
-  }
-}
-
-async function getStandbyCount(eventId: string): Promise<number> {
-  try {
-    const [result] = await db.select({ count: dbCount() })
-      .from(tickets)
-      .where(and(eq(tickets.eventId, eventId), eq(tickets.type, "STANDBY")));
-    return result?.count ?? 0;
-  } catch {
-    return 0;
-  }
-}
 
 async function getInitialEvents(): Promise<Event[]> {
   try {
@@ -48,22 +15,35 @@ async function getInitialEvents(): Promise<Event[]> {
       orderBy: (t, { desc }) => [desc(t.startTimeDate)],
     });
 
+    // Batch count queries — one query each instead of per-event
+    const [ticketCounts, waitlistCounts, standbyCounts] = await Promise.all([
+      db.select({ eventId: tickets.eventId, count: dbCount() })
+        .from(tickets)
+        .groupBy(tickets.eventId),
+      db.select({ eventId: waitlist.eventId, count: dbCount() })
+        .from(waitlist)
+        .groupBy(waitlist.eventId),
+      db.select({ eventId: tickets.eventId, count: dbCount() })
+        .from(tickets)
+        .where(eq(tickets.type, "STANDBY"))
+        .groupBy(tickets.eventId),
+    ]);
+
+    const ticketMap = new Map(ticketCounts.map((r) => [r.eventId, r.count]));
+    const waitlistMap = new Map(waitlistCounts.map((r) => [r.eventId, r.count]));
+    const standbyMap = new Map(standbyCounts.map((r) => [r.eventId, r.count]));
+
     const eventsWithImages = await Promise.all(
       events.map(async (event) => {
         const serialized = serializeEvent(event);
-        const [ticketsSold, waitlistCount, standbyCount] = await Promise.all([
-          getTicketCount(event.id),
-          getWaitlistCount(event.id),
-          getStandbyCount(event.id),
-        ]);
         return {
           ...serialized,
           image_url: event.img
-            ? await getSignedImageUrl(event.img, 60 * 60) // 1 hour expiry
+            ? await getSignedImageUrl(event.img, 60 * 60)
             : null,
-          tickets_sold: ticketsSold,
-          waitlist_count: waitlistCount,
-          standby_count: standbyCount,
+          tickets_sold: ticketMap.get(event.id) ?? 0,
+          waitlist_count: waitlistMap.get(event.id) ?? 0,
+          standby_count: standbyMap.get(event.id) ?? 0,
         };
       }),
     );

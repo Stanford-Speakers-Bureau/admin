@@ -13,6 +13,13 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const eventId = searchParams.get("eventId");
 
+    if (eventId && !isValidUUID(eventId)) {
+      return NextResponse.json(
+        { error: "Valid event ID is required" },
+        { status: 400 },
+      );
+    }
+
     // Build where conditions
     const referralConditions = eventId ? eq(referrals.eventId, eventId) : undefined;
     const ticketConditions = eventId

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { verifyAdminRequest } from "@/app/lib/supabase";
-import { db, desc, events, tickets, lt } from "@ssb/db";
+import { db, desc, events, tickets, lt, inArray } from "@ssb/db";
 
 export async function GET() {
   try {
@@ -37,8 +37,10 @@ export async function GET() {
       });
     }
 
-    // Fetch all tickets for past events
-    const allTickets = await db.query.tickets.findMany({
+    // Fetch only tickets for past events
+    const pastEventIds = pastEvents.map((e) => e.id);
+    const relevantTickets = await db.query.tickets.findMany({
+      where: inArray(tickets.eventId, pastEventIds),
       columns: {
         email: true,
         name: true,
@@ -46,11 +48,7 @@ export async function GET() {
         scanned: true,
         type: true,
       },
-    });
-
-    // Filter to only tickets for past events
-    const pastEventIds = new Set(pastEvents.map((e) => e.id));
-    const relevantTickets = allTickets.filter((t) => t.eventId && pastEventIds.has(t.eventId)) as Array<(typeof allTickets)[number] & { eventId: string }>;
+    }) as Array<{ email: string; name: string | null; eventId: string; scanned: boolean | null; type: string | null }>;
 
     // Build event lookup
     const eventMap = new Map(
