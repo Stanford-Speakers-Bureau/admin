@@ -297,7 +297,7 @@ export default function AdminLayoutClient({
               </svg>
             </div>
             {/* Tooltip-style dropdown on hover */}
-            <div className="absolute left-full top-0 ml-2 hidden group-hover:block z-50">
+            <div className="absolute left-full top-0 bottom-0 hidden group-hover:block z-50 pl-2">
               <div className="bg-zinc-800 border border-zinc-700 rounded-lg shadow-xl p-2 min-w-[200px]">
                 <p className="px-2 pb-1 text-xs font-semibold text-zinc-500 uppercase">Event</p>
                 <select
@@ -343,6 +343,27 @@ export default function AdminLayoutClient({
         </div>
       </aside>
 
+      {/* Mobile Event Selector */}
+      <div className="md:hidden fixed top-0 left-0 right-0 z-50 bg-zinc-900/95 backdrop-blur-xl border-b border-zinc-800">
+        <div className="flex items-center gap-2 px-3 py-2">
+          <svg className="w-4 h-4 text-zinc-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+          </svg>
+          <select
+            value={selectedEventId}
+            onChange={(e) => handleEventChange(e.target.value)}
+            className="flex-1 min-w-0 bg-zinc-800 border border-zinc-700 rounded-md px-2 py-1.5 text-white text-sm focus:outline-none focus:border-rose-500/50 truncate"
+          >
+            <option value="">Select event</option>
+            {events.map((event) => (
+              <option key={event.id} value={event.id}>
+                {event.name || "Unnamed Event"}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+
       {/* Mobile Bottom Navigation */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 h-16 bg-zinc-900/95 backdrop-blur-xl border-t border-zinc-800 z-50">
         <div className="h-full flex items-center gap-1 px-2 overflow-x-auto scrollbar-hide">
@@ -379,7 +400,7 @@ export default function AdminLayoutClient({
 
       {/* Global Live Event Indicator */}
       {hasLiveEvent && (
-        <div className="fixed top-0 left-0 right-0 md:left-16 lg:left-64 z-[100] flex justify-center pointer-events-none">
+        <div className="fixed top-12 md:top-0 left-0 right-0 md:left-16 lg:left-64 z-[100] flex justify-center pointer-events-none">
           <div className="bg-red-500 px-4 py-1 rounded-b-md flex items-center gap-2">
             <svg
               className="w-4 h-4 text-white shrink-0"
@@ -399,7 +420,7 @@ export default function AdminLayoutClient({
 
       {/* Global Email Disabled Banner */}
       {emailDisabled && (
-        <div className="fixed top-0 left-0 right-0 md:left-16 lg:left-64 z-40 bg-amber-500/10 border-b border-amber-500/30 backdrop-blur-sm">
+        <div className="fixed top-12 md:top-0 left-0 right-0 md:left-16 lg:left-64 z-40 bg-amber-500/10 border-b border-amber-500/30 backdrop-blur-sm">
           <div className="px-4 sm:px-6 py-3 flex items-center gap-3">
             <svg
               className="w-5 h-5 text-amber-400 shrink-0"
@@ -423,8 +444,8 @@ export default function AdminLayoutClient({
 
       {/* Main Content */}
       <main
-        className={`pb-20 md:pb-8 min-h-screen md:ml-16 lg:ml-64 ${
-          emailDisabled ? "pt-12" : ""
+        className={`pb-20 md:pb-8 min-h-screen pt-12 md:pt-0 md:ml-16 lg:ml-64 ${
+          emailDisabled ? "md:pt-12" : ""
         }`}
       >
         {children}

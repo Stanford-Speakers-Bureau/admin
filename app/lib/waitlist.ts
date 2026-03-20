@@ -25,23 +25,7 @@ export async function pullFromWaitlist(
   if (!waitlistEntries.length) return 0;
 
   // Create STANDARD tickets for each waitlist person
-  const newTickets: Array<{
-    id: string;
-    email: string;
-    name: string | null;
-    type: string;
-    eventId: string | null;
-    event: {
-      id: string;
-      name: string | null;
-      route: string | null;
-      startTimeDate: Date | null;
-      venue: string | null;
-      venueLink: string | null;
-      desc: string | null;
-    } | null;
-  }> = [];
-
+  const insertedIds: string[] = [];
   for (const entry of waitlistEntries) {
     try {
       const [inserted] = await db.insert(tickets).values({
@@ -50,16 +34,7 @@ export async function pullFromWaitlist(
         name: entry.name ?? null,
         type: "STANDARD",
       }).returning();
-      const ticket = await db.query.tickets.findFirst({
-        where: eq(tickets.id, inserted.id),
-        columns: { id: true, email: true, name: true, type: true, eventId: true },
-        with: {
-          event: {
-            columns: { id: true, name: true, route: true, startTimeDate: true, venue: true, venueLink: true, desc: true },
-          },
-        },
-      });
-      if (ticket) newTickets.push(ticket);
+      insertedIds.push(inserted.id);
     } catch (err) {
       console.error(
         "Failed to create ticket for waitlist person (non-fatal):",
@@ -67,6 +42,17 @@ export async function pullFromWaitlist(
       );
     }
   }
+  const newTickets = insertedIds.length > 0
+    ? await db.query.tickets.findMany({
+        where: inArray(tickets.id, insertedIds),
+        columns: { id: true, email: true, name: true, type: true, eventId: true },
+        with: {
+          event: {
+            columns: { id: true, name: true, route: true, startTimeDate: true, venue: true, venueLink: true, desc: true },
+          },
+        },
+      })
+    : [];
 
   if (!newTickets.length) return 0;
 

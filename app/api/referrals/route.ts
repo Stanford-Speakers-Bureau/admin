@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { verifyAdminRequest } from "@/app/lib/supabase";
 import { isValidUUID } from "@/app/lib/validation";
-import { db, eq, and, isNotNull, referrals, tickets, events } from "@ssb/db";
+import { db, eq, and, isNotNull, count as dbCount, referrals, tickets, events } from "@ssb/db";
 
 export async function GET(req: Request) {
   try {
@@ -26,8 +26,8 @@ export async function GET(req: Request) {
       ? and(eq(tickets.scanned, true), isNotNull(tickets.referral), eq(tickets.eventId, eventId))
       : and(eq(tickets.scanned, true), isNotNull(tickets.referral));
 
-    // Fetch referrals and checked-in tickets in parallel
-    const [referralResults, ticketResults] = await Promise.all([
+    // Fetch referrals and checked-in ticket counts in parallel
+    const [referralResults, checkedInCounts] = await Promise.all([
       db.query.referrals.findMany({
         where: referralConditions,
         columns: { referralCode: true, count: true, eventId: true },
@@ -38,23 +38,18 @@ export async function GET(req: Request) {
         },
         orderBy: (t, { desc }) => [desc(t.count)],
       }),
-      db.query.tickets.findMany({
-        where: ticketConditions,
-        columns: { referral: true, eventId: true },
-      }),
+      db.select({ referral: tickets.referral, eventId: tickets.eventId, count: dbCount() })
+        .from(tickets).where(ticketConditions).groupBy(tickets.referral, tickets.eventId),
     ]);
 
     // Build a map of referral_code -> event_id -> checked_in_count
     const checkedInMap: Record<string, Record<string, number>> = {};
-    ticketResults.forEach((ticket) => {
-      if (!ticket.referral || !ticket.eventId) return;
-      if (!checkedInMap[ticket.referral]) {
-        checkedInMap[ticket.referral] = {};
+    checkedInCounts.forEach((row) => {
+      if (!row.referral || !row.eventId) return;
+      if (!checkedInMap[row.referral]) {
+        checkedInMap[row.referral] = {};
       }
-      if (!checkedInMap[ticket.referral][ticket.eventId]) {
-        checkedInMap[ticket.referral][ticket.eventId] = 0;
-      }
-      checkedInMap[ticket.referral][ticket.eventId]++;
+      checkedInMap[row.referral][row.eventId] = row.count;
     });
 
     // Group by event if no eventId filter

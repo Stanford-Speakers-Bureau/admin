@@ -12,7 +12,7 @@ import {
 } from "@/app/lib/email";
 import { PACIFIC_TIMEZONE } from "@/app/lib/constants";
 import { pullFromWaitlist } from "@/app/lib/waitlist";
-import { db, eq, and, or, ilike, count as dbCount, tickets, events, waitlist, referrals } from "@ssb/db";
+import { db, eq, and, or, ilike, isNotNull, count as dbCount, tickets, events, waitlist, referrals } from "@ssb/db";
 
 /** Helper to serialize a ticket (with optional event relation) to snake_case for API response */
 function serializeTicket(ticket: {
@@ -197,22 +197,16 @@ export async function DELETE(req: Request) {
 
     // Sync referral counts
     try {
-      const allReferrals = await db.query.referrals.findMany({
-        columns: { id: true, eventId: true, referralCode: true, count: true },
-      });
-
+      const [allReferrals, ticketCounts] = await Promise.all([
+        db.query.referrals.findMany({ columns: { id: true, eventId: true, referralCode: true, count: true } }),
+        db.select({ eventId: tickets.eventId, referral: tickets.referral, count: dbCount() })
+          .from(tickets).where(isNotNull(tickets.referral)).groupBy(tickets.eventId, tickets.referral),
+      ]);
+      const countMap = new Map(ticketCounts.map((r) => [`${r.eventId}:${r.referral}`, r.count]));
       for (const referral of allReferrals) {
-        const conditions = [eq(tickets.eventId, referral.eventId)];
-        if (referral.referralCode) conditions.push(eq(tickets.referral, referral.referralCode));
-        const [result] = await db.select({ count: dbCount() })
-          .from(tickets)
-          .where(and(...conditions));
-        const actualCount = result?.count ?? 0;
-
-        if (referral.count !== actualCount) {
-          await db.update(referrals)
-            .set({ count: actualCount })
-            .where(eq(referrals.id, referral.id));
+        const actual = countMap.get(`${referral.eventId}:${referral.referralCode}`) ?? 0;
+        if (referral.count !== actual) {
+          await db.update(referrals).set({ count: actual }).where(eq(referrals.id, referral.id));
         }
       }
     } catch (syncError) {
@@ -256,20 +250,16 @@ export async function DELETE(req: Request) {
 
 /** Helper to sync event scanned counts */
 async function syncEventScannedCounts() {
-  const allEvents = await db.query.events.findMany({
-    columns: { id: true, scanned: true },
-  });
-
+  const [allEvents, scannedCounts] = await Promise.all([
+    db.query.events.findMany({ columns: { id: true, scanned: true } }),
+    db.select({ eventId: tickets.eventId, count: dbCount() })
+      .from(tickets).where(eq(tickets.scanned, true)).groupBy(tickets.eventId),
+  ]);
+  const countMap = new Map(scannedCounts.map((r) => [r.eventId, r.count]));
   for (const event of allEvents) {
-    const [result] = await db.select({ count: dbCount() })
-      .from(tickets)
-      .where(and(eq(tickets.eventId, event.id), eq(tickets.scanned, true)));
-    const actualScanned = result?.count ?? 0;
-
-    if (event.scanned !== actualScanned) {
-      await db.update(events)
-        .set({ scanned: actualScanned })
-        .where(eq(events.id, event.id));
+    const actual = countMap.get(event.id) ?? 0;
+    if (event.scanned !== actual) {
+      await db.update(events).set({ scanned: actual }).where(eq(events.id, event.id));
     }
   }
 }
