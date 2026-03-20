@@ -192,9 +192,7 @@ export async function GET() {
 
     // Aggregate stats
     const totalUnique = attendees.length;
-    const multiEventAttendees = attendees.filter(
-      (a) => a.eventsRegistered >= 2,
-    );
+    const repeatAttendees = attendees.filter((a) => a.eventsAttended >= 2);
     const avgRate =
       totalUnique > 0
         ? attendees.reduce((s, a) => s + a.attendanceRate, 0) / totalUnique
@@ -210,7 +208,7 @@ export async function GET() {
         ? attendees.reduce((s, a) => s + a.eventsRegistered, 0) / totalUnique
         : 0;
     const repeatRate =
-      totalUnique > 0 ? multiEventAttendees.length / totalUnique : 0;
+      totalUnique > 0 ? repeatAttendees.length / totalUnique : 0;
 
     return NextResponse.json({
       attendees,

@@ -3,7 +3,7 @@ import { db, eq, inArray, tickets, waitlist } from "@ssb/db";
 import { sendTicketEmail } from "@/app/lib/email";
 
 export async function pullFromWaitlist(
-  _adminClient: any, // kept for backward compatibility during migration
+  _adminClient: unknown, // kept for backward compatibility during migration
   eventId: string,
   limit?: number,
 ): Promise<number> {
@@ -48,7 +48,7 @@ export async function pullFromWaitlist(
         columns: { id: true, email: true, name: true, type: true, eventId: true },
         with: {
           event: {
-            columns: { id: true, name: true, route: true, startTimeDate: true, venue: true, venueLink: true, desc: true },
+            columns: { id: true, name: true, route: true, startTimeDate: true, endTimeDate: true, venue: true, venueLink: true, desc: true },
           },
         },
       })
@@ -86,6 +86,7 @@ export async function pullFromWaitlist(
         eventName: newTicket.event?.name || "Event",
         ticketType: newTicket.type || "STANDARD",
         eventStartTime: newTicket.event?.startTimeDate?.toISOString() || null,
+        eventEndTime: newTicket.event?.endTimeDate?.toISOString() || null,
         eventRoute: newTicket.event?.route || null,
         ticketId: newTicket.id,
         eventVenue: newTicket.event?.venue || null,

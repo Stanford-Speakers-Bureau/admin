@@ -97,33 +97,6 @@ export default function MarkdownEditor({
     }
   }, [value, onChange]);
 
-  const toolbarButtons = [
-    {
-      label: "Bold",
-      icon: <span className="font-bold text-xs">B</span>,
-      onClick: () => wrapSelection("**", "**", "bold"),
-    },
-    {
-      label: "Italic",
-      icon: <span className="italic text-xs">I</span>,
-      onClick: () => wrapSelection("*", "*", "italic"),
-    },
-    {
-      label: "Underline",
-      icon: <span className="underline text-xs">U</span>,
-      onClick: () => wrapSelection("<u>", "</u>", "underline"),
-    },
-    {
-      label: "Link",
-      icon: (
-        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4M14 4h6m0 0v6m0-6L10 14" />
-        </svg>
-      ),
-      onClick: insertLink,
-    },
-  ];
-
   return (
     <div>
       <div className="flex items-center justify-between mb-2">
@@ -151,17 +124,40 @@ export default function MarkdownEditor({
       ) : (
         <>
           <div className="flex items-center gap-0.5 bg-zinc-800 border border-zinc-700 border-b-0 rounded-t-xl px-2 py-1.5">
-            {toolbarButtons.map((btn) => (
-              <button
-                key={btn.label}
-                type="button"
-                onClick={btn.onClick}
-                title={btn.label}
-                className="w-7 h-7 flex items-center justify-center rounded-md text-zinc-400 hover:text-white hover:bg-zinc-700 transition-colors"
-              >
-                {btn.icon}
-              </button>
-            ))}
+            <button
+              type="button"
+              onClick={() => wrapSelection("**", "**", "bold")}
+              title="Bold"
+              className="w-7 h-7 flex items-center justify-center rounded-md text-zinc-400 hover:text-white hover:bg-zinc-700 transition-colors"
+            >
+              <span className="font-bold text-xs">B</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => wrapSelection("*", "*", "italic")}
+              title="Italic"
+              className="w-7 h-7 flex items-center justify-center rounded-md text-zinc-400 hover:text-white hover:bg-zinc-700 transition-colors"
+            >
+              <span className="italic text-xs">I</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => wrapSelection("<u>", "</u>", "underline")}
+              title="Underline"
+              className="w-7 h-7 flex items-center justify-center rounded-md text-zinc-400 hover:text-white hover:bg-zinc-700 transition-colors"
+            >
+              <span className="underline text-xs">U</span>
+            </button>
+            <button
+              type="button"
+              onClick={insertLink}
+              title="Link"
+              className="w-7 h-7 flex items-center justify-center rounded-md text-zinc-400 hover:text-white hover:bg-zinc-700 transition-colors"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4M14 4h6m0 0v6m0-6L10 14" />
+              </svg>
+            </button>
           </div>
           <textarea
             ref={textareaRef}

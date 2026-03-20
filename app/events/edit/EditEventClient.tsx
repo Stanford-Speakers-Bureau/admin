@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Image from "next/image";
 import { PACIFIC_TIMEZONE } from "@/app/lib/constants";
 import { useEventContext } from "@/app/EventContext";
@@ -43,6 +43,7 @@ type FormData = {
   release_date: string;
   ticketing_date: string;
   start_time_date: string;
+  end_time_date: string;
   doors_open: string;
   route: string;
   priority: string;
@@ -66,6 +67,7 @@ const emptyForm: FormData = {
   release_date: "",
   ticketing_date: "",
   start_time_date: "",
+  end_time_date: "",
   doors_open: "",
   route: "",
   priority: "This event is only open to Stanford affiliates",
@@ -76,6 +78,24 @@ const emptyForm: FormData = {
   longitude: "",
   address: "",
 };
+
+function sortEvents(events: Event[]): Event[] {
+  return [...events].sort((a, b) => {
+    const aVal = a.start_time_date ?? "";
+    const bVal = b.start_time_date ?? "";
+    return bVal.localeCompare(aVal);
+  });
+}
+
+function toEventOption(event: Event) {
+  return {
+    id: event.id,
+    name: event.name,
+    start_time_date: event.start_time_date,
+    standbyEnabled: event.standby_enabled ?? false,
+    live: event.live ?? false,
+  };
+}
 
 function eventToFormData(event: Event): FormData {
   return {
@@ -90,6 +110,7 @@ function eventToFormData(event: Event): FormData {
     release_date: formatDateTimeForInput(event.release_date),
     ticketing_date: formatDateTimeForInput(event.ticketing_date ?? null),
     start_time_date: formatDateTimeForInput(event.start_time_date),
+    end_time_date: formatDateTimeForInput(event.end_time_date),
     doors_open: formatDateTimeForInput(event.doors_open),
     route: event.route || "",
     priority: event.priority || "This event is only open to Stanford affiliates",
@@ -108,9 +129,10 @@ type EditEventClientProps = {
 
 export default function EditEventClient({ allEvents }: EditEventClientProps) {
   const router = useRouter();
-  const { selectedEventId } = useEventContext();
+  const searchParams = useSearchParams();
+  const { selectedEventId, setSelectedEventId, upsertEvent } = useEventContext();
   const [events, setEvents] = useState<Event[]>(allEvents);
-  const [isCreating, setIsCreating] = useState(false);
+  const isCreating = searchParams.get("create") === "1";
 
   const currentEvent = events.find((e) => e.id === selectedEventId) ?? null;
 
@@ -126,13 +148,18 @@ export default function EditEventClient({ allEvents }: EditEventClientProps) {
   const [success, setSuccess] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  useEffect(() => {
+    setEvents(allEvents);
+  }, [allEvents]);
+
   // Sync form when selected event changes
   useEffect(() => {
-    if (isCreating) return;
-    const event = events.find((e) => e.id === selectedEventId) ?? null;
-    if (event) {
-      setFormData(eventToFormData(event));
-      setImagePreview(event.image_url || null);
+    if (isCreating) {
+      setFormData(emptyForm);
+      setImagePreview(null);
+    } else if (currentEvent) {
+      setFormData(eventToFormData(currentEvent));
+      setImagePreview(currentEvent.image_url || null);
     } else {
       setFormData(emptyForm);
       setImagePreview(null);
@@ -140,7 +167,7 @@ export default function EditEventClient({ allEvents }: EditEventClientProps) {
     setImageFile(null);
     setError(null);
     setSuccess(null);
-  }, [selectedEventId, isCreating]);
+  }, [selectedEventId, isCreating, currentEvent]);
 
   function handleImageChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -155,26 +182,16 @@ export default function EditEventClient({ allEvents }: EditEventClientProps) {
   }
 
   function handleStartCreate() {
-    setIsCreating(true);
-    setFormData(emptyForm);
-    setImagePreview(null);
-    setImageFile(null);
-    setError(null);
-    setSuccess(null);
+    router.push("/events/edit?create=1");
   }
 
   function handleCancelCreate() {
-    setIsCreating(false);
-    const event = events.find((e) => e.id === selectedEventId) ?? null;
-    if (event) {
-      setFormData(eventToFormData(event));
-      setImagePreview(event.image_url || null);
-    } else {
-      setFormData(emptyForm);
-      setImagePreview(null);
+    if (currentEvent) {
+      router.push(`/events/edit/${currentEvent.id}`);
+      return;
     }
-    setImageFile(null);
-    setError(null);
+
+    router.push("/events/edit");
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -196,6 +213,19 @@ export default function EditEventClient({ allEvents }: EditEventClientProps) {
         }
       }
 
+      if (formData.start_time_date && formData.end_time_date) {
+        const start = new Date(formData.start_time_date);
+        const end = new Date(formData.end_time_date);
+        if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+          setError("Invalid date format");
+          return;
+        }
+        if (end.getTime() < start.getTime()) {
+          setError("End time must be on or after the event start time.");
+          return;
+        }
+      }
+
       const submitData = new FormData();
       submitData.append("name", formData.name);
       submitData.append("desc", formData.desc);
@@ -208,6 +238,7 @@ export default function EditEventClient({ allEvents }: EditEventClientProps) {
       submitData.append("release_date", formData.release_date);
       submitData.append("ticketing_date", formData.ticketing_date);
       submitData.append("start_time_date", formData.start_time_date);
+      submitData.append("end_time_date", formData.end_time_date);
       submitData.append("doors_open", formData.doors_open);
       submitData.append("route", formData.route);
       submitData.append("priority", formData.priority);
@@ -239,18 +270,27 @@ export default function EditEventClient({ allEvents }: EditEventClientProps) {
       }
 
       const savedEvent = data.event as Event;
-      if (isCreating) {
-        setEvents((prev) => [savedEvent, ...prev]);
-        setIsCreating(false);
-      } else {
-        setEvents((prev) =>
-          prev.map((ev) => (ev.id === savedEvent.id ? savedEvent : ev)),
-        );
-      }
+      setEvents((prev) => {
+        const exists = prev.some((event) => event.id === savedEvent.id);
+        if (exists) {
+          return sortEvents(prev.map((event) => (
+            event.id === savedEvent.id ? savedEvent : event
+          )));
+        }
+
+        return sortEvents([savedEvent, ...prev]);
+      });
+      upsertEvent(toEventOption(savedEvent));
       setFormData(eventToFormData(savedEvent));
       setImagePreview(savedEvent.image_url || null);
       setImageFile(null);
+      setSelectedEventId(savedEvent.id);
       setSuccess(isCreating ? "Event created!" : "Changes saved!");
+
+      if (isCreating) {
+        router.push(`/events/edit/${savedEvent.id}`);
+      }
+
       router.refresh();
     } catch (err) {
       console.error("Failed to save event:", err);
@@ -409,6 +449,19 @@ export default function EditEventClient({ allEvents }: EditEventClientProps) {
               <div>
                 <label className="block text-sm font-medium text-zinc-300 mb-2">Event Start Date & Time</label>
                 <input type="datetime-local" value={formData.start_time_date} onChange={(e) => setFormData({ ...formData, start_time_date: e.target.value })} className="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-zinc-300 mb-2">Event End Date & Time</label>
+                <input type="datetime-local" value={formData.end_time_date} onChange={(e) => setFormData({ ...formData, end_time_date: e.target.value })} className="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50" />
+                {formData.start_time_date && formData.end_time_date && (() => {
+                  const start = new Date(formData.start_time_date);
+                  const end = new Date(formData.end_time_date);
+                  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return null;
+                  if (end.getTime() < start.getTime()) {
+                    return <p className="mt-2 text-sm text-rose-400">End time must be on or after the event start time.</p>;
+                  }
+                  return null;
+                })()}
               </div>
               <div>
                 <label className="block text-sm font-medium text-zinc-300 mb-2">Doors Open</label>

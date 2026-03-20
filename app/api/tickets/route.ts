@@ -25,14 +25,15 @@ function serializeTicket(ticket: {
   scanTime: Date | null;
   referral: string | null;
   eventId: string | null;
-  event?: {
-    id: string;
-    name: string | null;
-    route: string | null;
-    startTimeDate: Date | null;
-    venue?: string | null;
-    venueLink?: string | null;
-    desc?: string | null;
+    event?: {
+      id: string;
+      name: string | null;
+      route: string | null;
+      startTimeDate: Date | null;
+      endTimeDate?: Date | null;
+      venue?: string | null;
+      venueLink?: string | null;
+      desc?: string | null;
     doorsOpen?: Date | null;
   } | null;
 }) {
@@ -52,6 +53,7 @@ function serializeTicket(ticket: {
           name: ticket.event.name,
           route: ticket.event.route,
           start_time_date: ticket.event.startTimeDate?.toISOString() ?? null,
+          ...(ticket.event.endTimeDate !== undefined ? { end_time_date: ticket.event.endTimeDate?.toISOString() ?? null } : {}),
           ...(ticket.event.venue !== undefined ? { venue: ticket.event.venue } : {}),
           ...(ticket.event.venueLink !== undefined ? { venue_link: ticket.event.venueLink } : {}),
           ...(ticket.event.desc !== undefined ? { desc: ticket.event.desc } : {}),
@@ -69,12 +71,12 @@ const TICKET_COLUMNS = {
 
 /** Standard event relation (basic fields) */
 const TICKET_WITH_EVENT = {
-  event: { columns: { id: true, name: true, route: true, startTimeDate: true } },
+  event: { columns: { id: true, name: true, route: true, startTimeDate: true, endTimeDate: true } },
 } as const;
 
 /** Extended event relation (includes venue/desc/doorsOpen for emails) */
 const TICKET_WITH_EVENT_DETAILS = {
-  event: { columns: { id: true, name: true, route: true, startTimeDate: true, venue: true, venueLink: true, desc: true, doorsOpen: true } },
+  event: { columns: { id: true, name: true, route: true, startTimeDate: true, endTimeDate: true, venue: true, venueLink: true, desc: true, doorsOpen: true } },
 } as const;
 
 function formatDoorsOpenTime(doorsOpen: Date | null | undefined): string | undefined {
@@ -89,7 +91,7 @@ function formatDoorsOpenTime(doorsOpen: Date | null | undefined): string | undef
 
 /** Extended event relation with doors_open for reminders */
 const TICKET_WITH_DOORS_OPEN = {
-  event: { columns: { id: true, name: true, route: true, startTimeDate: true, venue: true, venueLink: true, desc: true, doorsOpen: true } },
+  event: { columns: { id: true, name: true, route: true, startTimeDate: true, endTimeDate: true, venue: true, venueLink: true, desc: true, doorsOpen: true } },
 } as const;
 
 export async function GET(req: Request) {
@@ -389,6 +391,7 @@ export async function PATCH(req: Request) {
               eventName: ticket.event?.name || "Event",
               ticketType: ticket.type || "STANDARD",
               eventStartTime: ticket.event?.startTimeDate?.toISOString() || null,
+              eventEndTime: ticket.event?.endTimeDate?.toISOString() || null,
               eventRoute: ticket.event?.route || null,
               ticketId: ticket.id,
               eventVenue: ticket.event?.venue || null,
@@ -447,6 +450,7 @@ export async function PATCH(req: Request) {
                   eventName: newTicket.event?.name || "Event",
                   ticketType: newTicket.type || "STANDARD",
                   eventStartTime: newTicket.event?.startTimeDate?.toISOString() || null,
+                  eventEndTime: newTicket.event?.endTimeDate?.toISOString() || null,
                   eventRoute: newTicket.event?.route || null,
                   ticketId: newTicket.id,
                   eventVenue: newTicket.event?.venue || null,
@@ -532,6 +536,7 @@ export async function PATCH(req: Request) {
           eventName: ticket.event?.name || "Event",
           ticketType: ticket.type || "STANDARD",
           eventStartTime: ticket.event?.startTimeDate?.toISOString() || null,
+          eventEndTime: ticket.event?.endTimeDate?.toISOString() || null,
           eventRoute: ticket.event?.route || null,
           ticketId: ticket.id,
           eventVenue: ticket.event?.venue || null,
@@ -570,6 +575,7 @@ export async function PATCH(req: Request) {
           name: true,
           route: true,
           startTimeDate: true,
+          endTimeDate: true,
           doorsOpen: true,
           venue: true,
           venueLink: true,
@@ -615,6 +621,7 @@ export async function PATCH(req: Request) {
             eventName: event.name || "Event",
             ticketType: ticket.type || "STANDARD",
             eventStartTime: event.startTimeDate?.toISOString() || null,
+            eventEndTime: event.endTimeDate?.toISOString() || null,
             eventRoute: event.route || null,
             ticketId: ticket.id,
             eventVenue: event.venue || null,
@@ -705,6 +712,7 @@ export async function PATCH(req: Request) {
           eventName: ticket.event?.name || "Event",
           ticketType: ticket.type || "STANDARD",
           eventStartTime: ticket.event?.startTimeDate?.toISOString() || null,
+          eventEndTime: ticket.event?.endTimeDate?.toISOString() || null,
           eventRoute: ticket.event?.route || null,
           ticketId: ticket.id,
           eventVenue: ticket.event?.venue || null,
@@ -743,6 +751,7 @@ export async function PATCH(req: Request) {
           name: true,
           route: true,
           startTimeDate: true,
+          endTimeDate: true,
           doorsOpen: true,
           venue: true,
           venueLink: true,
@@ -786,6 +795,7 @@ export async function PATCH(req: Request) {
             eventName: event.name || "Event",
             ticketType: ticket.type || "STANDARD",
             eventStartTime: event.startTimeDate?.toISOString() || null,
+            eventEndTime: event.endTimeDate?.toISOString() || null,
             eventRoute: event.route || null,
             ticketId: ticket.id,
             eventVenue: event.venue || null,
@@ -877,6 +887,7 @@ export async function PATCH(req: Request) {
           eventName: ticket.event?.name || "Event",
           ticketType: ticket.type || "STANDARD",
           eventStartTime: ticket.event?.startTimeDate?.toISOString() || null,
+          eventEndTime: ticket.event?.endTimeDate?.toISOString() || null,
           eventRoute: ticket.event?.route || null,
           ticketId: ticket.id,
           eventVenue: ticket.event?.venue || null,
@@ -1029,6 +1040,7 @@ export async function POST(req: Request) {
               eventName: updatedTicket.event?.name || "Event",
               ticketType: updatedTicket.type || "VIP",
               eventStartTime: updatedTicket.event?.startTimeDate?.toISOString() || null,
+              eventEndTime: updatedTicket.event?.endTimeDate?.toISOString() || null,
               eventRoute: updatedTicket.event?.route || null,
               ticketId: updatedTicket.id,
               eventVenue: updatedTicket.event?.venue || null,
@@ -1100,6 +1112,7 @@ export async function POST(req: Request) {
           eventName: ticket!.event?.name || "Event",
           ticketType: ticket!.type || "VIP",
           eventStartTime: ticket!.event?.startTimeDate?.toISOString() || null,
+          eventEndTime: ticket!.event?.endTimeDate?.toISOString() || null,
           eventRoute: ticket!.event?.route || null,
           ticketId: ticket!.id,
           eventVenue: ticket!.event?.venue || null,

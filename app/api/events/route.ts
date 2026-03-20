@@ -4,7 +4,8 @@ import { fromZonedTime } from "date-fns-tz";
 import { getSignedImageUrl, verifyAdminRequest, serializeEvent } from "@/app/lib/supabase";
 import { PACIFIC_TIMEZONE } from "@/app/lib/constants";
 import { pullFromWaitlist } from "@/app/lib/waitlist";
-import { db, eq, ne, and, events } from "@ssb/db";
+import { db, eq, ne, events } from "@ssb/db";
+import type { InferInsertModel, InferSelectModel } from "@ssb/db";
 import {
   isValidUUID,
   isValidUrl,
@@ -39,6 +40,7 @@ export async function POST(req: Request) {
     const release_date = formData.get("release_date") as string;
     const ticketing_date = formData.get("ticketing_date") as string;
     const start_time_date = formData.get("start_time_date") as string;
+    const end_time_date = formData.get("end_time_date") as string;
     const doors_open = formData.get("doors_open") as string;
     const route = formData.get("route") as string;
     const priority = formData.get("priority") as string;
@@ -109,6 +111,12 @@ export async function POST(req: Request) {
     if (start_time_date && !isValidDateString(start_time_date)) {
       return NextResponse.json(
         { error: "Invalid start time date format" },
+        { status: 400 },
+      );
+    }
+    if (end_time_date && !isValidDateString(end_time_date)) {
+      return NextResponse.json(
+        { error: "Invalid end time date format" },
         { status: 400 },
       );
     }
@@ -201,46 +209,54 @@ export async function POST(req: Request) {
       imgName = fileName;
     }
 
+    const parsedCapacity = capacity ? parseInt(capacity, 10) : 0;
+    const parsedReserved = reserved ? parseInt(reserved, 10) : 0;
+    const parsedTickets = tickets ? parseInt(tickets, 10) : parsedReserved;
+    const releaseDateValue = release_date
+      ? fromZonedTime(release_date, PACIFIC_TIMEZONE)
+      : null;
+    const ticketingDateValue = ticketing_date
+      ? fromZonedTime(ticketing_date, PACIFIC_TIMEZONE)
+      : null;
+    const startTimeDateValue = start_time_date
+      ? fromZonedTime(start_time_date, PACIFIC_TIMEZONE)
+      : null;
+    const endTimeDateValue = end_time_date
+      ? fromZonedTime(end_time_date, PACIFIC_TIMEZONE)
+      : null;
+    const doorsOpenValue = doors_open
+      ? fromZonedTime(doors_open, PACIFIC_TIMEZONE)
+      : null;
+
     // Build event data object
-    const eventData: Record<string, unknown> = {
+    const eventData: InferInsertModel<typeof events> = {
       name: name || null,
       desc: desc || null,
       tagline: tagline || null,
-      capacity: capacity ? parseInt(capacity) : 0,
-      tickets: tickets
-        ? parseInt(tickets)
-        : reserved
-          ? parseInt(reserved)
-          : null,
-      reserved: reserved ? parseInt(reserved) : null,
+      capacity: parsedCapacity,
+      tickets: parsedTickets,
+      reserved: parsedReserved,
       venue: venue || null,
       venueLink: venue_link || null,
-      releaseDate: release_date
-        ? fromZonedTime(release_date, PACIFIC_TIMEZONE)
-        : null,
-      ticketingDate: ticketing_date
-        ? fromZonedTime(ticketing_date, PACIFIC_TIMEZONE)
-        : null,
-      startTimeDate: start_time_date
-        ? fromZonedTime(start_time_date, PACIFIC_TIMEZONE)
-        : null,
-      doorsOpen: doors_open
-        ? fromZonedTime(doors_open, PACIFIC_TIMEZONE)
-        : null,
+      releaseDate: releaseDateValue,
+      ticketingDate: ticketingDateValue,
+      startTimeDate: startTimeDateValue,
+      endTimeDate: endTimeDateValue,
+      doorsOpen: doorsOpenValue,
       route: route || null,
       priority: priority || null,
       hideTicketingDate: hide_ticketing_date,
       referralsEnabled: referrals_enabled,
       livestream: livestream || null,
-      latitude: parseFloat(latitude),
-      longitude: parseFloat(longitude),
-      address: address || null,
+      latitude,
+      longitude,
+      address: address || "",
     };
 
     // Enforce: ticketing date must be on/after release date when both are set
-    if (eventData.releaseDate && eventData.ticketingDate) {
-      const publishMs = (eventData.releaseDate as Date).getTime();
-      const ticketingMs = (eventData.ticketingDate as Date).getTime();
+    if (releaseDateValue && ticketingDateValue) {
+      const publishMs = releaseDateValue.getTime();
+      const ticketingMs = ticketingDateValue.getTime();
       if (Number.isNaN(publishMs) || Number.isNaN(ticketingMs)) {
         return NextResponse.json(
           { error: "Invalid date format" },
@@ -258,6 +274,26 @@ export async function POST(req: Request) {
       }
     }
 
+    if (startTimeDateValue && endTimeDateValue) {
+      const startMs = startTimeDateValue.getTime();
+      const endMs = endTimeDateValue.getTime();
+      if (Number.isNaN(startMs) || Number.isNaN(endMs)) {
+        return NextResponse.json(
+          { error: "Invalid date format" },
+          { status: 400 },
+        );
+      }
+      if (endMs < startMs) {
+        return NextResponse.json(
+          {
+            error:
+              "End time must be on or after the event start time.",
+          },
+          { status: 400 },
+        );
+      }
+    }
+
     if (imgName) {
       eventData.img = imgName;
       // Increment img_version when image is updated (for cache busting)
@@ -269,7 +305,7 @@ export async function POST(req: Request) {
       }
     }
 
-    let savedEvent: any;
+    let savedEvent: InferSelectModel<typeof events> | undefined;
 
     if (id) {
       // Update existing event
@@ -281,7 +317,7 @@ export async function POST(req: Request) {
     } else {
       // Create new event
       const [created] = await db.insert(events)
-        .values(eventData as any)
+        .values(eventData)
         .returning();
       savedEvent = created;
     }

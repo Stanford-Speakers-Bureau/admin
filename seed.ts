@@ -227,6 +227,7 @@ type EventConfig = {
   route: string;
   ticketingDate: Date;
   startTimeDate: Date;
+  endTimeDate: Date;
   doorsOpen: Date;
   releaseDate: Date;
   live: boolean;
@@ -251,6 +252,7 @@ const EVENT_CONFIGS: EventConfig[] = [
     address: "475 Via Ortega, Stanford, CA 94305", lat: 37.4275, lng: -122.1697,
     capacity: 350, reserved: 30, route: "sam-altman",
     ticketingDate: daysAgo(45), startTimeDate: setTime(daysAgo(14), 18, 30),
+    endTimeDate: setTime(daysAgo(14), 20, 0),
     doorsOpen: setTime(daysAgo(14), 17, 45), releaseDate: daysAgo(50),
     live: false, standbyEnabled: true, referralsEnabled: true, hideTicketingDate: false,
     ticketCount: 320, scannedFraction: 0.94, waitlistCount: 85, referralCodeCount: 12,
@@ -265,6 +267,7 @@ const EVENT_CONFIGS: EventConfig[] = [
     address: "551 Serra Mall, Stanford, CA 94305", lat: 37.4326, lng: -122.1640,
     capacity: 450, reserved: 40, route: "jensen-huang",
     ticketingDate: daysAgo(60), startTimeDate: setTime(daysAgo(30), 19, 0),
+    endTimeDate: setTime(daysAgo(30), 20, 45),
     doorsOpen: setTime(daysAgo(30), 18, 15), releaseDate: daysAgo(65),
     live: false, standbyEnabled: true, referralsEnabled: true, hideTicketingDate: false,
     ticketCount: 410, scannedFraction: 0.88, waitlistCount: 120, referralCodeCount: 18,
@@ -279,6 +282,7 @@ const EVENT_CONFIGS: EventConfig[] = [
     address: "655 Knight Way, Stanford, CA 94305", lat: 37.4300, lng: -122.1660,
     capacity: 300, reserved: 20, route: "reshma-saujani",
     ticketingDate: daysAgo(40), startTimeDate: setTime(daysAgo(21), 18, 0),
+    endTimeDate: setTime(daysAgo(21), 19, 30),
     doorsOpen: setTime(daysAgo(21), 17, 15), releaseDate: daysAgo(42),
     live: false, standbyEnabled: false, referralsEnabled: true, hideTicketingDate: false,
     ticketCount: 235, scannedFraction: 0.82, waitlistCount: 0, referralCodeCount: 8,
@@ -293,6 +297,7 @@ const EVENT_CONFIGS: EventConfig[] = [
     address: "471 Lagunita Dr, Stanford, CA 94305", lat: 37.4267, lng: -122.1612,
     capacity: 200, reserved: 15, route: "sal-khan",
     ticketingDate: daysAgo(35), startTimeDate: setTime(daysAgo(7), 18, 30),
+    endTimeDate: setTime(daysAgo(7), 20, 0),
     doorsOpen: setTime(daysAgo(7), 17, 45), releaseDate: daysAgo(38),
     live: false, standbyEnabled: true, referralsEnabled: false, hideTicketingDate: false,
     ticketCount: 185, scannedFraction: 0.91, waitlistCount: 45, referralCodeCount: 0,
@@ -307,6 +312,7 @@ const EVENT_CONFIGS: EventConfig[] = [
     address: "475 Via Ortega, Stanford, CA 94305", lat: 37.4275, lng: -122.1697,
     capacity: 350, reserved: 25, route: "mkbhd",
     ticketingDate: daysAgo(20), startTimeDate: setTime(daysAgo(1), 19, 0),
+    endTimeDate: setTime(daysAgo(1), 20, 30),
     doorsOpen: setTime(daysAgo(1), 18, 0), releaseDate: daysAgo(25),
     live: false, standbyEnabled: true, referralsEnabled: true, hideTicketingDate: false,
     ticketCount: 325, scannedFraction: 0.92, waitlistCount: 60, referralCodeCount: 15,
@@ -321,6 +327,7 @@ const EVENT_CONFIGS: EventConfig[] = [
     address: "551 Serra Mall, Stanford, CA 94305", lat: 37.4326, lng: -122.1640,
     capacity: 400, reserved: 35, route: "sundar-pichai",
     ticketingDate: daysAgo(10), startTimeDate: setTime(daysFromNow(12), 18, 30),
+    endTimeDate: setTime(daysFromNow(12), 20, 0),
     doorsOpen: setTime(daysFromNow(12), 17, 45), releaseDate: daysAgo(14),
     live: false, standbyEnabled: false, referralsEnabled: true, hideTicketingDate: false,
     ticketCount: 240, scannedFraction: 0, waitlistCount: 0, referralCodeCount: 10,
@@ -335,6 +342,7 @@ const EVENT_CONFIGS: EventConfig[] = [
     address: "655 Knight Way, Stanford, CA 94305", lat: 37.4300, lng: -122.1660,
     capacity: 300, reserved: 20, route: "lisa-su",
     ticketingDate: daysAgo(2), startTimeDate: setTime(daysFromNow(25), 18, 0),
+    endTimeDate: setTime(daysFromNow(25), 19, 30),
     doorsOpen: setTime(daysFromNow(25), 17, 15), releaseDate: daysAgo(5),
     live: false, standbyEnabled: false, referralsEnabled: true, hideTicketingDate: false,
     ticketCount: 65, scannedFraction: 0, waitlistCount: 0, referralCodeCount: 4,
@@ -349,6 +357,7 @@ const EVENT_CONFIGS: EventConfig[] = [
     address: "351 Lasuen St, Stanford, CA 94305", lat: 37.4321, lng: -122.1635,
     capacity: 500, reserved: 50, route: "elon-musk",
     ticketingDate: daysAgo(15), startTimeDate: setTime(daysFromNow(5), 19, 0),
+    endTimeDate: setTime(daysFromNow(5), 21, 0),
     doorsOpen: setTime(daysFromNow(5), 18, 0), releaseDate: daysAgo(20),
     live: false, standbyEnabled: true, referralsEnabled: true, hideTicketingDate: false,
     ticketCount: 450, scannedFraction: 0, waitlistCount: 210, referralCodeCount: 25,
@@ -363,6 +372,7 @@ const EVENT_CONFIGS: EventConfig[] = [
     address: "551 Serra Mall, Stanford, CA 94305", lat: 37.4326, lng: -122.1640,
     capacity: 400, reserved: 40, route: "mystery-spring-2026",
     ticketingDate: daysFromNow(3), startTimeDate: setTime(daysFromNow(18), 19, 0),
+    endTimeDate: setTime(daysFromNow(18), 20, 30),
     doorsOpen: setTime(daysFromNow(18), 18, 0), releaseDate: daysFromNow(2),
     live: false, standbyEnabled: false, referralsEnabled: false, hideTicketingDate: true,
     ticketCount: 0, scannedFraction: 0, waitlistCount: 0, referralCodeCount: 0,
@@ -377,6 +387,7 @@ const EVENT_CONFIGS: EventConfig[] = [
     address: "471 Lagunita Dr, Stanford, CA 94305", lat: 37.4267, lng: -122.1612,
     capacity: 200, reserved: 15, route: "brian-chesky",
     ticketingDate: daysFromNow(10), startTimeDate: setTime(daysFromNow(30), 18, 30),
+    endTimeDate: setTime(daysFromNow(30), 20, 0),
     doorsOpen: setTime(daysFromNow(30), 17, 45), releaseDate: daysFromNow(8),
     live: false, standbyEnabled: false, referralsEnabled: true, hideTicketingDate: true,
     ticketCount: 0, scannedFraction: 0, waitlistCount: 0, referralCodeCount: 0,
@@ -424,6 +435,7 @@ async function main() {
       livestream: null,
       ticketing_date: cfg.ticketingDate.toISOString(),
       start_time_date: cfg.startTimeDate.toISOString(),
+      end_time_date: cfg.endTimeDate.toISOString(),
       doors_open: cfg.doorsOpen.toISOString(),
       release_date: cfg.releaseDate.toISOString(),
       live: cfg.live,

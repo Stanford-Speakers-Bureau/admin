@@ -241,6 +241,7 @@ type TicketEmailData = {
   eventName: string;
   ticketType: string;
   eventStartTime: string | null;
+  eventEndTime?: string | null;
   eventRoute: string | null;
   ticketId: string;
   eventVenue?: string | null;
@@ -321,8 +322,9 @@ function generateICalContent(data: TicketEmailData): string {
     : null;
 
   const startDate = new Date(data.eventStartTime);
-  // Default to 90 minutes duration
-  const endDate = new Date(startDate.getTime() + 90 * 60 * 1000);
+  const endDate = data.eventEndTime
+    ? new Date(data.eventEndTime)
+    : new Date(startDate.getTime() + 90 * 60 * 1000);
 
   const title = `Stanford Speakers Bureau: ${data.eventName || "Speaker Event"}`;
   const location = data.eventVenue || "";
@@ -457,6 +459,7 @@ async function generateTicketEmailHTML(
   const googleCalendarUrl = generateGoogleCalendarUrl({
     eventName: data.eventName,
     eventStartTime: data.eventStartTime,
+    eventEndTime: data.eventEndTime,
     eventRoute: data.eventRoute,
     eventVenue: data.eventVenue,
     eventDescription: data.eventDescription,
@@ -1003,6 +1006,7 @@ async function generateDayOfReminderEmailHTML(
   const googleCalendarUrl = generateGoogleCalendarUrl({
     eventName: data.eventName,
     eventStartTime: data.eventStartTime,
+    eventEndTime: data.eventEndTime,
     eventRoute: data.eventRoute,
     eventVenue: data.eventVenue,
     eventDescription: data.eventDescription,
@@ -1707,6 +1711,7 @@ async function generateEarlyReminderEmailHTML(
   const googleCalendarUrl = generateGoogleCalendarUrl({
     eventName: data.eventName,
     eventStartTime: data.eventStartTime,
+    eventEndTime: data.eventEndTime,
     eventRoute: data.eventRoute,
     eventVenue: data.eventVenue,
     eventDescription: data.eventDescription,

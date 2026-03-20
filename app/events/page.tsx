@@ -1,6 +1,6 @@
 import AdminEventsClient, { Event } from "./AdminEventsClient";
 import { getSignedImageUrl, verifyAdminRequest, serializeEvent } from "@/app/lib/supabase";
-import { db, eq, count as dbCount, tickets, waitlist } from "@ssb/db";
+import { db, eq, ne, count as dbCount, tickets, waitlist } from "@ssb/db";
 
 export const dynamic = "force-dynamic";
 
@@ -19,6 +19,7 @@ async function getInitialEvents(): Promise<Event[]> {
     const [ticketCounts, waitlistCounts, standbyCounts] = await Promise.all([
       db.select({ eventId: tickets.eventId, count: dbCount() })
         .from(tickets)
+        .where(ne(tickets.type, "STANDBY"))
         .groupBy(tickets.eventId),
       db.select({ eventId: waitlist.eventId, count: dbCount() })
         .from(waitlist)

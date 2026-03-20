@@ -8,6 +8,11 @@ export function getNextEventId(
     const bVal = b.start_time_date ?? "";
     return aVal.localeCompare(bVal);
   });
-  const next = sorted.find((e) => (e.start_time_date ?? "") >= now);
-  return next?.id ?? sorted[0]?.id ?? "";
+  const datedEvents = sorted.filter((event) => event.start_time_date);
+  const next = datedEvents.find((event) => (event.start_time_date ?? "") >= now);
+
+  if (next) return next.id;
+  if (datedEvents.length > 0) return datedEvents[datedEvents.length - 1]!.id;
+
+  return events[0]?.id ?? "";
 }

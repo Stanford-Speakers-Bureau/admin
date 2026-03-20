@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
@@ -39,6 +39,7 @@ export type Event = {
   release_date: string | null;
   ticketing_date?: string | null;
   start_time_date: string | null;
+  end_time_date: string | null;
   doors_open: string | null;
   route: string | null;
   latitude?: number | null;
@@ -73,11 +74,13 @@ function getEventStatus(event: Event): EventStatus {
   const eventStart = event.start_time_date
     ? new Date(event.start_time_date)
     : null;
-  const sixHoursAfterStart = eventStart
-    ? new Date(eventStart.getTime() + 6 * 60 * 60 * 1000)
-    : null;
+  const eventEnd = event.end_time_date
+    ? new Date(event.end_time_date)
+    : eventStart
+      ? new Date(eventStart.getTime() + 6 * 60 * 60 * 1000)
+      : null;
 
-  if (sixHoursAfterStart && now >= sixHoursAfterStart) {
+  if (eventEnd && now >= eventEnd) {
     return { label: "Event Over", color: "text-zinc-500" };
   }
 
@@ -89,6 +92,10 @@ function getEventStatus(event: Event): EventStatus {
     return { label: "Event Started", color: "text-emerald-400" };
   }
 
+  if (event.standby_enabled) {
+    return { label: "Standby Line Open", color: "text-amber-400" };
+  }
+
   if (isMystery) {
     return { label: "Mystery Speaker", color: "text-purple-400" };
   }
@@ -96,10 +103,6 @@ function getEventStatus(event: Event): EventStatus {
   const maxPublic = Math.max(0, event.capacity - (event.reserved || 0));
   const isSoldOut =
     event.capacity > 0 && (event.tickets_sold || 0) >= maxPublic;
-
-  if (isSoldOut && event.standby_enabled) {
-    return { label: "Standby Line Open", color: "text-amber-400" };
-  }
 
   if (isSoldOut) {
     return { label: "Sold Out", color: "text-orange-400" };
@@ -194,10 +197,14 @@ export default function AdminEventsClient({
   initialEvents,
 }: AdminEventsClientProps) {
   const router = useRouter();
-  const { setSelectedEventId } = useEventContext();
+  const { setSelectedEventId, removeEvent } = useEventContext();
   const [events, setEvents] = useState<Event[]>(initialEvents);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+
+  useEffect(() => {
+    setEvents(initialEvents);
+  }, [initialEvents]);
 
   async function handleDelete(id: string) {
     if (!confirm("Are you sure you want to delete this event?")) return;
@@ -211,7 +218,9 @@ export default function AdminEventsClient({
 
       if (response.ok) {
         setEvents((prev) => prev.filter((e) => e.id !== id));
+        removeEvent(id);
         setSuccess("Event deleted successfully!");
+        router.refresh();
       } else {
         const data = await response.json();
         setError(data.error || "Failed to delete event");
@@ -227,11 +236,6 @@ export default function AdminEventsClient({
     router.push(`/events/edit/${event.id}`);
   }
 
-  function handleSelectAndViewSales(event: Event) {
-    setSelectedEventId(event.id);
-    router.push(`/sales/${event.id}`);
-  }
-
   return (
     <div className="px-4 sm:px-6 py-8">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
@@ -242,7 +246,7 @@ export default function AdminEventsClient({
           <p className="text-zinc-400">View and manage speaker events.</p>
         </div>
         <Link
-          href="/events/edit"
+          href="/events/edit?create=1"
           className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-emerald-500 to-teal-500 text-white rounded-xl font-medium hover:opacity-90 transition-opacity"
         >
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -290,7 +294,7 @@ export default function AdminEventsClient({
           <p className="text-zinc-400 text-lg mb-2">No events yet</p>
           <p className="text-zinc-600 text-sm mb-6">Create your first speaker event to get started.</p>
           <Link
-            href="/events/edit"
+            href="/events/edit?create=1"
             className="inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-emerald-500 to-teal-500 text-white rounded-xl font-medium hover:opacity-90 transition-opacity"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

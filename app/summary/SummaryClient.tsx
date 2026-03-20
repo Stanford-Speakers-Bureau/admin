@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useMemo, useCallback, useRef } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useEventContext } from "@/app/EventContext";
 import ReactECharts from "echarts-for-react";
 
@@ -53,6 +53,19 @@ function intervalLabel(ms: number): string {
   if (ms === HOUR) return "Hour";
   if (ms === DAY) return "Day";
   return `${ms / HOUR}h`;
+}
+
+function pickCheckinInterval(spanMs: number): number {
+  if (spanMs <= 90 * MIN) return 5 * MIN;
+  if (spanMs <= 4 * HOUR) return 10 * MIN;
+  if (spanMs <= 8 * HOUR) return 15 * MIN;
+  return HOUR;
+}
+
+function toEpoch(value: string | null | undefined): number | null {
+  if (!value) return null;
+  const parsed = new Date(value).getTime();
+  return Number.isNaN(parsed) ? null : parsed;
 }
 
 function bucketEpochs(
@@ -127,10 +140,6 @@ function SummaryContent({ eventId }: { eventId: string }) {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const [zoomRange, setZoomRange] = useState<[number, number] | null>(null);
-  const chartRef = useRef<ReactECharts>(null);
-  const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
-
   useEffect(() => {
     async function fetchData() {
       try {
@@ -164,63 +173,63 @@ function SummaryContent({ eventId }: { eventId: string }) {
     return data.ticketTimestamps.map((t) => new Date(t).getTime());
   }, [data]);
 
-  const allEpochs = useMemo(() => {
-    return [...ticketEpochs, ...scanEpochs].sort((a, b) => a - b);
-  }, [ticketEpochs, scanEpochs]);
+  const eventStartMs = useMemo(() => toEpoch(data?.startTime), [data?.startTime]);
+  const doorsOpenMs = useMemo(() => toEpoch(data?.doorsOpen), [data?.doorsOpen]);
 
-  const fullRange = useMemo<[number, number]>(() => {
-    if (allEpochs.length === 0) return [Date.now(), Date.now()];
-    return [allEpochs[0], Math.max(allEpochs[allEpochs.length - 1], allEpochs[0] + MIN)];
-  }, [allEpochs]);
-
-  const visibleRange = zoomRange ?? fullRange;
-  const visibleSpan = visibleRange[1] - visibleRange[0];
-
-  const { salesBucketed, checkinBucketed, seriesLabel } = useMemo(() => {
-    if (allEpochs.length === 0)
-      return {
-        salesBucketed: [] as [number, number, number][],
-        checkinBucketed: [] as [number, number, number][],
-        seriesLabel: "Minute",
-      };
-    const interval = pickInterval(Math.max(visibleSpan, MIN));
+  const salesChartData = useMemo(() => {
+    if (ticketEpochs.length === 0) return null;
+    const rangeStart = ticketEpochs[0];
+    const rangeEnd = Math.max(
+      eventStartMs ?? ticketEpochs[ticketEpochs.length - 1],
+      ticketEpochs[ticketEpochs.length - 1],
+      rangeStart + MIN,
+    );
+    const intervalMs = pickInterval(Math.max(rangeEnd - rangeStart, MIN));
     return {
-      salesBucketed: ticketEpochs.length > 0 ? bucketEpochs(ticketEpochs, interval, fullRange[0], fullRange[1]) : [],
-      checkinBucketed: scanEpochs.length > 0 ? bucketEpochs(scanEpochs, interval, fullRange[0], fullRange[1]) : [],
-      seriesLabel: intervalLabel(interval),
+      intervalMs,
+      intervalLabel: intervalLabel(intervalMs),
+      bucketed: bucketEpochs(ticketEpochs, intervalMs, rangeStart, rangeEnd),
     };
-  }, [allEpochs, ticketEpochs, scanEpochs, fullRange, visibleSpan]);
+  }, [eventStartMs, ticketEpochs]);
 
-  const onDataZoom = useCallback(() => {
-    clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => {
-      const instance = chartRef.current?.getEchartsInstance();
-      if (!instance) return;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const opt = instance.getOption() as any;
-      const dz = opt.dataZoom?.[0];
-      if (!dz) return;
-      if (dz.startValue != null && dz.endValue != null) {
-        setZoomRange([dz.startValue, dz.endValue]);
-      } else if (dz.start != null && dz.end != null) {
-        const span = fullRange[1] - fullRange[0];
-        setZoomRange([fullRange[0] + (dz.start / 100) * span, fullRange[0] + (dz.end / 100) * span]);
-      }
-    }, 120);
-  }, [fullRange]);
+  const checkinChartData = useMemo(() => {
+    if (scanEpochs.length === 0) return null;
+    const anchorStart = doorsOpenMs ?? eventStartMs ?? scanEpochs[0];
+    const rangeStart = Math.min(scanEpochs[0], anchorStart);
+    const rangeEnd = Math.max(
+      scanEpochs[scanEpochs.length - 1],
+      eventStartMs != null ? eventStartMs + 90 * MIN : anchorStart + 2 * HOUR,
+      rangeStart + MIN,
+    );
+    const intervalMs = pickCheckinInterval(Math.max(rangeEnd - rangeStart, MIN));
+    return {
+      intervalMs,
+      intervalLabel: intervalLabel(intervalMs),
+      bucketed: bucketEpochs(scanEpochs, intervalMs, rangeStart, rangeEnd),
+    };
+  }, [doorsOpenMs, eventStartMs, scanEpochs]);
 
-  const onEvents = useMemo(() => ({ datazoom: onDataZoom }), [onDataZoom]);
+  const salesChartOption = useMemo(() => {
+    if (!salesChartData) return null;
 
-  const chartOption = useMemo(() => {
-    if (salesBucketed.length === 0 && checkinBucketed.length === 0) return {};
-    const salesLine = salesBucketed.map(([ts, , cum]) => [ts, cum]);
-    const checkinLine = checkinBucketed.map(([ts, , cum]) => [ts, cum]);
-    const checkinBar = checkinBucketed.map(([ts, count]) => [ts, count]);
-    const zoomProps = zoomRange ? { startValue: zoomRange[0], endValue: zoomRange[1] } : {};
+    const salesBars = salesChartData.bucketed.map(([ts, count]) => [ts, count]);
+    const salesLine = salesChartData.bucketed.map(([ts, , cumulative]) => [ts, cumulative]);
+    const eventMarkers = eventStartMs != null
+      ? [{
+          xAxis: eventStartMs,
+          label: {
+            formatter: "Event Start",
+            color: "#e4e4e7",
+            fontSize: 10,
+            position: "insideEndTop",
+          },
+          lineStyle: { color: "#71717a", type: "dashed" as const },
+        }]
+      : [];
 
     return {
       backgroundColor: "transparent",
-      animation: false,
+      animation: true,
       tooltip: {
         trigger: "axis" as const,
         backgroundColor: "#18181b",
@@ -230,7 +239,7 @@ function SummaryContent({ eventId }: { eventId: string }) {
         axisPointer: { type: "cross" as const, crossStyle: { color: "#71717a" } },
       },
       legend: {
-        data: ["Tickets Sold", "Check-ins", `Per ${seriesLabel}`],
+        data: ["Cumulative Sold", `Per ${salesChartData.intervalLabel}`],
         textStyle: { color: "#a1a1aa", fontSize: 12 },
         top: 0,
         left: "center",
@@ -239,7 +248,7 @@ function SummaryContent({ eventId }: { eventId: string }) {
         itemWidth: 14,
         itemHeight: 8,
       },
-      grid: { top: 40, right: 56, bottom: 80, left: 56, containLabel: false },
+      grid: { top: 40, right: 56, bottom: 28, left: 56, containLabel: false },
       xAxis: {
         type: "time" as const,
         axisLabel: { color: "#71717a", fontSize: 10, hideOverlap: true },
@@ -249,64 +258,192 @@ function SummaryContent({ eventId }: { eventId: string }) {
       },
       yAxis: [
         {
-          type: "value" as const, name: "Cumulative",
+          type: "value" as const,
+          name: "Cumulative",
           nameTextStyle: { color: "#71717a", fontSize: 10, padding: [0, 0, 0, -24] },
           axisLabel: { color: "#71717a", fontSize: 10 },
-          axisLine: { show: false }, axisTick: { show: false },
+          axisLine: { show: false },
+          axisTick: { show: false },
           splitLine: { lineStyle: { color: "#27272a", type: "dashed" as const } },
           minInterval: 1,
         },
         {
-          type: "value" as const, name: `Per ${seriesLabel}`,
+          type: "value" as const,
+          name: `Per ${salesChartData.intervalLabel}`,
           nameTextStyle: { color: "#71717a", fontSize: 10, padding: [0, -24, 0, 0] },
           axisLabel: { color: "#71717a", fontSize: 10 },
-          axisLine: { show: false }, axisTick: { show: false },
+          axisLine: { show: false },
+          axisTick: { show: false },
           splitLine: { show: false },
           minInterval: 1,
         },
       ],
-      dataZoom: [
-        { type: "inside" as const, xAxisIndex: 0, filterMode: "none" as const, zoomOnMouseWheel: true, moveOnMouseMove: true, ...zoomProps },
+      series: [
         {
-          type: "slider" as const, xAxisIndex: 0, filterMode: "none" as const, height: 24, bottom: 8,
-          borderColor: "#3f3f46", backgroundColor: "#18181b", fillerColor: "rgba(59,130,246,0.15)",
-          handleStyle: { color: "#3b82f6", borderColor: "#3b82f6" },
-          dataBackground: { lineStyle: { color: "#3f3f46" }, areaStyle: { color: "#27272a" } },
-          selectedDataBackground: { lineStyle: { color: "#3b82f6" }, areaStyle: { color: "rgba(59,130,246,0.15)" } },
-          textStyle: { color: "#71717a", fontSize: 10 }, moveHandleStyle: { color: "#3f3f46" }, ...zoomProps,
+          name: `Per ${salesChartData.intervalLabel}`,
+          type: "bar" as const,
+          yAxisIndex: 1,
+          data: salesBars,
+          itemStyle: { color: "rgba(59,130,246,0.35)", borderRadius: [3, 3, 0, 0] },
+          emphasis: { itemStyle: { color: "#60a5fa" } },
+          barMaxWidth: 28,
+          z: 1,
+        },
+        {
+          name: "Cumulative Sold",
+          type: "line" as const,
+          yAxisIndex: 0,
+          data: salesLine,
+          smooth: true,
+          symbol: "none",
+          lineStyle: { width: 2, color: "#3b82f6" },
+          areaStyle: {
+            color: {
+              type: "linear" as const,
+              x: 0,
+              y: 0,
+              x2: 0,
+              y2: 1,
+              colorStops: [
+                { offset: 0, color: "rgba(59,130,246,0.15)" },
+                { offset: 1, color: "rgba(59,130,246,0)" },
+              ],
+            },
+          },
+          markLine: eventMarkers.length > 0 ? {
+            symbol: "none",
+            data: eventMarkers,
+          } : undefined,
+          z: 2,
+        },
+      ],
+    };
+  }, [eventStartMs, salesChartData]);
+
+  const checkinChartOption = useMemo(() => {
+    if (!checkinChartData) return null;
+
+    const checkinBars = checkinChartData.bucketed.map(([ts, count]) => [ts, count]);
+    const checkinLine = checkinChartData.bucketed.map(([ts, , cumulative]) => [ts, cumulative]);
+    const markerLines = [
+      doorsOpenMs != null ? {
+        xAxis: doorsOpenMs,
+        label: {
+          formatter: "Doors",
+          color: "#e4e4e7",
+          fontSize: 10,
+          position: "insideEndTop",
+        },
+        lineStyle: { color: "#f59e0b", type: "dashed" as const },
+      } : null,
+      eventStartMs != null ? {
+        xAxis: eventStartMs,
+        label: {
+          formatter: "Start",
+          color: "#e4e4e7",
+          fontSize: 10,
+          position: "insideEndTop",
+        },
+        lineStyle: { color: "#71717a", type: "dashed" as const },
+      } : null,
+    ].filter((value): value is {
+      xAxis: number;
+      label: { formatter: string; color: string; fontSize: number; position: string };
+      lineStyle: { color: string; type: "dashed" };
+    } => value !== null);
+
+    return {
+      backgroundColor: "transparent",
+      animation: true,
+      tooltip: {
+        trigger: "axis" as const,
+        backgroundColor: "#18181b",
+        borderColor: "#3f3f46",
+        borderWidth: 1,
+        textStyle: { color: "#fafafa", fontSize: 12 },
+        axisPointer: { type: "cross" as const, crossStyle: { color: "#71717a" } },
+      },
+      legend: {
+        data: ["Cumulative Check-ins", `Per ${checkinChartData.intervalLabel}`],
+        textStyle: { color: "#a1a1aa", fontSize: 12 },
+        top: 0,
+        left: "center",
+        itemGap: 20,
+        icon: "roundRect",
+        itemWidth: 14,
+        itemHeight: 8,
+      },
+      grid: { top: 40, right: 56, bottom: 28, left: 56, containLabel: false },
+      xAxis: {
+        type: "time" as const,
+        axisLabel: { color: "#71717a", fontSize: 10, hideOverlap: true },
+        axisLine: { show: false },
+        axisTick: { show: false },
+        splitLine: { show: false },
+      },
+      yAxis: [
+        {
+          type: "value" as const,
+          name: "Cumulative",
+          nameTextStyle: { color: "#71717a", fontSize: 10, padding: [0, 0, 0, -24] },
+          axisLabel: { color: "#71717a", fontSize: 10 },
+          axisLine: { show: false },
+          axisTick: { show: false },
+          splitLine: { lineStyle: { color: "#27272a", type: "dashed" as const } },
+          minInterval: 1,
+        },
+        {
+          type: "value" as const,
+          name: `Per ${checkinChartData.intervalLabel}`,
+          nameTextStyle: { color: "#71717a", fontSize: 10, padding: [0, -24, 0, 0] },
+          axisLabel: { color: "#71717a", fontSize: 10 },
+          axisLine: { show: false },
+          axisTick: { show: false },
+          splitLine: { show: false },
+          minInterval: 1,
         },
       ],
       series: [
         {
-          name: `Per ${seriesLabel}`, type: "bar" as const, yAxisIndex: 1, data: checkinBar,
-          itemStyle: { color: "rgba(16,185,129,0.4)", borderRadius: [2, 2, 0, 0] },
-          emphasis: { itemStyle: { color: "#10b981" } }, barMaxWidth: 28, large: true, z: 1,
+          name: `Per ${checkinChartData.intervalLabel}`,
+          type: "bar" as const,
+          yAxisIndex: 1,
+          data: checkinBars,
+          itemStyle: { color: "rgba(16,185,129,0.35)", borderRadius: [3, 3, 0, 0] },
+          emphasis: { itemStyle: { color: "#34d399" } },
+          barMaxWidth: 28,
+          z: 1,
         },
         {
-          name: "Tickets Sold", type: "line" as const, yAxisIndex: 0, data: salesLine,
-          smooth: true, symbol: "none", lineStyle: { width: 2, color: "#3b82f6" },
+          name: "Cumulative Check-ins",
+          type: "line" as const,
+          yAxisIndex: 0,
+          data: checkinLine,
+          smooth: true,
+          symbol: "none",
+          lineStyle: { width: 2, color: "#10b981" },
           areaStyle: {
             color: {
-              type: "linear" as const, x: 0, y: 0, x2: 0, y2: 1,
-              colorStops: [{ offset: 0, color: "rgba(59,130,246,0.15)" }, { offset: 1, color: "rgba(59,130,246,0)" }],
+              type: "linear" as const,
+              x: 0,
+              y: 0,
+              x2: 0,
+              y2: 1,
+              colorStops: [
+                { offset: 0, color: "rgba(16,185,129,0.15)" },
+                { offset: 1, color: "rgba(16,185,129,0)" },
+              ],
             },
           },
+          markLine: markerLines.length > 0 ? {
+            symbol: "none",
+            data: markerLines,
+          } : undefined,
           z: 2,
-        },
-        {
-          name: "Check-ins", type: "line" as const, yAxisIndex: 0, data: checkinLine,
-          smooth: true, symbol: "none", lineStyle: { width: 2, color: "#10b981" },
-          areaStyle: {
-            color: {
-              type: "linear" as const, x: 0, y: 0, x2: 0, y2: 1,
-              colorStops: [{ offset: 0, color: "rgba(16,185,129,0.15)" }, { offset: 1, color: "rgba(16,185,129,0)" }],
-            },
-          },
-          z: 3,
         },
       ],
     };
-  }, [salesBucketed, checkinBucketed, seriesLabel, zoomRange]);
+  }, [checkinChartData, doorsOpenMs, eventStartMs]);
 
   // ── Loading / Error states ──
 
@@ -644,21 +781,36 @@ function SummaryContent({ eventId }: { eventId: string }) {
         </div>
       )}
 
-      {/* ── Sales vs Check-ins chart ── */}
-      {(salesBucketed.length > 0 || checkinBucketed.length > 0) && (
-        <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
-          <h3 className="text-sm font-semibold text-zinc-300 mb-1">Sales vs Check-ins</h3>
-          <p className="text-[10px] text-zinc-600 mb-1">
-            Scroll to zoom &middot; Drag to pan &middot; Click legend to toggle
-          </p>
-          <ReactECharts
-            ref={chartRef}
-            option={chartOption}
-            style={{ height: 400 }}
-            opts={{ renderer: "canvas" }}
-            onEvents={onEvents}
-            notMerge
-          />
+      {/* ── Booking and Check-in timelines ── */}
+      {(salesChartOption || checkinChartOption) && (
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
+          {salesChartOption && (
+            <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
+              <h3 className="text-sm font-semibold text-zinc-300 mb-1">Ticket Sales Timeline</h3>
+              <p className="text-[10px] text-zinc-600 mb-3">
+                Booking pace over the full sales window, separate from event-day arrivals.
+              </p>
+              <ReactECharts
+                option={salesChartOption}
+                style={{ height: 320 }}
+                opts={{ renderer: "canvas" }}
+              />
+            </div>
+          )}
+
+          {checkinChartOption && (
+            <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
+              <h3 className="text-sm font-semibold text-zinc-300 mb-1">Check-in Timeline</h3>
+              <p className="text-[10px] text-zinc-600 mb-3">
+                Event-day scan activity around doors open and start time.
+              </p>
+              <ReactECharts
+                option={checkinChartOption}
+                style={{ height: 320 }}
+                opts={{ renderer: "canvas" }}
+              />
+            </div>
+          )}
         </div>
       )}
     </div>

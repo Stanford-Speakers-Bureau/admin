@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { PACIFIC_TIMEZONE } from "@/app/lib/constants";
 import { useEventContext } from "@/app/EventContext";
 
@@ -18,6 +18,22 @@ type StandbyTicket = {
   email: string;
   name: string | null;
   created_at: string;
+};
+
+type WaitlistResponse = {
+  event?: {
+    id: string;
+    name: string | null;
+    capacity: number;
+    reserved: number | null;
+    standbyMode: boolean;
+  };
+  waitlist?: WaitlistEntry[];
+};
+
+type StandbyTicketsResponse = {
+  tickets?: StandbyTicket[];
+  total?: number;
 };
 
 function formatDisplayDate(dateString: string | null): string {
@@ -55,7 +71,7 @@ export default function WaitlistViewerClient() {
   const selectedEvent = events.find((e) => e.id === selectedEventId);
   const isStandbyMode = selectedEvent?.standbyEnabled ?? false;
 
-  async function fetchWaitlist() {
+  const fetchWaitlist = useCallback(async () => {
     if (!selectedEventId) {
       setWaitlist([]);
       setStandbyTickets([]);
@@ -89,7 +105,7 @@ export default function WaitlistViewerClient() {
         throw new Error("Invalid response format from server");
       }
 
-      const waitlistData = await waitlistRes.json();
+      const waitlistData = (await waitlistRes.json()) as WaitlistResponse;
       setWaitlist(waitlistData.waitlist || []);
 
       // Check ticket availability using event capacity from waitlist response
@@ -98,28 +114,20 @@ export default function WaitlistViewerClient() {
         const maxPublic = Math.max(0, (eventData.capacity || 0) - (eventData.reserved || 0));
         // We need total ticket count — use standby response which has total
         if (standbyRes.ok) {
-          const standbyData = await standbyRes.json();
-          const standbyList: StandbyTicket[] = (standbyData.tickets || []).map((t: any) => ({
-            id: t.id,
-            email: t.email,
-            name: t.name,
-            created_at: t.created_at,
-          }));
+          const standbyData = (await standbyRes.json()) as StandbyTicketsResponse;
+          const standbyList = standbyData.tickets || [];
           setStandbyTickets(standbyList);
 
           // total from the standby response is the total ticket count for the event (unfiltered)
           const totalTickets = standbyData.total ?? 0;
-          setTicketsStillAvailable(totalTickets < maxPublic);
+          setTicketsStillAvailable(
+            !eventData.standbyMode && totalTickets < maxPublic,
+          );
         }
       } else {
         if (standbyRes.ok) {
-          const standbyData = await standbyRes.json();
-          setStandbyTickets((standbyData.tickets || []).map((t: any) => ({
-            id: t.id,
-            email: t.email,
-            name: t.name,
-            created_at: t.created_at,
-          })));
+          const standbyData = (await standbyRes.json()) as StandbyTicketsResponse;
+          setStandbyTickets(standbyData.tickets || []);
         }
         setTicketsStillAvailable(false);
       }
@@ -129,11 +137,11 @@ export default function WaitlistViewerClient() {
     } finally {
       setIsLoading(false);
     }
-  }
+  }, [selectedEventId]);
 
   useEffect(() => {
     fetchWaitlist();
-  }, [selectedEventId]);
+  }, [fetchWaitlist]);
 
   function handleRefresh() {
     fetchWaitlist();

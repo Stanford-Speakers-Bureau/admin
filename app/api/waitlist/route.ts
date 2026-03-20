@@ -3,7 +3,7 @@ import { verifyAdminRequest } from "@/app/lib/supabase";
 import { isValidUUID } from "@/app/lib/validation";
 import { sendStandbyLineEmail } from "@/app/lib/email";
 import { PACIFIC_TIMEZONE } from "@/app/lib/constants";
-import { db, eq, inArray, waitlist, events, tickets } from "@ssb/db";
+import { db, eq, and, inArray, waitlist, events, tickets } from "@ssb/db";
 
 export async function GET(req: Request) {
   try {
@@ -245,11 +245,26 @@ export async function POST(req: Request) {
     // Issue a STANDBY ticket to each person and send the email
     let successCount = 0;
     let errorCount = 0;
+    let skippedExistingCount = 0;
     const errors: string[] = [];
     const issuedStandbyIds: string[] = [];
 
     for (const entry of waitlistEntries) {
       try {
+        const existingTicket = await db.query.tickets.findFirst({
+          where: and(
+            eq(tickets.eventId, eventId),
+            eq(tickets.email, entry.email),
+          ),
+          columns: { id: true },
+        });
+
+        if (existingTicket) {
+          issuedStandbyIds.push(entry.id);
+          skippedExistingCount++;
+          continue;
+        }
+
         // Create STANDBY ticket
         const [inserted] = await db.insert(tickets).values({
           eventId,
@@ -292,6 +307,7 @@ export async function POST(req: Request) {
         totalEntries: waitlistEntries.length,
         emailsSent: successCount,
         errors: errorCount,
+        skippedExistingTickets: skippedExistingCount,
         errorDetails: errors.length > 0 ? errors : undefined,
       },
       { status: 200 },
