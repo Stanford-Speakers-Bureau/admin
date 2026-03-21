@@ -397,7 +397,7 @@ export async function PATCH(req: Request) {
 
     if (typeof live !== "boolean") {
       return NextResponse.json(
-        { error: "Either 'live', 'standbyEnabled', or 'referrals' boolean is required" },
+        { error: "Either 'live' or 'standbyEnabled' boolean is required" },
         { status: 400 },
       );
     }
