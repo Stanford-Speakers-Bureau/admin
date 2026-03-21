@@ -31,17 +31,12 @@ const EVENT_SCOPED_PATHS = [
   "/notify",
 ];
 
-function getEventScopedHref(baseHref: string, eventId: string): string {
-  return eventId ? `${baseHref}/${eventId}` : baseHref;
-}
-
 function isEventScoped(href: string): boolean {
   return EVENT_SCOPED_PATHS.includes(href);
 }
 
 export default function AdminLayoutClient({
   children,
-  userEmail,
   navItems,
   emailDisabled,
   hasLiveEvent,

@@ -12,7 +12,7 @@ async function getAllEvents(): Promise<Event[]> {
     if (!auth.authorized) return [];
 
     const eventList = await db.query.events.findMany({
-      orderBy: (t, { desc }) => [desc(t.startTimeDate)],
+      orderBy: (table, operators) => [operators.desc(table.startTimeDate)],
     });
 
     const eventsWithImages = await Promise.all(

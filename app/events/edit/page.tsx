@@ -1,7 +1,7 @@
-import EditEventClient from "./EditEventClient";
 import { getSignedImageUrl, verifyAdminRequest, serializeEvent } from "@/app/lib/supabase";
-import { db, eq, events } from "@ssb/db";
+import { db } from "@ssb/db";
 import { Event } from "../AdminEventsClient";
+import EditEventClient from "./EditEventClient";
 
 export const dynamic = "force-dynamic";
 
@@ -11,7 +11,7 @@ async function getAllEvents(): Promise<Event[]> {
     if (!auth.authorized) return [];
 
     const eventList = await db.query.events.findMany({
-      orderBy: (t, { desc }) => [desc(t.startTimeDate)],
+      orderBy: (table, operators) => [operators.desc(table.startTimeDate)],
     });
 
     const eventsWithImages = await Promise.all(

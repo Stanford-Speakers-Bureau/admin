@@ -2,11 +2,14 @@ import { SeedPostgres } from "@snaplet/seed/adapter-postgres";
 import { defineConfig } from "@snaplet/seed/config";
 import postgres from "postgres";
 
+const seedDatabaseUrl =
+  process.env.SUPABASE_DB_URL ||
+  process.env.DATABASE_URL ||
+  "postgresql://postgres:postgres@127.0.0.1:54322/postgres";
+
 export default defineConfig({
   adapter: () => {
-    const client = postgres(
-      "postgresql://postgres:postgres@127.0.0.1:54322/postgres",
-    );
+    const client = postgres(seedDatabaseUrl);
     return new SeedPostgres(client);
   },
   select: [
