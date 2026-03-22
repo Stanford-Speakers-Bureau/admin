@@ -3,22 +3,30 @@
 import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useEventContext } from "@/app/EventContext";
+import {
+  getAnalyticsCardGridStyle,
+  getDefaultTimelineZoomRange,
+} from "@/app/lib/utils";
 import ReactECharts from "echarts-for-react";
 
 // ── Types ────────────────────────────────────────────────────────────────
 
+type TypeKey = "STANDARD" | "VIP" | "EXTERNAL" | "STANDBY";
+
 type TypeBreakdown = { total: number; scanned: number };
 
-type RecentScan = {
+type ScanEvent = {
   name: string | null;
   type: string | null;
   scanTime: string;
   scannedBy: string | null;
+  scannerKey: string;
 };
 
 type ScannerEntry = { name: string; email: string; count: number };
 
 type CheckInResponse = {
+  scanEvents: ScanEvent[];
   scanTimestamps: string[];
   totalTickets: number;
   scannedCount: number;
@@ -28,11 +36,31 @@ type CheckInResponse = {
   startTime: string | null;
   standbyEnabled: boolean;
   waitlistCount: number;
-  byType: Record<"STANDARD" | "VIP" | "EXTERNAL" | "STANDBY", TypeBreakdown>;
-  recentScans: RecentScan[];
+  byType: Record<TypeKey, TypeBreakdown>;
   standbyTimestamps: string[];
   scannerLeaderboard: ScannerEntry[];
   peakScansPerMin: number;
+};
+
+type ParsedScanEvent = ScanEvent & {
+  epoch: number;
+  scannerName: string;
+  typeKey: TypeKey;
+};
+
+type TimelineMode = "scanner" | "type";
+
+type BucketedTimelinePoint = {
+  timestamp: number;
+  total: number;
+  cumulative: number;
+  groups: Record<string, number>;
+};
+
+type TimelineSeries = {
+  key: string;
+  label: string;
+  color: string;
 };
 
 // ── Helpers ──────────────────────────────────────────────────────────────
@@ -57,32 +85,46 @@ function intervalLabel(ms: number): string {
   return `${ms / HOUR}h`;
 }
 
-function bucketEpochs(
-  epochs: number[],
+function bucketGroupedEvents(
+  events: ParsedScanEvent[],
   intervalMs: number,
   rangeStart: number,
   rangeEnd: number,
-): [number, number, number][] {
+  getGroupKey: (event: ParsedScanEvent) => string,
+): BucketedTimelinePoint[] {
   const alignedStart = Math.floor(rangeStart / intervalMs) * intervalMs;
-  const result: [number, number, number][] = [];
+  const result: BucketedTimelinePoint[] = [];
   let cumulative = 0;
   let idx = 0;
-  while (idx < epochs.length && epochs[idx] < alignedStart) {
+
+  while (idx < events.length && events[idx].epoch < alignedStart) {
     cumulative++;
     idx++;
   }
+
   let bucketStart = alignedStart;
   while (bucketStart <= rangeEnd) {
     const bucketEnd = bucketStart + intervalMs;
-    let count = 0;
-    while (idx < epochs.length && epochs[idx] < bucketEnd) {
-      count++;
+    const groups: Record<string, number> = {};
+    let total = 0;
+
+    while (idx < events.length && events[idx].epoch < bucketEnd) {
+      const groupKey = getGroupKey(events[idx]);
+      groups[groupKey] = (groups[groupKey] ?? 0) + 1;
+      total++;
       idx++;
     }
-    cumulative += count;
-    result.push([bucketStart, count, cumulative]);
+
+    cumulative += total;
+    result.push({
+      timestamp: bucketStart,
+      total,
+      cumulative,
+      groups,
+    });
     bucketStart = bucketEnd;
   }
+
   return result;
 }
 
@@ -136,7 +178,29 @@ const TYPE_BADGE: Record<string, string> = {
   STANDBY: "bg-amber-500/20 text-amber-300",
 };
 
-const MEDAL_COLORS = ["text-amber-400", "text-zinc-300", "text-amber-600"];
+const SCANNER_COLORS = [
+  "#f59e0b",
+  "#3b82f6",
+  "#10b981",
+  "#8b5cf6",
+  "#ec4899",
+  "#06b6d4",
+  "#f97316",
+  "#84cc16",
+  "#eab308",
+  "#6366f1",
+];
+
+const EMPTY_SCANNER_LEADERBOARD: ScannerEntry[] = [];
+const RECENT_SCAN_PAGE_SIZE = 25;
+
+function normalizeTypeKey(type: string | null): TypeKey {
+  const normalized = type?.toUpperCase() ?? "STANDARD";
+  if (normalized === "VIP") return "VIP";
+  if (normalized === "EXTERNAL") return "EXTERNAL";
+  if (normalized === "STANDBY") return "STANDBY";
+  return "STANDARD";
+}
 
 // ── Main Component ───────────────────────────────────────────────────────
 
@@ -150,7 +214,9 @@ function CheckInContent({ eventId }: { eventId: string }) {
   const [isPolling, setIsPolling] = useState(false);
   const [isTogglingLive, setIsTogglingLive] = useState(false);
 
+  const [timelineMode, setTimelineMode] = useState<TimelineMode>("scanner");
   const [zoomRange, setZoomRange] = useState<[number, number] | null>(null);
+  const [visibleRecentCount, setVisibleRecentCount] = useState(RECENT_SCAN_PAGE_SIZE);
   const chartRef = useRef<ReactECharts>(null);
   const standbyChartRef = useRef<ReactECharts>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -158,6 +224,8 @@ function CheckInContent({ eventId }: { eventId: string }) {
 
   const currentEvent = events.find((e) => e.id === eventId);
   const isLive = currentEvent?.live ?? false;
+  const scannerLeaderboard = data?.scannerLeaderboard ?? EMPTY_SCANNER_LEADERBOARD;
+  const scannedCount = data?.scannedCount ?? 0;
 
   const fetchData = useCallback(
     async (showLoading = false) => {
@@ -215,6 +283,11 @@ function CheckInContent({ eventId }: { eventId: string }) {
     }
   }, [isLive, fetchData]);
 
+  useEffect(() => {
+    setZoomRange(null);
+    setVisibleRecentCount(RECENT_SCAN_PAGE_SIZE);
+  }, [eventId]);
+
   async function handleToggleLive() {
     if (!eventId) return;
     setIsTogglingLive(true);
@@ -247,28 +320,136 @@ function CheckInContent({ eventId }: { eventId: string }) {
 
   // ── Chart data ──
 
-  const scanEpochs = useMemo(() => {
+  const parsedScanEvents = useMemo(() => {
     if (!data) return [];
-    return data.scanTimestamps.map((t) => new Date(t).getTime());
+    return data.scanEvents
+      .map((scan) => ({
+        ...scan,
+        epoch: new Date(scan.scanTime).getTime(),
+        scannerName: scan.scannedBy || "Unknown",
+        typeKey: normalizeTypeKey(scan.type),
+      }))
+      .sort((a, b) => a.epoch - b.epoch);
   }, [data]);
+
+  const scanEpochs = useMemo(
+    () => parsedScanEvents.map((scan) => scan.epoch),
+    [parsedScanEvents],
+  );
+
+  const recentScans = useMemo(
+    () => [...parsedScanEvents].sort((a, b) => b.epoch - a.epoch),
+    [parsedScanEvents],
+  );
+
+  useEffect(() => {
+    setVisibleRecentCount((current) => {
+      if (recentScans.length === 0) return RECENT_SCAN_PAGE_SIZE;
+      return Math.min(
+        Math.max(current, RECENT_SCAN_PAGE_SIZE),
+        recentScans.length,
+      );
+    });
+  }, [recentScans.length]);
+
+  const visibleRecentScans = useMemo(
+    () => recentScans.slice(0, visibleRecentCount),
+    [recentScans, visibleRecentCount],
+  );
+
+  const scannerTimelineSeries = useMemo<TimelineSeries[]>(() => {
+    const orderedSeries = scannerLeaderboard.map((scanner, index) => ({
+      key: scanner.email || scanner.name || "unknown",
+      label: scanner.name || "Unknown",
+      color: SCANNER_COLORS[index % SCANNER_COLORS.length],
+    }));
+
+    const seenKeys = new Set(orderedSeries.map((series) => series.key));
+    for (const scan of parsedScanEvents) {
+      if (seenKeys.has(scan.scannerKey)) continue;
+      orderedSeries.push({
+        key: scan.scannerKey,
+        label: scan.scannerName,
+        color: SCANNER_COLORS[orderedSeries.length % SCANNER_COLORS.length],
+      });
+      seenKeys.add(scan.scannerKey);
+    }
+
+    return orderedSeries;
+  }, [parsedScanEvents, scannerLeaderboard]);
+
+  const typeTimelineSeries = useMemo<TimelineSeries[]>(
+    () =>
+      TYPE_CONFIG.filter(({ key }) => data?.byType[key].scanned)
+        .map(({ key, label, color }) => ({ key, label, color })),
+    [data],
+  );
+
+  const doorsOpenMs = useMemo(
+    () => (data?.doorsOpen ? new Date(data.doorsOpen).getTime() : null),
+    [data?.doorsOpen],
+  );
+
+  const eventStartMs = useMemo(
+    () => (data?.startTime ? new Date(data.startTime).getTime() : null),
+    [data?.startTime],
+  );
 
   const fullRange = useMemo<[number, number]>(() => {
     if (scanEpochs.length === 0) return [Date.now(), Date.now()];
-    return [scanEpochs[0], Math.max(scanEpochs[scanEpochs.length - 1], scanEpochs[0] + MIN)];
-  }, [scanEpochs]);
+    const anchorStart = doorsOpenMs ?? eventStartMs ?? scanEpochs[0];
+    const rangeStart = Math.min(scanEpochs[0], anchorStart - 15 * MIN);
+    const rangeEnd = Math.max(
+      scanEpochs[scanEpochs.length - 1],
+      eventStartMs != null ? eventStartMs + 90 * MIN : anchorStart + 2 * HOUR,
+      rangeStart + MIN,
+    );
+    return [
+      rangeStart,
+      rangeEnd,
+    ];
+  }, [doorsOpenMs, eventStartMs, scanEpochs]);
 
-  const visibleRange = zoomRange ?? fullRange;
+  const defaultZoomRange = useMemo<[number, number] | null>(() => {
+    if (scanEpochs.length === 0) return null;
+    return getDefaultTimelineZoomRange({
+      rangeStart: fullRange[0],
+      rangeEnd: fullRange[1],
+      doorsOpenMs,
+      eventStartMs,
+      paddingMs: 0,
+    });
+  }, [doorsOpenMs, eventStartMs, fullRange, scanEpochs.length]);
+
+  const visibleRange = zoomRange ?? defaultZoomRange ?? fullRange;
   const visibleSpan = visibleRange[1] - visibleRange[0];
 
-  const { bucketedData, seriesLabel } = useMemo(() => {
-    if (scanEpochs.length === 0)
-      return { bucketedData: [] as [number, number, number][], seriesLabel: "Minute" };
+  const { bucketedData, intervalMs, seriesLabel } = useMemo(() => {
+    if (parsedScanEvents.length === 0) {
+      return {
+        bucketedData: [] as BucketedTimelinePoint[],
+        intervalMs: MIN,
+        seriesLabel: "Minute",
+      };
+    }
+
     const interval = pickInterval(Math.max(visibleSpan, MIN));
     return {
-      bucketedData: bucketEpochs(scanEpochs, interval, fullRange[0], fullRange[1]),
+      bucketedData: bucketGroupedEvents(
+        parsedScanEvents,
+        interval,
+        fullRange[0],
+        fullRange[1],
+        (scan) => (timelineMode === "scanner" ? scan.scannerKey : scan.typeKey),
+      ),
+      intervalMs: interval,
       seriesLabel: intervalLabel(interval),
     };
-  }, [scanEpochs, fullRange, visibleSpan]);
+  }, [parsedScanEvents, fullRange, timelineMode, visibleSpan]);
+
+  const timelineSeries = timelineMode === "scanner"
+    ? scannerTimelineSeries
+    : typeTimelineSeries;
 
   // Scan velocity: scans in last 5 minutes
   const scanVelocity = useMemo(() => {
@@ -294,57 +475,149 @@ function CheckInContent({ eventId }: { eventId: string }) {
     return Math.ceil(remaining / scanVelocity);
   }, [data, scanVelocity]);
 
-  // Live scan rate chart: per-minute counts for last 30 minutes
-  const scanRateChartOption = useMemo(() => {
-    if (scanEpochs.length === 0) return null;
-    const now = Date.now();
-    const windowStart = now - 30 * MIN;
-    const recentEpochs = scanEpochs.filter((e) => e >= windowStart);
-    if (recentEpochs.length === 0) return null;
+  const averageScanRate = useMemo(() => {
+    if (scannedCount === 0 || scanEpochs.length === 0) return 0;
 
-    const barData: [number, number][] = [];
-    for (let t = Math.floor(windowStart / MIN) * MIN; t <= now; t += MIN) {
-      const count = recentEpochs.filter((e) => e >= t && e < t + MIN).length;
-      barData.push([t, count]);
-    }
+    const rangeStart = doorsOpenMs ?? scanEpochs[0];
+    const rangeEnd = Math.max(
+      eventStartMs != null ? Math.min(Date.now(), eventStartMs) : Date.now(),
+      rangeStart + MIN,
+    );
+    const elapsedMinutes = Math.max((rangeEnd - rangeStart) / MIN, 1);
+    const scansInWindow = scanEpochs.filter(
+      (epoch) => epoch >= rangeStart && epoch <= rangeEnd,
+    ).length;
+
+    return scansInWindow / elapsedMinutes;
+  }, [doorsOpenMs, eventStartMs, scanEpochs, scannedCount]);
+
+  const visibleAverageScanRate = useMemo(() => {
+    if (scanEpochs.length === 0) return 0;
+    const scansInWindow = scanEpochs.filter(
+      (epoch) => epoch >= visibleRange[0] && epoch <= visibleRange[1],
+    ).length;
+    const elapsedMinutes = Math.max((visibleRange[1] - visibleRange[0]) / MIN, 1);
+
+    return scansInWindow / elapsedMinutes;
+  }, [scanEpochs, visibleRange]);
+
+  const visibleAverageBucketRate = useMemo(
+    () => visibleAverageScanRate * (intervalMs / MIN),
+    [intervalMs, visibleAverageScanRate],
+  );
+
+  const scannerShareChartOption = useMemo(() => {
+    if (scannerLeaderboard.length === 0) return null;
 
     return {
       backgroundColor: "transparent",
       animation: false,
       tooltip: {
-        trigger: "axis" as const,
+        trigger: "item" as const,
         backgroundColor: "#18181b",
         borderColor: "#3f3f46",
         borderWidth: 1,
         textStyle: { color: "#fafafa", fontSize: 12 },
+        formatter: (params: {
+          name: string;
+          value: number;
+          percent: number;
+        }) =>
+          `<b>${params.name}</b><br/>${params.value} scans (${params.percent}%)`,
       },
-      grid: { top: 10, right: 10, bottom: 30, left: 40, containLabel: false },
-      xAxis: {
-        type: "time" as const,
-        axisLabel: { color: "#71717a", fontSize: 10, hideOverlap: true },
-        axisLine: { show: false },
-        axisTick: { show: false },
-        splitLine: { show: false },
+      legend: {
+        type: "scroll" as const,
+        orient: "vertical" as const,
+        top: "middle",
+        right: 0,
+        textStyle: { color: "#a1a1aa", fontSize: 11 },
+        pageIconColor: "#10b981",
+        pageTextStyle: { color: "#71717a" },
       },
-      yAxis: {
-        type: "value" as const,
-        axisLabel: { color: "#71717a", fontSize: 10 },
-        axisLine: { show: false },
-        axisTick: { show: false },
-        splitLine: { lineStyle: { color: "#27272a", type: "dashed" as const } },
-        minInterval: 1,
-      },
+      graphic: [
+        {
+          type: "group",
+          left: "28%",
+          top: "50%",
+          z: 10,
+          children: [
+            {
+              type: "text",
+              x: 0,
+              y: -12,
+              style: {
+                text: `${scannedCount}`,
+                textAlign: "center",
+                textVerticalAlign: "middle",
+                fill: "#fafafa",
+                fontSize: 24,
+                fontWeight: 700,
+              },
+            },
+            {
+              type: "text",
+              x: 0,
+              y: 18,
+              style: {
+                text: "scans",
+                textAlign: "center",
+                textVerticalAlign: "middle",
+                fill: "#d4d4d8",
+                fontSize: 16,
+                fontWeight: 600,
+              },
+            },
+          ],
+        },
+      ],
       series: [
         {
-          type: "bar" as const,
-          data: barData,
-          itemStyle: { color: "rgba(16,185,129,0.6)", borderRadius: [2, 2, 0, 0] },
-          emphasis: { itemStyle: { color: "#10b981" } },
-          barMaxWidth: 12,
+          name: "Scanner share",
+          type: "pie" as const,
+          radius: ["48%", "74%"],
+          center: ["28%", "50%"],
+          avoidLabelOverlap: true,
+          itemStyle: {
+            borderColor: "#09090b",
+            borderWidth: 2,
+          },
+          label: {
+            show: true,
+            color: "#d4d4d8",
+            fontSize: 11,
+            formatter: (params: { percent: number }) =>
+              params.percent >= 8 ? `${params.percent}%` : "",
+          },
+          labelLine: { show: false },
+          emphasis: {
+            scale: true,
+            scaleSize: 6,
+          },
+          data: scannerLeaderboard.map((scanner, index) => ({
+            value: scanner.count,
+            name: scanner.name,
+            itemStyle: {
+              color: SCANNER_COLORS[index % SCANNER_COLORS.length],
+            },
+          })),
         },
       ],
     };
-  }, [scanEpochs]);
+  }, [scannedCount, scannerLeaderboard]);
+
+  const handleRecentScroll = useCallback(
+    (event: React.UIEvent<HTMLDivElement>) => {
+      if (visibleRecentCount >= recentScans.length) return;
+
+      const { scrollTop, scrollHeight, clientHeight } = event.currentTarget;
+      if (scrollTop + clientHeight < scrollHeight - 48) return;
+
+      setVisibleRecentCount((current) =>
+        Math.min(current + RECENT_SCAN_PAGE_SIZE, recentScans.length),
+      );
+    },
+    [recentScans.length, visibleRecentCount],
+  );
 
   const onDataZoom = useCallback(() => {
     clearTimeout(debounceRef.current);
@@ -372,9 +645,53 @@ function CheckInContent({ eventId }: { eventId: string }) {
   // Main check-in chart
   const chartOption = useMemo(() => {
     if (bucketedData.length === 0) return {};
-    const barData = bucketedData.map(([ts, count]) => [ts, count]);
-    const lineData = bucketedData.map(([ts, , cum]) => [ts, cum]);
-    const zoomProps = zoomRange ? { startValue: zoomRange[0], endValue: zoomRange[1] } : {};
+    const lineData = bucketedData.map(({ timestamp, cumulative }) => [
+      timestamp,
+      cumulative,
+    ]);
+    const markerLines = [
+      doorsOpenMs != null
+        ? {
+            xAxis: doorsOpenMs,
+            label: {
+              formatter: "Doors",
+              color: "#e4e4e7",
+              fontSize: 10,
+              position: "insideEndTop" as const,
+            },
+            lineStyle: { color: "#f59e0b", type: "dashed" as const },
+          }
+        : null,
+      eventStartMs != null
+        ? {
+            xAxis: eventStartMs,
+            label: {
+              formatter: "Start",
+              color: "#e4e4e7",
+              fontSize: 10,
+              position: "insideEndTop" as const,
+            },
+            lineStyle: { color: "#71717a", type: "dashed" as const },
+          }
+        : null,
+    ].filter(
+      (
+        value,
+      ): value is {
+        xAxis: number;
+        label: {
+          formatter: string;
+          color: string;
+          fontSize: number;
+          position: "insideEndTop";
+        };
+        lineStyle: { color: string; type: "dashed" };
+      } => value !== null,
+    );
+    const zoomProps = {
+      startValue: visibleRange[0],
+      endValue: visibleRange[1],
+    };
 
     return {
       backgroundColor: "transparent",
@@ -385,19 +702,74 @@ function CheckInContent({ eventId }: { eventId: string }) {
         borderColor: "#3f3f46",
         borderWidth: 1,
         textStyle: { color: "#fafafa", fontSize: 12 },
-        axisPointer: { type: "cross" as const, crossStyle: { color: "#71717a" } },
+        axisPointer: { type: "shadow" as const },
+        formatter: (
+          params: Array<{
+            seriesName: string;
+            value: [number, number];
+            color: string;
+            seriesType: string;
+          }>,
+        ) => {
+          const timestamp = Array.isArray(params[0]?.value)
+            ? params[0].value[0]
+            : 0;
+          const bars = params
+            .filter(
+              (param) =>
+                param.seriesType === "bar" &&
+                Array.isArray(param.value) &&
+                Number(param.value[1]) > 0,
+            )
+            .map((param) => ({
+              color: param.color,
+              label: param.seriesName,
+              value: Number(param.value[1]),
+            }))
+            .sort((a, b) => b.value - a.value);
+
+          const total = bars.reduce((sum, bar) => sum + bar.value, 0);
+          const cumulative = params.find(
+            (param) => param.seriesName === "Cumulative",
+          );
+          const cumulativeValue =
+            Array.isArray(cumulative?.value) && cumulative
+              ? Number(cumulative.value[1])
+              : 0;
+
+          return [
+            `<b>${new Date(timestamp).toLocaleString("en-US", {
+              month: "short",
+              day: "numeric",
+              hour: "numeric",
+              minute: "2-digit",
+              hour12: true,
+            })}</b>`,
+            `<span style="color:#a1a1aa">${total} scans this ${seriesLabel.toLowerCase()}</span>`,
+            `<span style="color:#fb923c">Visible avg: ${visibleAverageScanRate.toFixed(1)}/min</span>`,
+            `<span style="color:#93c5fd">Cumulative: ${cumulativeValue}</span>`,
+            ...bars.map(
+              (bar) =>
+                `<span style="color:${bar.color}">${bar.label}: ${bar.value}</span>`,
+            ),
+          ].join("<br/>");
+        },
       },
       legend: {
-        data: ["Cumulative", `Per ${seriesLabel}`],
-        textStyle: { color: "#a1a1aa", fontSize: 12 },
+        type: "scroll" as const,
+        data: ["Cumulative", ...timelineSeries.map((series) => series.label)],
+        textStyle: { color: "#a1a1aa", fontSize: 11 },
         top: 0,
-        left: "center",
-        itemGap: 24,
+        left: 0,
+        right: 0,
+        itemGap: 18,
         icon: "roundRect",
         itemWidth: 14,
         itemHeight: 8,
+        pageIconColor: "#10b981",
+        pageTextStyle: { color: "#71717a" },
       },
-      grid: { top: 40, right: 56, bottom: 80, left: 56, containLabel: false },
+      grid: { top: 62, right: 56, bottom: 80, left: 56, containLabel: false },
       xAxis: {
         type: "time" as const,
         axisLabel: { color: "#71717a", fontSize: 10, hideOverlap: true },
@@ -428,36 +800,102 @@ function CheckInContent({ eventId }: { eventId: string }) {
         },
       ],
       dataZoom: [
-        { type: "inside" as const, xAxisIndex: 0, filterMode: "none" as const, zoomOnMouseWheel: true, moveOnMouseMove: true, ...zoomProps },
         {
-          type: "slider" as const, xAxisIndex: 0, filterMode: "none" as const, height: 24, bottom: 8,
-          borderColor: "#3f3f46", backgroundColor: "#18181b", fillerColor: "rgba(16,185,129,0.15)",
+          type: "inside" as const,
+          xAxisIndex: 0,
+          filterMode: "none" as const,
+          zoomOnMouseWheel: true,
+          moveOnMouseMove: true,
+          ...zoomProps,
+        },
+        {
+          type: "slider" as const,
+          xAxisIndex: 0,
+          filterMode: "none" as const,
+          height: 24,
+          bottom: 8,
+          borderColor: "#3f3f46",
+          backgroundColor: "#18181b",
+          fillerColor: "rgba(16,185,129,0.15)",
           handleStyle: { color: "#10b981", borderColor: "#10b981" },
-          dataBackground: { lineStyle: { color: "#3f3f46" }, areaStyle: { color: "#27272a" } },
-          selectedDataBackground: { lineStyle: { color: "#10b981" }, areaStyle: { color: "rgba(16,185,129,0.15)" } },
-          textStyle: { color: "#71717a", fontSize: 10 }, moveHandleStyle: { color: "#3f3f46" }, ...zoomProps,
+          dataBackground: {
+            lineStyle: { color: "#3f3f46" },
+            areaStyle: { color: "#27272a" },
+          },
+          selectedDataBackground: {
+            lineStyle: { color: "#10b981" },
+            areaStyle: { color: "rgba(16,185,129,0.15)" },
+          },
+          textStyle: { color: "#71717a", fontSize: 10 },
+          moveHandleStyle: { color: "#3f3f46" },
+          ...zoomProps,
         },
       ],
       series: [
+        ...timelineSeries.map((series) => ({
+          name: series.label,
+          type: "bar" as const,
+          stack: "checkins",
+          yAxisIndex: 1,
+          data: bucketedData.map(({ timestamp, groups }) => [
+            timestamp,
+            groups[series.key] ?? 0,
+          ]),
+          itemStyle: { color: series.color },
+          barMaxWidth: 40,
+          barMinHeight: 1,
+          z: 1,
+        })),
         {
-          name: `Per ${seriesLabel}`, type: "bar" as const, yAxisIndex: 1, data: barData,
-          itemStyle: { color: "rgba(16,185,129,0.5)", borderRadius: [2, 2, 0, 0] },
-          emphasis: { itemStyle: { color: "#10b981" } }, barMaxWidth: 28, large: true, z: 1,
+          name: "Visible Avg",
+          type: "line" as const,
+          yAxisIndex: 1,
+          data: bucketedData.map(({ timestamp }) => [
+            timestamp,
+            visibleAverageBucketRate,
+          ]),
+          symbol: "none",
+          showSymbol: false,
+          silent: true,
+          tooltip: { show: false },
+          lineStyle: { width: 1.5, color: "#fb923c", type: "dashed" as const },
+          endLabel: {
+            show: true,
+            formatter: `Avg ${visibleAverageScanRate.toFixed(1)}/min`,
+            color: "#fdba74",
+            fontSize: 11,
+          },
+          z: 2,
         },
         {
-          name: "Cumulative", type: "line" as const, yAxisIndex: 0, data: lineData, smooth: true, symbol: "none",
-          lineStyle: { width: 2, color: "#3b82f6" },
-          areaStyle: {
-            color: {
-              type: "linear" as const, x: 0, y: 0, x2: 0, y2: 1,
-              colorStops: [{ offset: 0, color: "rgba(59,130,246,0.25)" }, { offset: 1, color: "rgba(59,130,246,0)" }],
-            },
-          },
+          name: "Cumulative",
+          type: "line" as const,
+          yAxisIndex: 0,
+          data: lineData,
+          smooth: true,
+          symbol: "none",
+          lineStyle: { width: 2, color: "#e4e4e7" },
+          markLine:
+            markerLines.length > 0
+              ? {
+                  symbol: "none",
+                  data: markerLines,
+                }
+              : undefined,
           z: 2,
         },
       ],
     };
-  }, [bucketedData, seriesLabel, zoomRange]);
+  }, [
+    bucketedData,
+    doorsOpenMs,
+    eventStartMs,
+    visibleAverageBucketRate,
+    visibleAverageScanRate,
+    seriesLabel,
+    timelineSeries,
+    visibleRange,
+  ]);
 
   // Standby growth chart
   const standbyEpochs = useMemo(() => {
@@ -538,10 +976,15 @@ function CheckInContent({ eventId }: { eventId: string }) {
 
   if (!data) return null;
 
-  const { totalTickets, scannedCount, byType, recentScans, waitlistCount, capacity, scannerLeaderboard, peakScansPerMin } = data;
+  const { totalTickets, byType, waitlistCount, capacity, peakScansPerMin } = data;
   const checkInRate = totalTickets > 0 ? (scannedCount / totalTickets) * 100 : 0;
   const capacityRate = capacity > 0 ? (scannedCount / capacity) * 100 : 0;
   const topScanner = scannerLeaderboard.length > 0 ? scannerLeaderboard[0] : null;
+  const avgScansPerScanner = scannerLeaderboard.length > 0
+    ? Math.round(scannedCount / scannerLeaderboard.length)
+    : 0;
+  const visibleTypeCards = TYPE_CONFIG.filter(({ key }) => byType[key].total > 0);
+  const typeCardCount = visibleTypeCards.length + (waitlistCount > 0 ? 1 : 0);
 
   return (
     <div className="space-y-5">
@@ -574,6 +1017,19 @@ function CheckInContent({ eventId }: { eventId: string }) {
           <span className="text-zinc-400 text-sm">scans/min</span>
         </div>
 
+        {scannedCount > 0 && (
+          <>
+            <div className="h-8 w-px bg-zinc-700 hidden sm:block" />
+            <div className="flex items-center gap-2">
+              <svg className="w-4 h-4 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h4l3-7 4 18 3-11h4" />
+              </svg>
+              <span className="text-white font-bold text-lg">{averageScanRate.toFixed(1)}</span>
+              <span className="text-zinc-400 text-sm">avg scans/min</span>
+            </div>
+          </>
+        )}
+
         {/* Peak scans/min */}
         {peakScansPerMin > 0 && (
           <>
@@ -590,16 +1046,16 @@ function CheckInContent({ eventId }: { eventId: string }) {
 
         {/* Best scanner */}
         {topScanner && (
-          <>
-            <div className="h-8 w-px bg-zinc-700 hidden sm:block" />
-            <div className="flex items-center gap-2">
+          <div className="hidden 2xl:flex items-center gap-4">
+            <div className="h-8 w-px bg-zinc-700" />
+            <div className="flex items-center gap-2 min-w-0">
               <svg className="w-4 h-4 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
               </svg>
               <span className="text-white text-sm font-medium truncate max-w-[120px]">{topScanner.name}</span>
               <span className="text-zinc-400 text-sm">({topScanner.count})</span>
             </div>
-          </>
+          </div>
         )}
 
         {/* Estimated completion */}
@@ -617,15 +1073,15 @@ function CheckInContent({ eventId }: { eventId: string }) {
 
         {/* Doors duration */}
         {doorsDuration && (
-          <>
-            <div className="h-8 w-px bg-zinc-700 hidden sm:block" />
+          <div className="hidden 2xl:flex items-center gap-4">
+            <div className="h-8 w-px bg-zinc-700" />
             <div className="flex items-center gap-2">
               <svg className="w-4 h-4 text-zinc-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
               <span className="text-zinc-300 text-sm">Doors open {formatDuration(doorsDuration)} ago</span>
             </div>
-          </>
+          </div>
         )}
 
         {/* Polling indicator */}
@@ -669,10 +1125,12 @@ function CheckInContent({ eventId }: { eventId: string }) {
       </div>
 
       {/* ── Per-type breakdown + waitlist ── */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-        {TYPE_CONFIG.map(({ key, label, color, bg, text }) => {
+      <div
+        className="grid grid-cols-2 gap-3 analytics-card-grid"
+        style={getAnalyticsCardGridStyle(typeCardCount)}
+      >
+        {visibleTypeCards.map(({ key, label, color, bg, text }) => {
           const t = byType[key];
-          if (t.total === 0) return null;
           const pct = t.total > 0 ? (t.scanned / t.total) * 100 : 0;
           return (
             <div key={key} className={`rounded-xl border border-zinc-800 p-4 ${bg}`}>
@@ -702,94 +1160,42 @@ function CheckInContent({ eventId }: { eventId: string }) {
         )}
       </div>
 
-      {/* ── Live Scan Rate Chart ── */}
-      {scanRateChartOption && (
-        <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
-          <div className="flex items-center gap-3 mb-2">
-            <h3 className="text-sm font-semibold text-zinc-300">Live Scan Rate</h3>
-            <span className="text-xs text-zinc-500">Last 30 minutes, per minute</span>
-            {isPolling && (
-              <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
-              </span>
-            )}
-          </div>
-          <ReactECharts
-            option={scanRateChartOption}
-            style={{ height: 160 }}
-            opts={{ renderer: "canvas" }}
-            notMerge
-          />
-        </div>
-      )}
-
-      {/* ── Scanner Leaderboard ── */}
-      {scannerLeaderboard.length > 0 && (
-        <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
-          <h3 className="text-sm font-semibold text-zinc-300 mb-4">Scanner Leaderboard</h3>
-          <div className="space-y-3">
-            {scannerLeaderboard.map((scanner, i) => {
-              const pct = scannedCount > 0 ? (scanner.count / scannedCount) * 100 : 0;
-              return (
-                <div key={scanner.email || scanner.name} className="flex items-center gap-3">
-                  <span className={`text-sm font-bold w-6 text-right ${i < 3 ? MEDAL_COLORS[i] : "text-zinc-500"}`}>
-                    #{i + 1}
-                  </span>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-sm text-white truncate">{scanner.name}</span>
-                      <span className="text-xs text-zinc-400 shrink-0 ml-2">
-                        {scanner.count} ({pct.toFixed(0)}%)
-                      </span>
-                    </div>
-                    <div className="w-full bg-zinc-800 rounded-full h-1.5 overflow-hidden">
-                      <div
-                        className="h-full rounded-full transition-all duration-500"
-                        style={{
-                          width: `${(scanner.count / scannerLeaderboard[0].count) * 100}%`,
-                          backgroundColor: i === 0 ? "#f59e0b" : i === 1 ? "#a1a1aa" : i === 2 ? "#b45309" : "#3b82f6",
-                        }}
-                      />
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* ── Two-column: Chart + Recent Scans ── */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-        {/* Check-in timeline chart */}
-        <div className="lg:col-span-2 rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
-          <h3 className="text-sm font-semibold text-zinc-300 mb-1">Check-in Timeline</h3>
-          {scanEpochs.length > 0 ? (
-            <>
-              <p className="text-[10px] text-zinc-600 mb-1">
-                Scroll to zoom &middot; Drag to pan &middot; Click legend to toggle
-              </p>
+      {/* ── Scanner Overview ── */}
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
+        {scannerShareChartOption && (
+          <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5 flex h-full min-h-[460px] flex-col">
+            <div className="flex items-start justify-between gap-4 mb-3">
+              <div>
+                <h3 className="text-sm font-semibold text-zinc-300">Scanner Leaderboard</h3>
+                <p className="text-[11px] text-zinc-500 mt-1">
+                  {scannerLeaderboard.length} scanner{scannerLeaderboard.length !== 1 ? "s" : ""} · {avgScansPerScanner} avg scans
+                </p>
+              </div>
+              {topScanner && (
+                <span className="text-[11px] text-amber-300 bg-amber-500/10 border border-amber-500/20 rounded-full px-2.5 py-1">
+                  {topScanner.name} leads with {topScanner.count}
+                </span>
+              )}
+            </div>
+            <div className="flex-1 min-h-[380px]">
               <ReactECharts
-                ref={chartRef}
-                option={chartOption}
-                style={{ height: 350 }}
+                option={scannerShareChartOption}
+                style={{ height: "100%" }}
                 opts={{ renderer: "canvas" }}
-                onEvents={onEvents}
                 notMerge
               />
-            </>
-          ) : (
-            <div className="flex items-center justify-center h-[350px] text-zinc-600 text-sm">
-              No check-ins yet
             </div>
-          )}
-        </div>
+          </div>
+        )}
 
-        {/* Recent scans live feed */}
-        <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4 flex flex-col">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-semibold text-zinc-300">Recent Scans</h3>
+        <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4 flex h-full min-h-[460px] flex-col">
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+            <div>
+              <h3 className="text-sm font-semibold text-zinc-300">Recent Scans</h3>
+              <p className="text-[11px] text-zinc-500 mt-1">
+                Showing {Math.min(visibleRecentCount, recentScans.length)} of {recentScans.length} scans
+              </p>
+            </div>
             {isPolling && (
               <span className="relative flex h-2 w-2">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
@@ -798,34 +1204,101 @@ function CheckInContent({ eventId }: { eventId: string }) {
             )}
           </div>
           {recentScans.length === 0 ? (
-            <div className="flex-1 flex items-center justify-center text-zinc-600 text-sm">
+            <div className="flex-1 flex items-center justify-center text-zinc-600 text-sm min-h-[320px]">
               No scans yet
             </div>
           ) : (
-            <div className="flex-1 overflow-y-auto space-y-1.5 max-h-[340px]">
-              {recentScans.map((scan, i) => (
-                <div
-                  key={`${scan.scanTime}-${i}`}
-                  className={`flex items-center gap-3 px-3 py-2 rounded-lg bg-zinc-800/50 ${i === 0 && isPolling ? "ring-1 ring-emerald-500/30" : ""}`}
-                >
-                  <div className="w-7 h-7 rounded-full bg-zinc-700 flex items-center justify-center text-xs font-bold text-zinc-300 shrink-0">
-                    {(scan.name || "?")[0].toUpperCase()}
+            <>
+              <div
+                className="flex-1 min-h-0 overflow-y-auto space-y-1.5 max-h-[420px] pr-1"
+                onScroll={handleRecentScroll}
+              >
+                {visibleRecentScans.map((scan, i) => (
+                  <div
+                    key={`${scan.scanTime}-${i}`}
+                    className={`flex items-center gap-3 px-3 py-2 rounded-lg bg-zinc-800/50 ${
+                      i === 0 && isPolling ? "ring-1 ring-emerald-500/30" : ""
+                    }`}
+                  >
+                    <div className="w-7 h-7 rounded-full bg-zinc-700 flex items-center justify-center text-xs font-bold text-zinc-300 shrink-0">
+                      {(scan.name || "?")[0].toUpperCase()}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm text-white truncate">{scan.name || "Unknown"}</p>
+                      <p className="text-[11px] text-zinc-500">
+                        {formatTime(scan.scanTime)}
+                        <span className="text-zinc-600"> &middot; by {scan.scannerName}</span>
+                      </p>
+                    </div>
+                    <span
+                      className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
+                        TYPE_BADGE[scan.typeKey] ?? TYPE_BADGE.STANDARD
+                      }`}
+                    >
+                      {scan.typeKey === "STANDARD" ? "STD" : scan.typeKey}
+                    </span>
                   </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm text-white truncate">{scan.name || "Unknown"}</p>
-                    <p className="text-[11px] text-zinc-500">
-                      {formatTime(scan.scanTime)}
-                      {scan.scannedBy && <span className="text-zinc-600"> &middot; by {scan.scannedBy}</span>}
-                    </p>
-                  </div>
-                  <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${TYPE_BADGE[scan.type?.toUpperCase() ?? "STANDARD"] ?? TYPE_BADGE.STANDARD}`}>
-                    {scan.type ?? "STD"}
-                  </span>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+              {visibleRecentCount < recentScans.length && (
+                <p className="mt-3 text-center text-[11px] text-zinc-500">
+                  Scroll down to load more scans
+                </p>
+              )}
+            </>
           )}
         </div>
+      </div>
+
+      {/* ── Full-width timeline ── */}
+      <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between mb-3">
+          <div>
+            <h3 className="text-sm font-semibold text-zinc-300 mb-1">Check-in Timeline</h3>
+            <p className="text-[11px] text-zinc-500">
+              Stacked scan volume across the event. Toggle between scanner activity and ticket types.
+            </p>
+          </div>
+          <div className="inline-flex rounded-xl border border-zinc-800 bg-zinc-950/70 p-1">
+            {([
+              { key: "scanner" as const, label: "Scanner" },
+              { key: "type" as const, label: "Ticket Type" },
+            ]).map((option) => (
+              <button
+                key={option.key}
+                onClick={() => setTimelineMode(option.key)}
+                className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+                  timelineMode === option.key
+                    ? "bg-emerald-500 text-emerald-950"
+                    : "text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
+                }`}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+        </div>
+        {scanEpochs.length > 0 ? (
+          <>
+            <div className="flex flex-wrap items-center gap-4 mb-2 text-[11px] text-zinc-500">
+              <span>Grouped per {seriesLabel.toLowerCase()}</span>
+              <span>{timelineMode === "scanner" ? `${timelineSeries.length} scanners in legend` : `${timelineSeries.length} ticket types`}</span>
+              <span>Scroll to zoom and drag to pan</span>
+            </div>
+            <ReactECharts
+              ref={chartRef}
+              option={chartOption}
+              style={{ height: 440 }}
+              opts={{ renderer: "canvas" }}
+              onEvents={onEvents}
+              notMerge
+            />
+          </>
+        ) : (
+          <div className="flex items-center justify-center h-[440px] text-zinc-600 text-sm">
+            No check-ins yet
+          </div>
+        )}
       </div>
 
       {/* ── Standby line growth (if applicable) ── */}

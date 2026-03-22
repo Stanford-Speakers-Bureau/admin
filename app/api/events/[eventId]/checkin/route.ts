@@ -60,10 +60,18 @@ export async function GET(
     const scannedTickets = ticketResults.filter((t) => t.scanned);
     const scannedCount = scannedTickets.length;
 
-    const scanTimestamps = scannedTickets
+    const scanEvents = scannedTickets
       .filter((t) => t.scanTime)
-      .map((t) => t.scanTime!.toISOString())
-      .sort();
+      .map((t) => ({
+        name: t.name,
+        type: t.type,
+        scanTime: t.scanTime!.toISOString(),
+        scannedBy: t.scanUser || null,
+        scannerKey: t.scanEmail || t.scanUser || "unknown",
+      }))
+      .sort((a, b) => a.scanTime.localeCompare(b.scanTime));
+
+    const scanTimestamps = scanEvents.map((scan) => scan.scanTime);
 
     type TypeKey = "STANDARD" | "VIP" | "EXTERNAL" | "STANDBY";
     const byType: Record<TypeKey, { total: number; scanned: number }> = {
@@ -109,21 +117,6 @@ export async function GET(
       }
     }
 
-    // Recent scans: last 20 sorted by scanTime desc
-    const recentScans = scannedTickets
-      .filter((t) => t.scanTime)
-      .sort(
-        (a, b) =>
-          new Date(b.scanTime!).getTime() - new Date(a.scanTime!).getTime(),
-      )
-      .slice(0, 20)
-      .map((t) => ({
-        name: t.name,
-        type: t.type,
-        scanTime: t.scanTime!.toISOString(),
-        scannedBy: t.scanUser || null,
-      }));
-
     // Standby ticket creation timestamps for standby line growth chart
     const standbyTimestamps = ticketResults
       .filter((t) => (t.type?.toUpperCase() ?? "STANDARD") === "STANDBY")
@@ -131,6 +124,7 @@ export async function GET(
       .sort();
 
     return NextResponse.json({
+      scanEvents,
       scanTimestamps,
       totalTickets,
       scannedCount,
@@ -141,7 +135,6 @@ export async function GET(
       standbyEnabled: event.standbyEnabled ?? false,
       waitlistCount: waitlistResult[0]?.value ?? 0,
       byType,
-      recentScans,
       standbyTimestamps,
       scannerLeaderboard,
       peakScansPerMin,

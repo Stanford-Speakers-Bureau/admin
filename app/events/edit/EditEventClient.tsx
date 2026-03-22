@@ -49,6 +49,7 @@ type FormData = {
   priority: string;
   hide_ticketing_date: boolean;
   referrals_enabled: boolean;
+  standby_enabled: boolean;
   livestream: string;
   latitude: string;
   longitude: string;
@@ -73,6 +74,7 @@ const emptyForm: FormData = {
   priority: "This event is only open to Stanford affiliates",
   hide_ticketing_date: false,
   referrals_enabled: false,
+  standby_enabled: false,
   livestream: "",
   latitude: "",
   longitude: "",
@@ -116,6 +118,7 @@ function eventToFormData(event: Event): FormData {
     priority: event.priority || "This event is only open to Stanford affiliates",
     hide_ticketing_date: event.hide_ticketing_date || false,
     referrals_enabled: event.referrals_enabled || false,
+    standby_enabled: event.standby_enabled || false,
     livestream: event.livestream || "",
     latitude: event.latitude?.toString() || "",
     longitude: event.longitude?.toString() || "",
@@ -268,6 +271,7 @@ export default function EditEventClient({ allEvents }: EditEventClientProps) {
       submitData.append("priority", formData.priority);
       submitData.append("hide_ticketing_date", formData.hide_ticketing_date.toString());
       submitData.append("referrals_enabled", formData.referrals_enabled.toString());
+      submitData.append("standby_enabled", formData.standby_enabled.toString());
       submitData.append("livestream", formData.livestream);
       submitData.append("latitude", formData.latitude);
       submitData.append("longitude", formData.longitude);
@@ -460,11 +464,11 @@ export default function EditEventClient({ allEvents }: EditEventClientProps) {
                 <input type="number" step="any" value={formData.longitude} onChange={(e) => setFormData({ ...formData, longitude: e.target.value })} placeholder="e.g., -122.4194" className="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50" required />
               </div>
               <div>
-                <label className="block text-sm font-medium text-zinc-300 mb-2">Release Date (when to reveal speaker)</label>
+                <label className="block text-sm font-medium text-zinc-300 mb-2">Release Date (when to reveal speaker) <span className="text-zinc-500 font-normal">(PT)</span></label>
                 <input type="datetime-local" value={formData.release_date} onChange={(e) => setFormData({ ...formData, release_date: e.target.value })} className="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50" />
               </div>
               <div>
-                <label className="block text-sm font-medium text-zinc-300 mb-2">Ticketing Date (when ticket sales open)</label>
+                <label className="block text-sm font-medium text-zinc-300 mb-2">Ticketing Date (when ticket sales open) <span className="text-zinc-500 font-normal">(PT)</span></label>
                 <input type="datetime-local" value={formData.ticketing_date} onChange={(e) => setFormData({ ...formData, ticketing_date: e.target.value })} className="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50" />
                 {formData.release_date && formData.ticketing_date && (() => {
                   const publish = new Date(formData.release_date);
@@ -477,11 +481,11 @@ export default function EditEventClient({ allEvents }: EditEventClientProps) {
                 })()}
               </div>
               <div>
-                <label className="block text-sm font-medium text-zinc-300 mb-2">Event Start Date & Time</label>
+                <label className="block text-sm font-medium text-zinc-300 mb-2">Event Start Date & Time <span className="text-zinc-500 font-normal">(PT)</span></label>
                 <input type="datetime-local" value={formData.start_time_date} onChange={(e) => setFormData({ ...formData, start_time_date: e.target.value })} className="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50" />
               </div>
               <div>
-                <label className="block text-sm font-medium text-zinc-300 mb-2">Event End Date & Time</label>
+                <label className="block text-sm font-medium text-zinc-300 mb-2">Event End Date & Time <span className="text-zinc-500 font-normal">(PT)</span></label>
                 <input type="datetime-local" value={formData.end_time_date} onChange={(e) => setFormData({ ...formData, end_time_date: e.target.value })} className="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50" />
                 {formData.start_time_date && formData.end_time_date && (() => {
                   const start = new Date(formData.start_time_date);
@@ -494,7 +498,7 @@ export default function EditEventClient({ allEvents }: EditEventClientProps) {
                 })()}
               </div>
               <div>
-                <label className="block text-sm font-medium text-zinc-300 mb-2">Doors Open</label>
+                <label className="block text-sm font-medium text-zinc-300 mb-2">Doors Open <span className="text-zinc-500 font-normal">(PT)</span></label>
                 <input type="datetime-local" value={formData.doors_open} onChange={(e) => setFormData({ ...formData, doors_open: e.target.value })} className="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50" />
               </div>
 
@@ -503,6 +507,14 @@ export default function EditEventClient({ allEvents }: EditEventClientProps) {
               <div className="flex items-center gap-3">
                 <input type="checkbox" id="hide_ticketing_date" checked={formData.hide_ticketing_date} onChange={(e) => setFormData({ ...formData, hide_ticketing_date: e.target.checked })} className="w-5 h-5 rounded border-zinc-600 bg-zinc-800 text-emerald-500 focus:ring-emerald-500/50" />
                 <label htmlFor="hide_ticketing_date" className="text-sm font-medium text-zinc-300">Hide Ticketing Date</label>
+              </div>
+              <div className="flex items-center gap-3">
+                <input type="checkbox" id="standby_enabled" checked={formData.standby_enabled} onChange={(e) => setFormData({ ...formData, standby_enabled: e.target.checked })} className="w-5 h-5 rounded border-zinc-600 bg-zinc-800 text-emerald-500 focus:ring-emerald-500/50" />
+                <label htmlFor="standby_enabled" className="text-sm font-medium text-zinc-300">Enable Standby Line</label>
+              </div>
+              <div className="flex items-center gap-3">
+                <input type="checkbox" id="referrals_enabled" checked={formData.referrals_enabled} onChange={(e) => setFormData({ ...formData, referrals_enabled: e.target.checked })} className="w-5 h-5 rounded border-zinc-600 bg-zinc-800 text-emerald-500 focus:ring-emerald-500/50" />
+                <label htmlFor="referrals_enabled" className="text-sm font-medium text-zinc-300">Enable Referrals</label>
               </div>
 
               <div>

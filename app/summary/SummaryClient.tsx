@@ -1,7 +1,11 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import { useEventContext } from "@/app/EventContext";
+import {
+  getAnalyticsCardGridStyle,
+  getDefaultTimelineZoomRange,
+} from "@/app/lib/utils";
 import ReactECharts from "echarts-for-react";
 
 // ── Types ────────────────────────────────────────────────────────────────
@@ -139,6 +143,9 @@ function SummaryContent({ eventId }: { eventId: string }) {
   const [data, setData] = useState<SummaryResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [checkinZoomRange, setCheckinZoomRange] = useState<[number, number] | null>(null);
+  const checkinChartRef = useRef<ReactECharts>(null);
+  const checkinDebounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   useEffect(() => {
     async function fetchData() {
@@ -159,6 +166,10 @@ function SummaryContent({ eventId }: { eventId: string }) {
       }
     }
     if (eventId) fetchData();
+  }, [eventId]);
+
+  useEffect(() => {
+    setCheckinZoomRange(null);
   }, [eventId]);
 
   // ── Chart: Sales vs Check-ins overlay ──
@@ -195,7 +206,7 @@ function SummaryContent({ eventId }: { eventId: string }) {
   const checkinChartData = useMemo(() => {
     if (scanEpochs.length === 0) return null;
     const anchorStart = doorsOpenMs ?? eventStartMs ?? scanEpochs[0];
-    const rangeStart = Math.min(scanEpochs[0], anchorStart);
+    const rangeStart = Math.min(scanEpochs[0], anchorStart - 15 * MIN);
     const rangeEnd = Math.max(
       scanEpochs[scanEpochs.length - 1],
       eventStartMs != null ? eventStartMs + 90 * MIN : anchorStart + 2 * HOUR,
@@ -205,9 +216,75 @@ function SummaryContent({ eventId }: { eventId: string }) {
     return {
       intervalMs,
       intervalLabel: intervalLabel(intervalMs),
+      rangeStart,
+      rangeEnd,
       bucketed: bucketEpochs(scanEpochs, intervalMs, rangeStart, rangeEnd),
     };
   }, [doorsOpenMs, eventStartMs, scanEpochs]);
+
+  const defaultCheckinZoomRange = useMemo<[number, number] | null>(() => {
+    if (!checkinChartData) return null;
+    return getDefaultTimelineZoomRange({
+      rangeStart: checkinChartData.rangeStart,
+      rangeEnd: checkinChartData.rangeEnd,
+      doorsOpenMs,
+      eventStartMs,
+      paddingMs: 0,
+    });
+  }, [checkinChartData, doorsOpenMs, eventStartMs]);
+
+  const effectiveCheckinZoomRange = checkinZoomRange ?? defaultCheckinZoomRange;
+
+  const visibleCheckinAverageRate = useMemo(() => {
+    if (!checkinChartData || !effectiveCheckinZoomRange) return 0;
+    const scansInWindow = scanEpochs.filter(
+      (epoch) =>
+        epoch >= effectiveCheckinZoomRange[0] &&
+        epoch <= effectiveCheckinZoomRange[1],
+    ).length;
+    const elapsedMinutes = Math.max(
+      (effectiveCheckinZoomRange[1] - effectiveCheckinZoomRange[0]) / MIN,
+      1,
+    );
+
+    return scansInWindow / elapsedMinutes;
+  }, [checkinChartData, effectiveCheckinZoomRange, scanEpochs]);
+
+  const visibleCheckinAverageBucketRate = useMemo(() => {
+    if (!checkinChartData) return 0;
+    return visibleCheckinAverageRate * (checkinChartData.intervalMs / MIN);
+  }, [checkinChartData, visibleCheckinAverageRate]);
+
+  const onCheckinDataZoom = useCallback(() => {
+    clearTimeout(checkinDebounceRef.current);
+    checkinDebounceRef.current = setTimeout(() => {
+      const instance = checkinChartRef.current?.getEchartsInstance();
+      const fullRange = checkinChartData
+        ? [checkinChartData.rangeStart, checkinChartData.rangeEnd]
+        : null;
+      if (!instance || !fullRange) return;
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const opt = instance.getOption() as any;
+      const dz = opt.dataZoom?.[0];
+      if (!dz) return;
+
+      if (dz.startValue != null && dz.endValue != null) {
+        setCheckinZoomRange([dz.startValue, dz.endValue]);
+      } else if (dz.start != null && dz.end != null) {
+        const span = fullRange[1] - fullRange[0];
+        setCheckinZoomRange([
+          fullRange[0] + (dz.start / 100) * span,
+          fullRange[0] + (dz.end / 100) * span,
+        ]);
+      }
+    }, 120);
+  }, [checkinChartData]);
+
+  const checkinOnEvents = useMemo(
+    () => ({ datazoom: onCheckinDataZoom }),
+    [onCheckinDataZoom],
+  );
 
   const salesChartOption = useMemo(() => {
     if (!salesChartData) return null;
@@ -325,6 +402,12 @@ function SummaryContent({ eventId }: { eventId: string }) {
 
     const checkinBars = checkinChartData.bucketed.map(([ts, count]) => [ts, count]);
     const checkinLine = checkinChartData.bucketed.map(([ts, , cumulative]) => [ts, cumulative]);
+    const zoomProps = effectiveCheckinZoomRange
+      ? {
+          startValue: effectiveCheckinZoomRange[0],
+          endValue: effectiveCheckinZoomRange[1],
+        }
+      : {};
     const markerLines = [
       doorsOpenMs != null ? {
         xAxis: doorsOpenMs,
@@ -373,7 +456,7 @@ function SummaryContent({ eventId }: { eventId: string }) {
         itemWidth: 14,
         itemHeight: 8,
       },
-      grid: { top: 40, right: 56, bottom: 28, left: 56, containLabel: false },
+      grid: { top: 40, right: 56, bottom: 80, left: 56, containLabel: false },
       xAxis: {
         type: "time" as const,
         axisLabel: { color: "#71717a", fontSize: 10, hideOverlap: true },
@@ -403,6 +486,38 @@ function SummaryContent({ eventId }: { eventId: string }) {
           minInterval: 1,
         },
       ],
+      dataZoom: [
+        {
+          type: "inside" as const,
+          xAxisIndex: 0,
+          filterMode: "none" as const,
+          zoomOnMouseWheel: true,
+          moveOnMouseMove: true,
+          ...zoomProps,
+        },
+        {
+          type: "slider" as const,
+          xAxisIndex: 0,
+          filterMode: "none" as const,
+          height: 24,
+          bottom: 8,
+          borderColor: "#3f3f46",
+          backgroundColor: "#18181b",
+          fillerColor: "rgba(16,185,129,0.15)",
+          handleStyle: { color: "#10b981", borderColor: "#10b981" },
+          dataBackground: {
+            lineStyle: { color: "#3f3f46" },
+            areaStyle: { color: "#27272a" },
+          },
+          selectedDataBackground: {
+            lineStyle: { color: "#10b981" },
+            areaStyle: { color: "rgba(16,185,129,0.15)" },
+          },
+          textStyle: { color: "#71717a", fontSize: 10 },
+          moveHandleStyle: { color: "#3f3f46" },
+          ...zoomProps,
+        },
+      ],
       series: [
         {
           name: `Per ${checkinChartData.intervalLabel}`,
@@ -413,6 +528,27 @@ function SummaryContent({ eventId }: { eventId: string }) {
           emphasis: { itemStyle: { color: "#34d399" } },
           barMaxWidth: 28,
           z: 1,
+        },
+        {
+          name: "Visible Avg",
+          type: "line" as const,
+          yAxisIndex: 1,
+          data: checkinChartData.bucketed.map(([ts]) => [
+            ts,
+            visibleCheckinAverageBucketRate,
+          ]),
+          symbol: "none",
+          showSymbol: false,
+          silent: true,
+          tooltip: { show: false },
+          lineStyle: { width: 1.5, color: "#fb923c", type: "dashed" as const },
+          endLabel: {
+            show: true,
+            formatter: `Avg ${visibleCheckinAverageRate.toFixed(1)}/min`,
+            color: "#fdba74",
+            fontSize: 11,
+          },
+          z: 2,
         },
         {
           name: "Cumulative Check-ins",
@@ -443,7 +579,14 @@ function SummaryContent({ eventId }: { eventId: string }) {
         },
       ],
     };
-  }, [checkinChartData, doorsOpenMs, eventStartMs]);
+  }, [
+    checkinChartData,
+    doorsOpenMs,
+    effectiveCheckinZoomRange,
+    eventStartMs,
+    visibleCheckinAverageBucketRate,
+    visibleCheckinAverageRate,
+  ]);
 
   // ── Loading / Error states ──
 
@@ -497,11 +640,25 @@ function SummaryContent({ eventId }: { eventId: string }) {
   const vipShowUp = byType.VIP.total > 0 ? (byType.VIP.scanned / byType.VIP.total) * 100 : null;
   const stdShowUp = byType.STANDARD.total > 0 ? (byType.STANDARD.scanned / byType.STANDARD.total) * 100 : null;
   const standbyConversion = byType.STANDBY.total > 0 ? (byType.STANDBY.scanned / byType.STANDBY.total) * 100 : null;
+  const visibleTypeCards = TYPE_CONFIG.filter(({ key }) => byType[key].total > 0);
+  const summaryBigNumberCardCount = 4;
+  const summaryTypeCardCount = visibleTypeCards.length;
+  const summaryInsightCardCount = [
+    vipShowUp != null && stdShowUp != null,
+    standbyEnabled && standbyConversion != null,
+    Boolean(earlyBirdFlake),
+    Boolean(referralAttendance),
+    waitlistCount > 0,
+    true,
+  ].filter(Boolean).length;
 
   return (
     <div className="space-y-5">
       {/* ── Big numbers row ── */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div
+        className="grid grid-cols-2 gap-4 analytics-card-grid"
+        style={getAnalyticsCardGridStyle(summaryBigNumberCardCount)}
+      >
         {/* Attendance */}
         <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
           <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-2">Attendance</p>
@@ -561,10 +718,12 @@ function SummaryContent({ eventId }: { eventId: string }) {
       {/* ── Per-type flake breakdown ── */}
       <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
         <h3 className="text-sm font-semibold text-zinc-300 mb-4">Attendance by Ticket Type</h3>
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          {TYPE_CONFIG.map(({ key, label, color, bg, text }) => {
+        <div
+          className="grid grid-cols-2 gap-4 analytics-card-grid"
+          style={getAnalyticsCardGridStyle(summaryTypeCardCount)}
+        >
+          {visibleTypeCards.map(({ key, label, color, bg, text }) => {
             const t = byType[key];
-            if (t.total === 0) return null;
             const showRate = t.total > 0 ? (t.scanned / t.total) * 100 : 0;
             const flaked = t.total - t.scanned;
             return (
@@ -658,7 +817,10 @@ function SummaryContent({ eventId }: { eventId: string }) {
       )}
 
       {/* ── Insights row ── */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div
+        className="grid grid-cols-1 sm:grid-cols-2 gap-4 analytics-card-grid"
+        style={getAnalyticsCardGridStyle(summaryInsightCardCount)}
+      >
         {vipShowUp != null && stdShowUp != null && (
           <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
             <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-2">VIP vs Standard</p>
@@ -802,12 +964,14 @@ function SummaryContent({ eventId }: { eventId: string }) {
             <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
               <h3 className="text-sm font-semibold text-zinc-300 mb-1">Check-in Timeline</h3>
               <p className="text-[10px] text-zinc-600 mb-3">
-                Event-day scan activity around doors open and start time.
+                Event-day scan activity around doors open and start time. Scroll to zoom and drag to pan.
               </p>
               <ReactECharts
+                ref={checkinChartRef}
                 option={checkinChartOption}
-                style={{ height: 320 }}
+                style={{ height: 350 }}
                 opts={{ renderer: "canvas" }}
+                onEvents={checkinOnEvents}
               />
             </div>
           )}

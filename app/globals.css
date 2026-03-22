@@ -36,3 +36,9 @@ body {
 .scrollbar-hide::-webkit-scrollbar {
   display: none;
 }
+
+@media (min-width: 1024px) {
+  .analytics-card-grid {
+    grid-template-columns: repeat(var(--analytics-card-cols, 1), minmax(0, 1fr));
+  }
+}

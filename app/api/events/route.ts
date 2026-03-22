@@ -100,6 +100,7 @@ export async function POST(req: Request) {
     const priority = formData.get("priority") as string;
     const hide_ticketing_date = formData.get("hide_ticketing_date") === "true";
     const referrals_enabled = formData.get("referrals_enabled") === "true";
+    const standby_enabled = formData.get("standby_enabled") === "true";
     const livestream = formData.get("livestream") as string;
     const latitude = formData.get("latitude") as string;
     const longitude = formData.get("longitude") as string;
@@ -274,6 +275,7 @@ export async function POST(req: Request) {
       priority: priority || null,
       hideTicketingDate: hide_ticketing_date,
       referralsEnabled: referrals_enabled,
+      standbyEnabled: standby_enabled,
       livestream: livestream || null,
       latitude,
       longitude,

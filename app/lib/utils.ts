@@ -1,3 +1,5 @@
+import type { CSSProperties } from "react";
+
 /**
  * Generate a referral code from a user's email address.
  * Takes the part before the "@" symbol.
@@ -90,4 +92,39 @@ export function generateGoogleCalendarUrl(event: {
   const end = formatGoogleDate(endDate);
 
   return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${start}/${end}&details=${encodedDetails}&location=${location}`;
+}
+
+export function getAnalyticsCardGridStyle(
+  columns: number,
+): CSSProperties & { "--analytics-card-cols": string } {
+  const normalized = Math.max(1, Math.min(Math.floor(columns), 6));
+  return {
+    "--analytics-card-cols": String(normalized),
+  };
+}
+
+export function getDefaultTimelineZoomRange({
+  rangeStart,
+  rangeEnd,
+  doorsOpenMs,
+  eventStartMs,
+  paddingMs = 15 * 60_000,
+}: {
+  rangeStart: number;
+  rangeEnd: number;
+  doorsOpenMs?: number | null;
+  eventStartMs?: number | null;
+  paddingMs?: number;
+}): [number, number] {
+  if (doorsOpenMs == null || eventStartMs == null || eventStartMs <= doorsOpenMs) {
+    return [rangeStart, rangeEnd];
+  }
+
+  const start = Math.max(rangeStart, doorsOpenMs - paddingMs);
+  const end = Math.min(
+    rangeEnd,
+    Math.max(eventStartMs + paddingMs, start + 60_000),
+  );
+
+  return end > start ? [start, end] : [rangeStart, rangeEnd];
 }

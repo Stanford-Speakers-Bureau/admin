@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
+import { getAnalyticsCardGridStyle } from "@/app/lib/utils";
 
 // ── Types ────────────────────────────────────────────────────────────────
 
@@ -83,6 +84,8 @@ function rateBgColor(rate: number): string {
   return "#f43f5e";
 }
 
+const ATTENDEE_PAGE_SIZE = 50;
+
 // ── Main Component ───────────────────────────────────────────────────────
 
 export default function AttendanceClient() {
@@ -93,6 +96,7 @@ export default function AttendanceClient() {
   const [expandedEmail, setExpandedEmail] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [minEvents, setMinEvents] = useState(2);
+  const [currentPage, setCurrentPage] = useState(1);
 
   useEffect(() => {
     async function fetchData() {
@@ -186,6 +190,15 @@ export default function AttendanceClient() {
     });
   }, [data]);
 
+  useEffect(() => {
+    setCurrentPage(1);
+    setExpandedEmail(null);
+  }, [filterTab, search, minEvents, data?.attendees.length]);
+
+  useEffect(() => {
+    setExpandedEmail(null);
+  }, [currentPage]);
+
   // ── Loading / Error states ──
 
   if (isLoading) {
@@ -239,6 +252,14 @@ export default function AttendanceClient() {
   const multiEventCount = data.attendees.filter((a) => a.eventsRegistered >= minEvents).length;
   const loyalistCount = data.attendees.filter((a) => a.eventsRegistered >= minEvents && a.attendanceRate >= 0.9).length;
   const flakerCount = data.attendees.filter((a) => a.eventsRegistered >= minEvents && a.attendanceRate <= 0.1).length;
+  const totalPages = Math.max(1, Math.ceil(filteredAttendees.length / ATTENDEE_PAGE_SIZE));
+  const clampedPage = Math.min(currentPage, totalPages);
+  const pageStart = (clampedPage - 1) * ATTENDEE_PAGE_SIZE;
+  const pageEnd = Math.min(pageStart + ATTENDEE_PAGE_SIZE, filteredAttendees.length);
+  const paginatedAttendees = filteredAttendees.slice(pageStart, pageEnd);
+  const visiblePageNumbers = Array.from({ length: totalPages }, (_, i) => i + 1).filter(
+    (page) => page === 1 || page === totalPages || Math.abs(page - clampedPage) <= 1,
+  );
 
   return (
     <div className="px-4 sm:px-6 py-8 space-y-6">
@@ -248,7 +269,10 @@ export default function AttendanceClient() {
       </div>
 
       {/* ── Stats cards ── */}
-      <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
+      <div
+        className="grid grid-cols-2 gap-3 analytics-card-grid"
+        style={getAnalyticsCardGridStyle(6)}
+      >
         <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
           <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-1">Unique Attendees</p>
           <p className="text-2xl font-bold text-white">{stats.totalUniqueAttendees}</p>
@@ -417,7 +441,7 @@ export default function AttendanceClient() {
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-800/50">
-              {filteredAttendees.slice(0, 100).map((a) => {
+              {paginatedAttendees.map((a) => {
                 const isExpanded = expandedEmail === a.email;
                 return (
                   <tr key={a.email} className="group">
@@ -485,9 +509,50 @@ export default function AttendanceClient() {
             </tbody>
           </table>
         </div>
-        {filteredAttendees.length > 100 && (
-          <div className="px-4 py-3 border-t border-zinc-800 text-xs text-zinc-500">
-            Showing 100 of {filteredAttendees.length} attendees
+        {filteredAttendees.length > 0 && (
+          <div className="px-4 py-3 border-t border-zinc-800 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-xs text-zinc-500">
+              Showing {pageStart + 1}-{pageEnd} of {filteredAttendees.length} attendees
+            </p>
+            {totalPages > 1 && (
+              <div className="flex items-center gap-1.5 flex-wrap sm:justify-end">
+                <button
+                  onClick={() => setCurrentPage((page) => Math.max(page - 1, 1))}
+                  disabled={clampedPage === 1}
+                  className="px-2.5 py-1.5 rounded-lg border border-zinc-700 bg-zinc-800 text-zinc-300 text-xs font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-zinc-700 transition-colors"
+                >
+                  Prev
+                </button>
+                {visiblePageNumbers.map((page, index) => {
+                  const previousPage = visiblePageNumbers[index - 1];
+                  const needsGap = previousPage != null && page - previousPage > 1;
+                  return (
+                    <div key={page} className="flex items-center gap-1.5">
+                      {needsGap && (
+                        <span className="px-1 text-xs text-zinc-600">…</span>
+                      )}
+                      <button
+                        onClick={() => setCurrentPage(page)}
+                        className={`min-w-8 px-2.5 py-1.5 rounded-lg border text-xs font-medium transition-colors ${
+                          clampedPage === page
+                            ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-300"
+                            : "border-zinc-700 bg-zinc-800 text-zinc-300 hover:bg-zinc-700"
+                        }`}
+                      >
+                        {page}
+                      </button>
+                    </div>
+                  );
+                })}
+                <button
+                  onClick={() => setCurrentPage((page) => Math.min(page + 1, totalPages))}
+                  disabled={clampedPage === totalPages}
+                  className="px-2.5 py-1.5 rounded-lg border border-zinc-700 bg-zinc-800 text-zinc-300 text-xs font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-zinc-700 transition-colors"
+                >
+                  Next
+                </button>
+              </div>
+            )}
           </div>
         )}
         {filteredAttendees.length === 0 && (
