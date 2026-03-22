@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useEventContext } from "@/app/EventContext";
+import { formatDate } from "@/app/lib/formatting";
 
 export type Ticket = {
   id: string;
@@ -35,20 +36,6 @@ type TicketManagementClientProps = {
   initialStandbyCount: number;
 };
 
-function formatDate(dateString: string | null): string {
-  if (!dateString) return "N/A";
-  const date = new Date(dateString);
-  if (Number.isNaN(date.getTime())) return "N/A";
-
-  return new Intl.DateTimeFormat("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: true,
-  }).format(date);
-}
 
 export default function TicketManagementClient({
   initialTickets,

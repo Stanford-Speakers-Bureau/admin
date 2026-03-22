@@ -2,6 +2,7 @@
 
 import { createContext, useCallback, useContext, useMemo, useState } from "react";
 import { getNextEventId } from "@/app/lib/eventUtils";
+import { sortByStartDate } from "@/app/lib/formatting";
 
 export type EventOption = {
   id: string;
@@ -22,13 +23,7 @@ type EventContextType = {
 
 const EventContext = createContext<EventContextType | null>(null);
 
-function sortEvents(events: EventOption[]): EventOption[] {
-  return [...events].sort((a, b) => {
-    const aVal = a.start_time_date ?? "";
-    const bVal = b.start_time_date ?? "";
-    return bVal.localeCompare(aVal);
-  });
-}
+const sortEvents = sortByStartDate<EventOption>;
 
 export function EventProvider({
   events: initialEvents,

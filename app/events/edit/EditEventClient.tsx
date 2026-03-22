@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Image from "next/image";
 import { PACIFIC_TIMEZONE } from "@/app/lib/constants";
 import { useEventContext } from "@/app/EventContext";
+import { sortByStartDate } from "@/app/lib/formatting";
 import MarkdownEditor from "../MarkdownEditor";
 import { Event } from "../AdminEventsClient";
 
@@ -81,13 +82,7 @@ const emptyForm: FormData = {
   address: "",
 };
 
-function sortEvents(events: Event[]): Event[] {
-  return [...events].sort((a, b) => {
-    const aVal = a.start_time_date ?? "";
-    const bVal = b.start_time_date ?? "";
-    return bVal.localeCompare(aVal);
-  });
-}
+const sortEvents = sortByStartDate<Event>;
 
 function toEventOption(event: Event) {
   return {

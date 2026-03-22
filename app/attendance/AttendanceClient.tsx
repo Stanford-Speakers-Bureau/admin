@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useMemo } from "react";
 import { getAnalyticsCardGridStyle } from "@/app/lib/utils";
+import { formatDateShort as formatDate } from "@/app/lib/formatting";
 
 // ── Types ────────────────────────────────────────────────────────────────
 
@@ -52,14 +53,6 @@ type FilterTab = "all" | "loyalists" | "flakers" | "mixed";
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
-function formatDate(iso: string | null): string {
-  if (!iso) return "N/A";
-  return new Date(iso).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
-}
 
 function ProgressBar({ value, max, color = "#10b981" }: { value: number; max: number; color?: string }) {
   const pct = max > 0 ? Math.min((value / max) * 100, 100) : 0;
