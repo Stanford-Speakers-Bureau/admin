@@ -13,7 +13,6 @@ type NavItem = {
 
 type AdminLayoutClientProps = {
   children: React.ReactNode;
-  userEmail: string | null;
   navItems: NavItem[];
   emailDisabled: boolean;
   hasLiveEvent: boolean;
@@ -118,11 +117,10 @@ export default function AdminLayoutClient({
                 href={navHref(item)}
                 prefetch={false}
                 title={item.label}
-                className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                  active
+                className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${active
                     ? "bg-rose-500/10 text-rose-400"
                     : "text-zinc-400 hover:text-white hover:bg-zinc-800"
-                }`}
+                  }`}
               >
                 <svg
                   className="w-5 h-5 shrink-0"
@@ -155,11 +153,10 @@ export default function AdminLayoutClient({
                 href={navHref(item)}
                 prefetch={false}
                 title={item.label}
-                className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                  active
+                className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${active
                     ? "bg-rose-500/10 text-rose-400"
                     : "text-zinc-400 hover:text-white hover:bg-zinc-800"
-                }`}
+                  }`}
               >
                 <svg
                   className="w-5 h-5 shrink-0"
@@ -192,11 +189,10 @@ export default function AdminLayoutClient({
                 href={navHref(item)}
                 prefetch={false}
                 title={item.label}
-                className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                  active
+                className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${active
                     ? "bg-rose-500/10 text-rose-400"
                     : "text-zinc-400 hover:text-white hover:bg-zinc-800"
-                }`}
+                  }`}
               >
                 <svg
                   className="w-5 h-5 shrink-0"
@@ -229,11 +225,10 @@ export default function AdminLayoutClient({
                 href={navHref(item)}
                 prefetch={false}
                 title={item.label}
-                className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                  active
+                className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${active
                     ? "bg-rose-500/10 text-rose-400"
                     : "text-zinc-400 hover:text-white hover:bg-zinc-800"
-                }`}
+                  }`}
               >
                 <svg
                   className="w-5 h-5 shrink-0"
@@ -369,9 +364,8 @@ export default function AdminLayoutClient({
                 key={item.href}
                 href={navHref(item)}
                 prefetch={false}
-                className={`flex flex-col items-center gap-1 px-3 py-2 rounded transition-all shrink-0 ${
-                  active ? "text-rose-400" : "text-zinc-500 hover:text-white"
-                }`}
+                className={`flex flex-col items-center gap-1 px-3 py-2 rounded transition-all shrink-0 ${active ? "text-rose-400" : "text-zinc-500 hover:text-white"
+                  }`}
               >
                 <svg
                   className="w-5 h-5"
@@ -439,9 +433,8 @@ export default function AdminLayoutClient({
 
       {/* Main Content */}
       <main
-        className={`pb-20 md:pb-8 min-h-screen pt-12 md:pt-0 md:ml-16 lg:ml-64 ${
-          emailDisabled ? "md:pt-12" : ""
-        }`}
+        className={`pb-20 md:pb-8 min-h-screen pt-12 md:pt-0 md:ml-16 lg:ml-64 ${emailDisabled ? "md:pt-12" : ""
+          }`}
       >
         {children}
       </main>

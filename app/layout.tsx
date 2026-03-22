@@ -222,7 +222,6 @@ export default async function AdminLayout({ children }: AdminLayoutProps) {
       >
         <EventProvider events={eventList} defaultEventId={defaultEventId}>
           <AdminLayoutClient
-            userEmail={auth.email}
             navItems={navItems}
             emailDisabled={emailDisabled}
             hasLiveEvent={hasLiveEvent}
