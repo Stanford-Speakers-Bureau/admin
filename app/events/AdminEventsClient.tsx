@@ -30,6 +30,7 @@ export type Event = {
   desc: string | null;
   tagline: string | null;
   img: string | null;
+  mobile_img: string | null;
   img_version: number | null;
   capacity: number;
   tickets?: number | null;
@@ -46,6 +47,7 @@ export type Event = {
   longitude?: number | null;
   address?: string | null;
   image_url?: string | null;
+  mobile_image_url?: string | null;
   live?: boolean | null;
   priority?: string | null;
   hide_ticketing_date?: boolean;

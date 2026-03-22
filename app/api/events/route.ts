@@ -1,7 +1,12 @@
 import { NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import { fromZonedTime } from "date-fns-tz";
-import { getSignedImageUrl, verifyAdminRequest, serializeEvent } from "@/app/lib/supabase";
+import {
+  getSignedImageUrl,
+  getSupabaseClient,
+  verifyAdminRequest,
+  serializeEvent,
+} from "@/app/lib/supabase";
 import { PACIFIC_TIMEZONE } from "@/app/lib/constants";
 import { pullFromWaitlist } from "@/app/lib/waitlist";
 import { db, eq, ne, events } from "@ssb/db";
@@ -18,6 +23,55 @@ import {
   isValidLongitude,
   isValidAddress,
 } from "@/app/lib/validation";
+
+async function uploadEventImage(
+  adminClient: ReturnType<typeof getSupabaseClient>,
+  imageFile: File | null,
+): Promise<string | null> {
+  if (!imageFile || imageFile.size === 0) {
+    return null;
+  }
+
+  if (!isValidImageSize(imageFile.size)) {
+    throw new Error("Image file too large. Maximum size is 5MB.");
+  }
+
+  if (!isValidImageExtension(imageFile.name)) {
+    throw new Error(
+      "Invalid image file type. Allowed types: JPG, PNG, GIF, WebP.",
+    );
+  }
+
+  const fileExt = imageFile.name.split(".").pop();
+  const fileName = `${Date.now()}-${randomUUID()}.${fileExt}`;
+
+  const { error: uploadError } = await adminClient.storage
+    .from("speakers")
+    .upload(fileName, imageFile, {
+      cacheControl: "3600",
+      upsert: false,
+    });
+
+  if (uploadError) {
+    console.error("Image upload error:", uploadError);
+    throw new Error("Failed to upload image");
+  }
+
+  return fileName;
+}
+
+async function serializeEventWithImages(event: InferSelectModel<typeof events>) {
+  const serialized = serializeEvent(event);
+  return {
+    ...serialized,
+    image_url: event.img
+      ? await getSignedImageUrl(event.img, 60 * 60)
+      : null,
+    mobile_image_url: event.mobileImg
+      ? await getSignedImageUrl(event.mobileImg, 60 * 60)
+      : null,
+  };
+}
 
 export async function POST(req: Request) {
   try {
@@ -51,6 +105,7 @@ export async function POST(req: Request) {
     const longitude = formData.get("longitude") as string;
     const address = formData.get("address") as string;
     const imageFile = formData.get("image") as File | null;
+    const mobileImageFile = formData.get("mobile_image") as File | null;
 
     // Validate ID if provided
     if (id && !isValidUUID(id)) {
@@ -166,47 +221,19 @@ export async function POST(req: Request) {
     }
 
     let imgName: string | null = null;
+    let mobileImgName: string | null = null;
 
-    // Handle image upload with validation (still uses Supabase Storage)
-    if (imageFile && imageFile.size > 0) {
-      // Validate file size
-      if (!isValidImageSize(imageFile.size)) {
-        return NextResponse.json(
-          { error: "Image file too large. Maximum size is 5MB." },
-          { status: 400 },
-        );
-      }
-
-      // Validate file extension
-      if (!isValidImageExtension(imageFile.name)) {
-        return NextResponse.json(
-          {
-            error:
-              "Invalid image file type. Allowed types: JPG, PNG, GIF, WebP.",
-          },
-          { status: 400 },
-        );
-      }
-
-      const fileExt = imageFile.name.split(".").pop();
-      const fileName = `${Date.now()}-${randomUUID()}.${fileExt}`;
-
-      const { error: uploadError } = await adminClient.storage
-        .from("speakers")
-        .upload(fileName, imageFile, {
-          cacheControl: "3600",
-          upsert: false,
-        });
-
-      if (uploadError) {
-        console.error("Image upload error:", uploadError);
-        return NextResponse.json(
-          { error: "Failed to upload image" },
-          { status: 500 },
-        );
-      }
-
-      imgName = fileName;
+    try {
+      imgName = await uploadEventImage(adminClient, imageFile);
+      mobileImgName = await uploadEventImage(adminClient, mobileImageFile);
+    } catch (error) {
+      const message = error instanceof Error
+        ? error.message
+        : "Failed to upload image";
+      return NextResponse.json(
+        { error: message },
+        { status: message.startsWith("Invalid") || message.startsWith("Image file too large") ? 400 : 500 },
+      );
     }
 
     const parsedCapacity = capacity ? parseInt(capacity, 10) : 0;
@@ -296,13 +323,16 @@ export async function POST(req: Request) {
 
     if (imgName) {
       eventData.img = imgName;
-      // Increment img_version when image is updated (for cache busting)
-      if (id && existingEvent) {
-        eventData.imgVersion = existingEvent.imgVersion + 1;
-      } else {
-        // For new events, start at version 1
-        eventData.imgVersion = 1;
-      }
+    }
+
+    if (mobileImgName) {
+      eventData.mobileImg = mobileImgName;
+    }
+
+    if (imgName || mobileImgName) {
+      eventData.imgVersion = id && existingEvent
+        ? existingEvent.imgVersion + 1
+        : 1;
     }
 
     let savedEvent: InferSelectModel<typeof events> | undefined;
@@ -320,6 +350,13 @@ export async function POST(req: Request) {
         .values(eventData)
         .returning();
       savedEvent = created;
+    }
+
+    if (!savedEvent) {
+      return NextResponse.json(
+        { error: "Failed to save event" },
+        { status: 500 },
+      );
     }
 
     if (id && existingEvent && savedEvent) {
@@ -343,13 +380,7 @@ export async function POST(req: Request) {
       }
     }
 
-    const serialized = serializeEvent(savedEvent);
-    const eventWithImage = {
-      ...serialized,
-      image_url: savedEvent.img
-        ? await getSignedImageUrl(savedEvent.img, 60 * 60)
-        : null,
-    };
+    const eventWithImage = await serializeEventWithImages(savedEvent);
 
     return NextResponse.json({ success: true, event: eventWithImage });
   } catch (error) {
@@ -384,13 +415,7 @@ export async function PATCH(req: Request) {
         .where(eq(events.id, id))
         .returning();
 
-      const serialized = serializeEvent(updatedEvent);
-      const eventWithImage = {
-        ...serialized,
-        image_url: updatedEvent.img
-          ? await getSignedImageUrl(updatedEvent.img, 60 * 60)
-          : null,
-      };
+      const eventWithImage = await serializeEventWithImages(updatedEvent);
 
       return NextResponse.json({ success: true, event: eventWithImage });
     }
@@ -414,13 +439,7 @@ export async function PATCH(req: Request) {
         .where(eq(events.id, id))
         .returning();
 
-      const serialized = serializeEvent(updatedEvent);
-      const eventWithImage = {
-        ...serialized,
-        image_url: updatedEvent.img
-          ? await getSignedImageUrl(updatedEvent.img, 60 * 60)
-          : null,
-      };
+      const eventWithImage = await serializeEventWithImages(updatedEvent);
 
       return NextResponse.json({ success: true, event: eventWithImage });
     } else {
@@ -430,13 +449,7 @@ export async function PATCH(req: Request) {
         .where(eq(events.id, id))
         .returning();
 
-      const serialized = serializeEvent(updatedEvent);
-      const eventWithImage = {
-        ...serialized,
-        image_url: updatedEvent.img
-          ? await getSignedImageUrl(updatedEvent.img, 60 * 60)
-          : null,
-      };
+      const eventWithImage = await serializeEventWithImages(updatedEvent);
 
       return NextResponse.json({ success: true, event: eventWithImage });
     }
@@ -477,13 +490,14 @@ export async function DELETE(req: Request) {
     // Get the event first to delete its image
     const event = await db.query.events.findFirst({
       where: eq(events.id, id),
-      columns: { img: true },
+      columns: { img: true, mobileImg: true },
     });
 
     // Delete the image from storage if it exists (Supabase Storage)
-    if (event?.img) {
+    const imagesToDelete = [event?.img, event?.mobileImg].filter((value): value is string => !!value);
+    if (imagesToDelete.length > 0) {
       const adminClient = auth.adminClient!;
-      await adminClient.storage.from("speakers").remove([event.img]);
+      await adminClient.storage.from("speakers").remove(imagesToDelete);
     }
 
     // Delete the event

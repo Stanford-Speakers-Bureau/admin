@@ -22,6 +22,9 @@ async function getAllEvents(): Promise<Event[]> {
           image_url: event.img
             ? await getSignedImageUrl(event.img, 60 * 60)
             : null,
+          mobile_image_url: event.mobileImg
+            ? await getSignedImageUrl(event.mobileImg, 60 * 60)
+            : null,
         };
       }),
     );

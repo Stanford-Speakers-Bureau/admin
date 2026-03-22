@@ -42,6 +42,9 @@ async function getInitialEvents(): Promise<Event[]> {
           image_url: event.img
             ? await getSignedImageUrl(event.img, 60 * 60)
             : null,
+          mobile_image_url: event.mobileImg
+            ? await getSignedImageUrl(event.mobileImg, 60 * 60)
+            : null,
           tickets_sold: ticketMap.get(event.id) ?? 0,
           waitlist_count: waitlistMap.get(event.id) ?? 0,
           standby_count: standbyMap.get(event.id) ?? 0,

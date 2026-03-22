@@ -23,6 +23,7 @@ export type Event = {
   desc: string | null;
   tagline: string | null;
   img: string | null;
+  mobile_img: string | null;
   capacity: number;
   tickets?: number | null;
   venue: string | null;
@@ -58,6 +59,7 @@ export function serializeEvent(e: DBEvent): Event {
     desc: e.desc,
     tagline: e.tagline,
     img: e.img,
+    mobile_img: e.mobileImg,
     capacity: e.capacity,
     tickets: e.tickets,
     venue: e.venue,

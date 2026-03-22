@@ -123,6 +123,17 @@ function eventToFormData(event: Event): FormData {
   };
 }
 
+function readFilePreview(
+  file: File,
+  onLoad: (result: string) => void,
+) {
+  const reader = new FileReader();
+  reader.onloadend = () => {
+    onLoad(reader.result as string);
+  };
+  reader.readAsDataURL(file);
+}
+
 type EditEventClientProps = {
   allEvents: Event[];
 };
@@ -143,10 +154,15 @@ export default function EditEventClient({ allEvents }: EditEventClientProps) {
   const [imagePreview, setImagePreview] = useState<string | null>(
     currentEvent?.image_url || null,
   );
+  const [mobileImageFile, setMobileImageFile] = useState<File | null>(null);
+  const [mobileImagePreview, setMobileImagePreview] = useState<string | null>(
+    currentEvent?.mobile_image_url || null,
+  );
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const mobileFileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setEvents(allEvents);
@@ -157,14 +173,18 @@ export default function EditEventClient({ allEvents }: EditEventClientProps) {
     if (isCreating) {
       setFormData(emptyForm);
       setImagePreview(null);
+      setMobileImagePreview(null);
     } else if (currentEvent) {
       setFormData(eventToFormData(currentEvent));
       setImagePreview(currentEvent.image_url || null);
+      setMobileImagePreview(currentEvent.mobile_image_url || null);
     } else {
       setFormData(emptyForm);
       setImagePreview(null);
+      setMobileImagePreview(null);
     }
     setImageFile(null);
+    setMobileImageFile(null);
     setError(null);
     setSuccess(null);
   }, [selectedEventId, isCreating, currentEvent]);
@@ -173,11 +193,15 @@ export default function EditEventClient({ allEvents }: EditEventClientProps) {
     const file = e.target.files?.[0];
     if (file) {
       setImageFile(file);
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setImagePreview(reader.result as string);
-      };
-      reader.readAsDataURL(file);
+      readFilePreview(file, setImagePreview);
+    }
+  }
+
+  function handleMobileImageChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (file) {
+      setMobileImageFile(file);
+      readFilePreview(file, setMobileImagePreview);
     }
   }
 
@@ -252,6 +276,9 @@ export default function EditEventClient({ allEvents }: EditEventClientProps) {
       if (imageFile) {
         submitData.append("image", imageFile);
       }
+      if (mobileImageFile) {
+        submitData.append("mobile_image", mobileImageFile);
+      }
 
       if (!isCreating && currentEvent) {
         submitData.append("id", currentEvent.id);
@@ -283,7 +310,9 @@ export default function EditEventClient({ allEvents }: EditEventClientProps) {
       upsertEvent(toEventOption(savedEvent));
       setFormData(eventToFormData(savedEvent));
       setImagePreview(savedEvent.image_url || null);
+      setMobileImagePreview(savedEvent.mobile_image_url || null);
       setImageFile(null);
+      setMobileImageFile(null);
       setSelectedEventId(savedEvent.id);
       setSuccess(isCreating ? "Event created!" : "Changes saved!");
 
@@ -302,6 +331,7 @@ export default function EditEventClient({ allEvents }: EditEventClientProps) {
 
   const editingEvent = isCreating ? null : currentEvent;
   const hasEvent = !!selectedEventId && !!currentEvent;
+  const mobileImageDisplayPreview = mobileImagePreview || imagePreview;
 
   return (
     <div className="px-4 sm:px-6 py-8">
@@ -484,29 +514,57 @@ export default function EditEventClient({ allEvents }: EditEventClientProps) {
             <MarkdownEditor label="Tagline" value={formData.tagline} onChange={(v) => setFormData({ ...formData, tagline: v })} placeholder="Short tagline for the speaker..." rows={2} />
             <MarkdownEditor label="Description" value={formData.desc} onChange={(v) => setFormData({ ...formData, desc: v })} placeholder="Event description..." rows={4} />
 
-            {/* Image Upload */}
-            <div>
-              <label className="block text-sm font-medium text-zinc-300 mb-2">Event Image</label>
-              <div className="flex items-start gap-4">
-                <div
-                  onClick={() => fileInputRef.current?.click()}
-                  className="relative w-32 h-32 bg-zinc-800 border-2 border-dashed border-zinc-600 rounded-xl overflow-hidden cursor-pointer hover:border-zinc-500 transition-colors flex items-center justify-center"
-                >
-                  {imagePreview ? (
-                    <Image src={imagePreview} alt="Preview" fill className="object-cover" unoptimized />
-                  ) : (
-                    <>
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+              <div>
+                <label className="block text-sm font-medium text-zinc-300 mb-2">Event Image</label>
+                <div className="flex items-start gap-4">
+                  <div
+                    onClick={() => fileInputRef.current?.click()}
+                    className="relative w-32 h-32 bg-zinc-800 border-2 border-dashed border-zinc-600 rounded-xl overflow-hidden cursor-pointer hover:border-zinc-500 transition-colors flex items-center justify-center"
+                  >
+                    {imagePreview ? (
+                      <Image src={imagePreview} alt="Event image preview" fill className="object-cover" unoptimized />
+                    ) : (
                       <svg className="w-8 h-8 text-zinc-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
                       </svg>
-                    </>
-                  )}
+                    )}
+                  </div>
+                  <input ref={fileInputRef} type="file" accept="image/*" onChange={handleImageChange} className="hidden" />
+                  <div className="text-sm text-zinc-500 space-y-1">
+                    <p>Recommended: 800x800px or larger</p>
+                    <p>Supported formats: JPG, PNG, WebP</p>
+                    {imageFile && <p className="text-emerald-400 pt-1">Selected: {imageFile.name}</p>}
+                  </div>
                 </div>
-                <input ref={fileInputRef} type="file" accept="image/*" onChange={handleImageChange} className="hidden" />
-                <div className="text-sm text-zinc-500">
-                  <p>Recommended: 800x800px or larger</p>
-                  <p>Supported formats: JPG, PNG, WebP</p>
-                  {imageFile && <p className="text-emerald-400 mt-2">Selected: {imageFile.name}</p>}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-zinc-300 mb-2">Mobile Event Image (optional)</label>
+                <div className="flex items-start gap-4">
+                  <div
+                    onClick={() => mobileFileInputRef.current?.click()}
+                    className="relative w-32 h-32 bg-zinc-800 border-2 border-dashed border-zinc-600 rounded-xl overflow-hidden cursor-pointer hover:border-zinc-500 transition-colors flex items-center justify-center"
+                  >
+                    {mobileImageDisplayPreview ? (
+                      <Image src={mobileImageDisplayPreview} alt="Mobile event image preview" fill className="object-cover" unoptimized />
+                    ) : (
+                      <svg className="w-8 h-8 text-zinc-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                      </svg>
+                    )}
+                  </div>
+                  <input ref={mobileFileInputRef} type="file" accept="image/*" onChange={handleMobileImageChange} className="hidden" />
+                  <div className="text-sm text-zinc-500 space-y-1">
+                    <p>Shown on mobile event pages only.</p>
+                    <p>Leave extra space near the top for safe cropping.</p>
+                    <p>Avoid placing faces or key text near the top edge.</p>
+                    <p>Falls back to the regular event image when omitted.</p>
+                    {mobileImageFile && <p className="text-emerald-400 pt-1">Selected: {mobileImageFile.name}</p>}
+                    {!mobileImageFile && !mobileImagePreview && imagePreview && (
+                      <p className="text-zinc-400 pt-1">Currently previewing the regular event image as the fallback.</p>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
