@@ -288,7 +288,14 @@ export async function PATCH(req: Request) {
     // Handle different actions
     if (action === "updateName") {
       // Update ticket name
-      const newName = typeof name === "string" ? name.trim() || null : null;
+      const trimmed = typeof name === "string" ? name.trim() : "";
+      if (trimmed.length > 200) {
+        return NextResponse.json(
+          { error: "Name must be 200 characters or less" },
+          { status: 400 },
+        );
+      }
+      const newName = trimmed || null;
 
       await db.update(tickets).set({ name: newName }).where(eq(tickets.id, id));
       const ticket = await db.query.tickets.findFirst({
@@ -567,6 +574,13 @@ export async function PATCH(req: Request) {
         );
       }
 
+      if (!isValidUUID(eventId)) {
+        return NextResponse.json(
+          { error: "Invalid event ID format" },
+          { status: 400 },
+        );
+      }
+
       // Fetch event details including doors_open time
       const event = await db.query.events.findFirst({
         where: eq(events.id, eventId),
@@ -740,6 +754,13 @@ export async function PATCH(req: Request) {
       if (!eventId) {
         return NextResponse.json(
           { error: "Event ID is required" },
+          { status: 400 },
+        );
+      }
+
+      if (!isValidUUID(eventId)) {
+        return NextResponse.json(
+          { error: "Invalid event ID format" },
           { status: 400 },
         );
       }

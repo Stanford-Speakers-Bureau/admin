@@ -5,7 +5,8 @@
       "Bash(git show:*)",
       "WebFetch(domain:opennext.js.org)",
       "Bash(python3:*)",
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "Bash(gh pr:*)"
     ]
   }
 }

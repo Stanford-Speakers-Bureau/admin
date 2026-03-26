@@ -5,6 +5,23 @@ import { sendStandbyLineEmail } from "@/app/lib/email";
 import { PACIFIC_TIMEZONE } from "@/app/lib/constants";
 import { db, eq, and, inArray, waitlist, events, tickets } from "@ssb/db";
 
+async function sendWithRetry(
+  fn: () => Promise<void>,
+  maxAttempts = 4,
+): Promise<void> {
+  let delay = 500;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      await fn();
+      return;
+    } catch (err) {
+      if (attempt === maxAttempts) throw err;
+      await new Promise((res) => setTimeout(res, delay));
+      delay *= 2;
+    }
+  }
+}
+
 export async function GET(req: Request) {
   try {
     const auth = await verifyAdminRequest();
@@ -273,17 +290,19 @@ export async function POST(req: Request) {
           type: "STANDBY",
         }).returning({ id: tickets.id });
 
-        await sendStandbyLineEmail({
-          email: entry.email,
-          name: entry.name,
-          eventName: event.name || "Event",
-          eventStartTime: event.startTimeDate?.toISOString() ?? null,
-          eventVenue: event.venue,
-          eventVenueLink: event.venueLink,
-          standbyOpenTime: doorsOpenFormatted,
-          expectedCapacity: expectedCapacity || "100-200",
-          ticketId: inserted.id,
-        });
+        await sendWithRetry(() =>
+          sendStandbyLineEmail({
+            email: entry.email,
+            name: entry.name,
+            eventName: event.name || "Event",
+            eventStartTime: event.startTimeDate?.toISOString() ?? null,
+            eventVenue: event.venue,
+            eventVenueLink: event.venueLink,
+            standbyOpenTime: doorsOpenFormatted,
+            expectedCapacity: expectedCapacity || "100-200",
+            ticketId: inserted.id,
+          })
+        );
 
         issuedStandbyIds.push(entry.id);
         successCount++;

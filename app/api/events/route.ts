@@ -124,6 +124,14 @@ export async function POST(req: Request) {
       );
     }
 
+    // Validate priority notice length
+    if (priority && priority.trim().length > 300) {
+      return NextResponse.json(
+        { error: "Priority notice must be 300 characters or less" },
+        { status: 400 },
+      );
+    }
+
     // Validate livestream URL
     if (livestream && !isValidUrl(livestream)) {
       return NextResponse.json(
@@ -272,7 +280,7 @@ export async function POST(req: Request) {
       endTimeDate: endTimeDateValue,
       doorsOpen: doorsOpenValue,
       route: route || null,
-      priority: priority || null,
+      priority: priority?.trim() || null,
       hideTicketingDate: hide_ticketing_date,
       referralsEnabled: referrals_enabled,
       standbyEnabled: standby_enabled,

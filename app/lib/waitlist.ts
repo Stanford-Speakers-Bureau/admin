@@ -2,6 +2,23 @@ import { getAvailablePublicTickets } from "@/app/lib/supabase";
 import { db, eq, inArray, tickets, waitlist } from "@ssb/db";
 import { sendTicketEmail } from "@/app/lib/email";
 
+async function sendWithRetry(
+  fn: () => Promise<void>,
+  maxAttempts = 4,
+): Promise<void> {
+  let delay = 500;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      await fn();
+      return;
+    } catch (err) {
+      if (attempt === maxAttempts) throw err;
+      await new Promise((res) => setTimeout(res, delay));
+      delay *= 2;
+    }
+  }
+}
+
 export async function pullFromWaitlist(
   _adminClient: unknown, // kept for backward compatibility during migration
   eventId: string,
@@ -56,12 +73,6 @@ export async function pullFromWaitlist(
 
   if (!newTickets.length) return 0;
 
-  // Remove converted entries from the waitlist
-  const createdEmails = new Set(newTickets.map((t) => t.email));
-  const waitlistIds = waitlistEntries
-    .filter((e) => createdEmails.has(e.email))
-    .map((e) => e.id);
-
   if (newTickets.length !== waitlistEntries.length) {
     console.error(
       "Waitlist conversion mismatch (non-fatal):",
@@ -70,34 +81,46 @@ export async function pullFromWaitlist(
     );
   }
 
-  if (waitlistIds.length > 0) {
-    try {
-      await db.delete(waitlist).where(inArray(waitlist.id, waitlistIds));
-    } catch (err) {
-      console.error("Waitlist removal error (non-fatal):", err);
-    }
-  }
-
+  // Send emails first — only remove from waitlist after a successful send.
+  // This way, a failed email leaves the waitlist entry intact so it can be
+  // retried without the user losing their spot.
+  const confirmedEmails = new Set<string>();
   for (const newTicket of newTickets) {
     try {
-      await sendTicketEmail({
-        email: newTicket.email,
-        name: newTicket.name || null,
-        eventName: newTicket.event?.name || "Event",
-        ticketType: newTicket.type || "STANDARD",
-        eventStartTime: newTicket.event?.startTimeDate?.toISOString() || null,
-        eventEndTime: newTicket.event?.endTimeDate?.toISOString() || null,
-        eventRoute: newTicket.event?.route || null,
-        ticketId: newTicket.id,
-        eventVenue: newTicket.event?.venue || null,
-        eventVenueLink: newTicket.event?.venueLink || null,
-        eventDescription: newTicket.event?.desc || null,
-      });
+      await sendWithRetry(() =>
+        sendTicketEmail({
+          email: newTicket.email,
+          name: newTicket.name || null,
+          eventName: newTicket.event?.name || "Event",
+          ticketType: newTicket.type || "STANDARD",
+          eventStartTime: newTicket.event?.startTimeDate?.toISOString() || null,
+          eventEndTime: newTicket.event?.endTimeDate?.toISOString() || null,
+          eventRoute: newTicket.event?.route || null,
+          ticketId: newTicket.id,
+          eventVenue: newTicket.event?.venue || null,
+          eventVenueLink: newTicket.event?.venueLink || null,
+          eventDescription: newTicket.event?.desc || null,
+        })
+      );
+      confirmedEmails.add(newTicket.email);
     } catch (emailError) {
       console.error(
         "Email sending error for waitlist conversion (non-fatal):",
         emailError,
       );
+    }
+  }
+
+  // Only remove waitlist entries whose email was successfully sent.
+  const confirmedWaitlistIds = waitlistEntries
+    .filter((e) => confirmedEmails.has(e.email))
+    .map((e) => e.id);
+
+  if (confirmedWaitlistIds.length > 0) {
+    try {
+      await db.delete(waitlist).where(inArray(waitlist.id, confirmedWaitlistIds));
+    } catch (err) {
+      console.error("Waitlist removal error (non-fatal):", err);
     }
   }
 
