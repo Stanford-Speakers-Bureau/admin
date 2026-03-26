@@ -1,7 +1,7 @@
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
-import { db, eq, events, roles, referrals } from "@ssb/db";
+import { db, eq, events, roles } from "@ssb/db";
 import type { InferSelectModel } from "@ssb/db";
 import {
   getTicketCounts as _getTicketCounts,
@@ -23,6 +23,7 @@ export type Event = {
   desc: string | null;
   tagline: string | null;
   img: string | null;
+  mobile_img: string | null;
   capacity: number;
   tickets?: number | null;
   venue: string | null;
@@ -30,8 +31,8 @@ export type Event = {
   venue_link: string | null;
   release_date: string | null;
   ticketing_date?: string | null;
-  banner: boolean | null;
   start_time_date: string | null;
+  end_time_date: string | null;
   doors_open: string | null;
   route: string | null;
   img_version?: number | null;
@@ -40,8 +41,11 @@ export type Event = {
   longitude?: number;
   address?: string;
   waitlist_chance?: string | null;
-  waitlist?: boolean | null;
-  livestream?: boolean | null;
+  standby_enabled?: boolean | null;
+  livestream?: string | null;
+  priority?: string | null;
+  hide_ticketing_date?: boolean;
+  referrals_enabled?: boolean;
 };
 
 /**
@@ -55,6 +59,7 @@ export function serializeEvent(e: DBEvent): Event {
     desc: e.desc,
     tagline: e.tagline,
     img: e.img,
+    mobile_img: e.mobileImg,
     capacity: e.capacity,
     tickets: e.tickets,
     venue: e.venue,
@@ -62,8 +67,8 @@ export function serializeEvent(e: DBEvent): Event {
     venue_link: e.venueLink,
     release_date: e.releaseDate?.toISOString() ?? null,
     ticketing_date: e.ticketingDate?.toISOString() ?? null,
-    banner: e.banner,
     start_time_date: e.startTimeDate?.toISOString() ?? null,
+    end_time_date: e.endTimeDate?.toISOString() ?? null,
     doors_open: e.doorsOpen?.toISOString() ?? null,
     route: e.route,
     img_version: e.imgVersion,
@@ -72,8 +77,11 @@ export function serializeEvent(e: DBEvent): Event {
     longitude: Number(e.longitude),
     address: e.address,
     waitlist_chance: e.waitlistChance ?? null,
-    waitlist: e.waitlistMode ?? null,
+    standby_enabled: e.standbyEnabled ?? null,
     livestream: e.livestream ?? null,
+    priority: e.priority ?? null,
+    hide_ticketing_date: e.hideTicketingDate ?? false,
+    referrals_enabled: e.referralsEnabled ?? false,
   };
 }
 

@@ -1,6 +1,6 @@
 import AdminEventsClient, { Event } from "./AdminEventsClient";
 import { getSignedImageUrl, verifyAdminRequest, serializeEvent } from "@/app/lib/supabase";
-import { db } from "@ssb/db";
+import { db, eq, ne, count as dbCount, tickets, waitlist } from "@ssb/db";
 
 export const dynamic = "force-dynamic";
 
@@ -15,14 +15,39 @@ async function getInitialEvents(): Promise<Event[]> {
       orderBy: (t, { desc }) => [desc(t.startTimeDate)],
     });
 
+    // Batch count queries — one query each instead of per-event
+    const [ticketCounts, waitlistCounts, standbyCounts] = await Promise.all([
+      db.select({ eventId: tickets.eventId, count: dbCount() })
+        .from(tickets)
+        .where(ne(tickets.type, "STANDBY"))
+        .groupBy(tickets.eventId),
+      db.select({ eventId: waitlist.eventId, count: dbCount() })
+        .from(waitlist)
+        .groupBy(waitlist.eventId),
+      db.select({ eventId: tickets.eventId, count: dbCount() })
+        .from(tickets)
+        .where(eq(tickets.type, "STANDBY"))
+        .groupBy(tickets.eventId),
+    ]);
+
+    const ticketMap = new Map(ticketCounts.map((r) => [r.eventId, r.count]));
+    const waitlistMap = new Map(waitlistCounts.map((r) => [r.eventId, r.count]));
+    const standbyMap = new Map(standbyCounts.map((r) => [r.eventId, r.count]));
+
     const eventsWithImages = await Promise.all(
       events.map(async (event) => {
         const serialized = serializeEvent(event);
         return {
           ...serialized,
           image_url: event.img
-            ? await getSignedImageUrl(event.img, 60 * 60) // 1 hour expiry
+            ? await getSignedImageUrl(event.img, 60 * 60)
             : null,
+          mobile_image_url: event.mobileImg
+            ? await getSignedImageUrl(event.mobileImg, 60 * 60)
+            : null,
+          tickets_sold: ticketMap.get(event.id) ?? 0,
+          waitlist_count: waitlistMap.get(event.id) ?? 0,
+          standby_count: standbyMap.get(event.id) ?? 0,
         };
       }),
     );

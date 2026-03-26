@@ -8,11 +8,11 @@ import {
   sendDayOfReminderEmail,
   sendEarlyReminderEmail,
   sendTicketEmail,
-  sendWaitlistClosedEmail,
+  sendStandbyLineEmail,
 } from "@/app/lib/email";
 import { PACIFIC_TIMEZONE } from "@/app/lib/constants";
 import { pullFromWaitlist } from "@/app/lib/waitlist";
-import { db, eq, and, or, ilike, count as dbCount, tickets, events, waitlist, referrals } from "@ssb/db";
+import { db, eq, and, or, ilike, isNotNull, count as dbCount, tickets, events, waitlist, referrals } from "@ssb/db";
 
 /** Helper to serialize a ticket (with optional event relation) to snake_case for API response */
 function serializeTicket(ticket: {
@@ -25,14 +25,15 @@ function serializeTicket(ticket: {
   scanTime: Date | null;
   referral: string | null;
   eventId: string | null;
-  event?: {
-    id: string;
-    name: string | null;
-    route: string | null;
-    startTimeDate: Date | null;
-    venue?: string | null;
-    venueLink?: string | null;
-    desc?: string | null;
+    event?: {
+      id: string;
+      name: string | null;
+      route: string | null;
+      startTimeDate: Date | null;
+      endTimeDate?: Date | null;
+      venue?: string | null;
+      venueLink?: string | null;
+      desc?: string | null;
     doorsOpen?: Date | null;
   } | null;
 }) {
@@ -52,6 +53,7 @@ function serializeTicket(ticket: {
           name: ticket.event.name,
           route: ticket.event.route,
           start_time_date: ticket.event.startTimeDate?.toISOString() ?? null,
+          ...(ticket.event.endTimeDate !== undefined ? { end_time_date: ticket.event.endTimeDate?.toISOString() ?? null } : {}),
           ...(ticket.event.venue !== undefined ? { venue: ticket.event.venue } : {}),
           ...(ticket.event.venueLink !== undefined ? { venue_link: ticket.event.venueLink } : {}),
           ...(ticket.event.desc !== undefined ? { desc: ticket.event.desc } : {}),
@@ -69,12 +71,12 @@ const TICKET_COLUMNS = {
 
 /** Standard event relation (basic fields) */
 const TICKET_WITH_EVENT = {
-  event: { columns: { id: true, name: true, route: true, startTimeDate: true } },
+  event: { columns: { id: true, name: true, route: true, startTimeDate: true, endTimeDate: true } },
 } as const;
 
 /** Extended event relation (includes venue/desc/doorsOpen for emails) */
 const TICKET_WITH_EVENT_DETAILS = {
-  event: { columns: { id: true, name: true, route: true, startTimeDate: true, venue: true, venueLink: true, desc: true, doorsOpen: true } },
+  event: { columns: { id: true, name: true, route: true, startTimeDate: true, endTimeDate: true, venue: true, venueLink: true, desc: true, doorsOpen: true } },
 } as const;
 
 function formatDoorsOpenTime(doorsOpen: Date | null | undefined): string | undefined {
@@ -89,7 +91,7 @@ function formatDoorsOpenTime(doorsOpen: Date | null | undefined): string | undef
 
 /** Extended event relation with doors_open for reminders */
 const TICKET_WITH_DOORS_OPEN = {
-  event: { columns: { id: true, name: true, route: true, startTimeDate: true, venue: true, venueLink: true, desc: true, doorsOpen: true } },
+  event: { columns: { id: true, name: true, route: true, startTimeDate: true, endTimeDate: true, venue: true, venueLink: true, desc: true, doorsOpen: true } },
 } as const;
 
 export async function GET(req: Request) {
@@ -140,7 +142,7 @@ export async function GET(req: Request) {
         db.select({ count: dbCount() }).from(tickets).where(baseWhereClause ? and(baseWhereClause, eq(tickets.type, "STANDARD")) : eq(tickets.type, "STANDARD")),
         db.select({ count: dbCount() }).from(tickets).where(baseWhereClause ? and(baseWhereClause, eq(tickets.type, "VIP")) : eq(tickets.type, "VIP")),
         db.select({ count: dbCount() }).from(tickets).where(baseWhereClause ? and(baseWhereClause, eq(tickets.type, "EXTERNAL")) : eq(tickets.type, "EXTERNAL")),
-        db.select({ count: dbCount() }).from(tickets).where(baseWhereClause ? and(baseWhereClause, eq(tickets.type, "WAITLIST")) : eq(tickets.type, "WAITLIST")),
+        db.select({ count: dbCount() }).from(tickets).where(baseWhereClause ? and(baseWhereClause, eq(tickets.type, "STANDBY")) : eq(tickets.type, "STANDBY")),
       ]);
 
     return NextResponse.json({
@@ -152,7 +154,7 @@ export async function GET(req: Request) {
       standardCount: standardResult?.count ?? 0,
       vipCount: vipResult?.count ?? 0,
       externalCount: externalResult?.count ?? 0,
-      waitlistCount: waitlistResult?.count ?? 0,
+      standbyCount: waitlistResult?.count ?? 0,
       limit,
       offset,
     });
@@ -197,22 +199,16 @@ export async function DELETE(req: Request) {
 
     // Sync referral counts
     try {
-      const allReferrals = await db.query.referrals.findMany({
-        columns: { id: true, eventId: true, referralCode: true, count: true },
-      });
-
+      const [allReferrals, ticketCounts] = await Promise.all([
+        db.query.referrals.findMany({ columns: { id: true, eventId: true, referralCode: true, count: true } }),
+        db.select({ eventId: tickets.eventId, referral: tickets.referral, count: dbCount() })
+          .from(tickets).where(isNotNull(tickets.referral)).groupBy(tickets.eventId, tickets.referral),
+      ]);
+      const countMap = new Map(ticketCounts.map((r) => [`${r.eventId}:${r.referral}`, r.count]));
       for (const referral of allReferrals) {
-        const conditions = [eq(tickets.eventId, referral.eventId)];
-        if (referral.referralCode) conditions.push(eq(tickets.referral, referral.referralCode));
-        const [result] = await db.select({ count: dbCount() })
-          .from(tickets)
-          .where(and(...conditions));
-        const actualCount = result?.count ?? 0;
-
-        if (referral.count !== actualCount) {
-          await db.update(referrals)
-            .set({ count: actualCount })
-            .where(eq(referrals.id, referral.id));
+        const actual = countMap.get(`${referral.eventId}:${referral.referralCode}`) ?? 0;
+        if (referral.count !== actual) {
+          await db.update(referrals).set({ count: actual }).where(eq(referrals.id, referral.id));
         }
       }
     } catch (syncError) {
@@ -256,20 +252,16 @@ export async function DELETE(req: Request) {
 
 /** Helper to sync event scanned counts */
 async function syncEventScannedCounts() {
-  const allEvents = await db.query.events.findMany({
-    columns: { id: true, scanned: true },
-  });
-
+  const [allEvents, scannedCounts] = await Promise.all([
+    db.query.events.findMany({ columns: { id: true, scanned: true } }),
+    db.select({ eventId: tickets.eventId, count: dbCount() })
+      .from(tickets).where(eq(tickets.scanned, true)).groupBy(tickets.eventId),
+  ]);
+  const countMap = new Map(scannedCounts.map((r) => [r.eventId, r.count]));
   for (const event of allEvents) {
-    const [result] = await db.select({ count: dbCount() })
-      .from(tickets)
-      .where(and(eq(tickets.eventId, event.id), eq(tickets.scanned, true)));
-    const actualScanned = result?.count ?? 0;
-
-    if (event.scanned !== actualScanned) {
-      await db.update(events)
-        .set({ scanned: actualScanned })
-        .where(eq(events.id, event.id));
+    const actual = countMap.get(event.id) ?? 0;
+    if (event.scanned !== actual) {
+      await db.update(events).set({ scanned: actual }).where(eq(events.id, event.id));
     }
   }
 }
@@ -296,7 +288,14 @@ export async function PATCH(req: Request) {
     // Handle different actions
     if (action === "updateName") {
       // Update ticket name
-      const newName = typeof name === "string" ? name.trim() || null : null;
+      const trimmed = typeof name === "string" ? name.trim() : "";
+      if (trimmed.length > 200) {
+        return NextResponse.json(
+          { error: "Name must be 200 characters or less" },
+          { status: 400 },
+        );
+      }
+      const newName = trimmed || null;
 
       await db.update(tickets).set({ name: newName }).where(eq(tickets.id, id));
       const ticket = await db.query.tickets.findFirst({
@@ -333,9 +332,9 @@ export async function PATCH(req: Request) {
       return NextResponse.json({ success: true, ticket: serializeTicket(ticket!) });
     } else if (action === "updateType" || type) {
       // Update ticket type
-      if (type !== "VIP" && type !== "STANDARD" && type !== "EXTERNAL" && type !== "WAITLIST") {
+      if (type !== "VIP" && type !== "STANDARD" && type !== "EXTERNAL" && type !== "STANDBY") {
         return NextResponse.json(
-          { error: "Invalid ticket type. Must be 'VIP', 'STANDARD', 'EXTERNAL', or 'WAITLIST'." },
+          { error: "Invalid ticket type. Must be 'VIP', 'STANDARD', 'EXTERNAL', or 'STANDBY'." },
           { status: 400 },
         );
       }
@@ -381,15 +380,15 @@ export async function PATCH(req: Request) {
       // If the type changed, send updated ticket email
       if (typeChanged && ticket) {
         try {
-          if (ticket.type === "WAITLIST") {
-            await sendWaitlistClosedEmail({
+          if (ticket.type === "STANDBY") {
+            await sendStandbyLineEmail({
               email: ticket.email,
               name: ticket.name || null,
               eventName: ticket.event?.name || "Event",
               eventStartTime: ticket.event?.startTimeDate?.toISOString() ?? null,
               eventVenue: ticket.event?.venue,
               eventVenueLink: ticket.event?.venueLink,
-              waitlistOpenTime: formatDoorsOpenTime(ticket.event?.doorsOpen),
+              standbyOpenTime: formatDoorsOpenTime(ticket.event?.doorsOpen),
               ticketId: ticket.id,
             });
           } else {
@@ -399,6 +398,7 @@ export async function PATCH(req: Request) {
               eventName: ticket.event?.name || "Event",
               ticketType: ticket.type || "STANDARD",
               eventStartTime: ticket.event?.startTimeDate?.toISOString() || null,
+              eventEndTime: ticket.event?.endTimeDate?.toISOString() || null,
               eventRoute: ticket.event?.route || null,
               ticketId: ticket.id,
               eventVenue: ticket.event?.venue || null,
@@ -457,6 +457,7 @@ export async function PATCH(req: Request) {
                   eventName: newTicket.event?.name || "Event",
                   ticketType: newTicket.type || "STANDARD",
                   eventStartTime: newTicket.event?.startTimeDate?.toISOString() || null,
+                  eventEndTime: newTicket.event?.endTimeDate?.toISOString() || null,
                   eventRoute: newTicket.event?.route || null,
                   ticketId: newTicket.id,
                   eventVenue: newTicket.event?.venue || null,
@@ -542,6 +543,7 @@ export async function PATCH(req: Request) {
           eventName: ticket.event?.name || "Event",
           ticketType: ticket.type || "STANDARD",
           eventStartTime: ticket.event?.startTimeDate?.toISOString() || null,
+          eventEndTime: ticket.event?.endTimeDate?.toISOString() || null,
           eventRoute: ticket.event?.route || null,
           ticketId: ticket.id,
           eventVenue: ticket.event?.venue || null,
@@ -572,6 +574,13 @@ export async function PATCH(req: Request) {
         );
       }
 
+      if (!isValidUUID(eventId)) {
+        return NextResponse.json(
+          { error: "Invalid event ID format" },
+          { status: 400 },
+        );
+      }
+
       // Fetch event details including doors_open time
       const event = await db.query.events.findFirst({
         where: eq(events.id, eventId),
@@ -580,6 +589,7 @@ export async function PATCH(req: Request) {
           name: true,
           route: true,
           startTimeDate: true,
+          endTimeDate: true,
           doorsOpen: true,
           venue: true,
           venueLink: true,
@@ -625,6 +635,7 @@ export async function PATCH(req: Request) {
             eventName: event.name || "Event",
             ticketType: ticket.type || "STANDARD",
             eventStartTime: event.startTimeDate?.toISOString() || null,
+            eventEndTime: event.endTimeDate?.toISOString() || null,
             eventRoute: event.route || null,
             ticketId: ticket.id,
             eventVenue: event.venue || null,
@@ -715,6 +726,7 @@ export async function PATCH(req: Request) {
           eventName: ticket.event?.name || "Event",
           ticketType: ticket.type || "STANDARD",
           eventStartTime: ticket.event?.startTimeDate?.toISOString() || null,
+          eventEndTime: ticket.event?.endTimeDate?.toISOString() || null,
           eventRoute: ticket.event?.route || null,
           ticketId: ticket.id,
           eventVenue: ticket.event?.venue || null,
@@ -746,6 +758,13 @@ export async function PATCH(req: Request) {
         );
       }
 
+      if (!isValidUUID(eventId)) {
+        return NextResponse.json(
+          { error: "Invalid event ID format" },
+          { status: 400 },
+        );
+      }
+
       const event = await db.query.events.findFirst({
         where: eq(events.id, eventId),
         columns: {
@@ -753,6 +772,7 @@ export async function PATCH(req: Request) {
           name: true,
           route: true,
           startTimeDate: true,
+          endTimeDate: true,
           doorsOpen: true,
           venue: true,
           venueLink: true,
@@ -796,6 +816,7 @@ export async function PATCH(req: Request) {
             eventName: event.name || "Event",
             ticketType: ticket.type || "STANDARD",
             eventStartTime: event.startTimeDate?.toISOString() || null,
+            eventEndTime: event.endTimeDate?.toISOString() || null,
             eventRoute: event.route || null,
             ticketId: ticket.id,
             eventVenue: event.venue || null,
@@ -887,6 +908,7 @@ export async function PATCH(req: Request) {
           eventName: ticket.event?.name || "Event",
           ticketType: ticket.type || "STANDARD",
           eventStartTime: ticket.event?.startTimeDate?.toISOString() || null,
+          eventEndTime: ticket.event?.endTimeDate?.toISOString() || null,
           eventRoute: ticket.event?.route || null,
           ticketId: ticket.id,
           eventVenue: ticket.event?.venue || null,
@@ -1021,15 +1043,15 @@ export async function POST(req: Request) {
       // Only send email if the type actually changed
       if (typeChanged && updatedTicket) {
         try {
-          if (updatedTicket.type === "WAITLIST") {
-            await sendWaitlistClosedEmail({
+          if (updatedTicket.type === "STANDBY") {
+            await sendStandbyLineEmail({
               email: updatedTicket.email,
               name: updatedTicket.name || null,
               eventName: updatedTicket.event?.name || "Event",
               eventStartTime: updatedTicket.event?.startTimeDate?.toISOString() ?? null,
               eventVenue: updatedTicket.event?.venue,
               eventVenueLink: updatedTicket.event?.venueLink,
-              waitlistOpenTime: formatDoorsOpenTime(updatedTicket.event?.doorsOpen),
+              standbyOpenTime: formatDoorsOpenTime(updatedTicket.event?.doorsOpen),
               ticketId: updatedTicket.id,
             });
           } else {
@@ -1039,6 +1061,7 @@ export async function POST(req: Request) {
               eventName: updatedTicket.event?.name || "Event",
               ticketType: updatedTicket.type || "VIP",
               eventStartTime: updatedTicket.event?.startTimeDate?.toISOString() || null,
+              eventEndTime: updatedTicket.event?.endTimeDate?.toISOString() || null,
               eventRoute: updatedTicket.event?.route || null,
               ticketId: updatedTicket.id,
               eventVenue: updatedTicket.event?.venue || null,
@@ -1092,15 +1115,15 @@ export async function POST(req: Request) {
 
     // Send ticket confirmation email
     try {
-      if (ticket!.type === "WAITLIST") {
-        await sendWaitlistClosedEmail({
+      if (ticket!.type === "STANDBY") {
+        await sendStandbyLineEmail({
           email: ticket!.email,
           name: ticket!.name || null,
           eventName: ticket!.event?.name || "Event",
           eventStartTime: ticket!.event?.startTimeDate?.toISOString() ?? null,
           eventVenue: ticket!.event?.venue,
           eventVenueLink: ticket!.event?.venueLink,
-          waitlistOpenTime: formatDoorsOpenTime(event.doorsOpen),
+          standbyOpenTime: formatDoorsOpenTime(event.doorsOpen),
           ticketId: ticket!.id,
         });
       } else {
@@ -1110,6 +1133,7 @@ export async function POST(req: Request) {
           eventName: ticket!.event?.name || "Event",
           ticketType: ticket!.type || "VIP",
           eventStartTime: ticket!.event?.startTimeDate?.toISOString() || null,
+          eventEndTime: ticket!.event?.endTimeDate?.toISOString() || null,
           eventRoute: ticket!.event?.route || null,
           ticketId: ticket!.id,
           eventVenue: ticket!.event?.venue || null,

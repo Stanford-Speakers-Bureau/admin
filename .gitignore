@@ -43,3 +43,10 @@ next-env.d.ts
 .wrangler
 .open-next
 .dev.vars
+packages/db/node_modules
+
+# snaplet
+.snaplet
+
+# supabase
+supabase/.temp/

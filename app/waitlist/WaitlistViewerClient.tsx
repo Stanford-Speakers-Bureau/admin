@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { PACIFIC_TIMEZONE } from "@/app/lib/constants";
+import { useEventContext } from "@/app/EventContext";
 
 type WaitlistEntry = {
   id: string;
@@ -12,26 +13,27 @@ type WaitlistEntry = {
   created_at: string;
 };
 
-type EventDetails = {
+type StandbyTicket = {
   id: string;
+  email: string;
   name: string | null;
-  capacity: number;
-  reserved: number | null;
-  start_time_date: string | null;
-  venue: string | null;
+  created_at: string;
 };
 
-type EventGroup = {
-  event: EventDetails;
-  waitlist: WaitlistEntry[];
-  totalCount: number;
+type WaitlistResponse = {
+  event?: {
+    id: string;
+    name: string | null;
+    capacity: number;
+    reserved: number | null;
+    standbyMode: boolean;
+  };
+  waitlist?: WaitlistEntry[];
 };
 
-type WaitlistViewerClientProps = {
-  initialWaitlist: EventGroup[] | WaitlistEntry[];
-  initialEvents: { id: string; name: string | null }[];
-  isGrouped: boolean;
-  initialEventId?: string | null;
+type StandbyTicketsResponse = {
+  tickets?: StandbyTicket[];
+  total?: number;
 };
 
 function formatDisplayDate(dateString: string | null): string {
@@ -50,42 +52,117 @@ function formatDisplayDate(dateString: string | null): string {
   }).format(date);
 }
 
-export default function WaitlistViewerClient({
-  initialWaitlist,
-  initialEvents,
-  isGrouped: initialIsGrouped,
-  initialEventId,
-}: WaitlistViewerClientProps) {
-  const [waitlist, setWaitlist] = useState<EventGroup[] | WaitlistEntry[]>(
-    initialWaitlist,
-  );
-  const [selectedEventId, setSelectedEventId] = useState<string>(
-    initialEventId || "",
-  );
+export default function WaitlistViewerClient() {
+  const { events, selectedEventId, updateEvent } = useEventContext();
+  const [waitlist, setWaitlist] = useState<WaitlistEntry[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [isGrouped, setIsGrouped] = useState(initialIsGrouped);
-  const [showNotifyDialog, setShowNotifyDialog] = useState(false);
+  const [showSendDialog, setShowSendDialog] = useState(false);
+  const [showStandbyConfirm, setShowStandbyConfirm] = useState(false);
   const [isSendingEmails, setIsSendingEmails] = useState(false);
-  const [waitlistOpenTime, setWaitlistOpenTime] = useState("7:30 PM");
+  const [isTogglingStandby, setIsTogglingStandby] = useState(false);
+  const [standbyOpenTime, setStandbyOpenTime] = useState("7:30 PM");
   const [expectedCapacity, setExpectedCapacity] = useState("100-200");
   const [notifySuccess, setNotifySuccess] = useState<string | null>(null);
   const [notifyError, setNotifyError] = useState<string | null>(null);
+  const [standbyTickets, setStandbyTickets] = useState<StandbyTicket[]>([]);
+  const [ticketsStillAvailable, setTicketsStillAvailable] = useState(false);
 
-  async function fetchWaitlist() {
+  const selectedEvent = events.find((e) => e.id === selectedEventId);
+  const isStandbyMode = selectedEvent?.standbyEnabled ?? false;
+
+  const fetchWaitlist = useCallback(async () => {
+    if (!selectedEventId) {
+      setWaitlist([]);
+      setStandbyTickets([]);
+      setTicketsStillAvailable(false);
+      return;
+    }
+
     setIsLoading(true);
     setError(null);
 
     try {
-      const params = new URLSearchParams();
-      if (selectedEventId) {
-        params.append("eventId", selectedEventId);
+      // Fetch waitlist entries, standby tickets, and ticket counts in parallel
+      const [waitlistRes, standbyRes] = await Promise.all([
+        fetch(`/api/waitlist?eventId=${selectedEventId}`),
+        fetch(`/api/tickets?eventId=${selectedEventId}&type=STANDBY&limit=1000`),
+      ]);
+
+      if (!waitlistRes.ok) {
+        let errorMessage = "Failed to fetch waitlist";
+        try {
+          const errorData = await waitlistRes.json();
+          errorMessage = errorData.error || errorMessage;
+        } catch {
+          errorMessage = `HTTP ${waitlistRes.status}: ${waitlistRes.statusText}`;
+        }
+        throw new Error(errorMessage);
       }
 
-      const response = await fetch(`/api/waitlist?${params}`);
+      const contentType = waitlistRes.headers.get("content-type");
+      if (!contentType || !contentType.includes("application/json")) {
+        throw new Error("Invalid response format from server");
+      }
+
+      const waitlistData = (await waitlistRes.json()) as WaitlistResponse;
+      setWaitlist(waitlistData.waitlist || []);
+
+      // Check ticket availability using event capacity from waitlist response
+      const eventData = waitlistData.event;
+      if (eventData) {
+        const maxPublic = Math.max(0, (eventData.capacity || 0) - (eventData.reserved || 0));
+        // We need total ticket count — use standby response which has total
+        if (standbyRes.ok) {
+          const standbyData = (await standbyRes.json()) as StandbyTicketsResponse;
+          const standbyList = standbyData.tickets || [];
+          setStandbyTickets(standbyList);
+
+          // total from the standby response is the total ticket count for the event (unfiltered)
+          const totalTickets = standbyData.total ?? 0;
+          setTicketsStillAvailable(
+            !eventData.standbyMode && totalTickets < maxPublic,
+          );
+        }
+      } else {
+        if (standbyRes.ok) {
+          const standbyData = (await standbyRes.json()) as StandbyTicketsResponse;
+          setStandbyTickets(standbyData.tickets || []);
+        }
+        setTicketsStillAvailable(false);
+      }
+    } catch (err) {
+      console.error("Error fetching waitlist:", err);
+      setError(err instanceof Error ? err.message : "Failed to load waitlist");
+    } finally {
+      setIsLoading(false);
+    }
+  }, [selectedEventId]);
+
+  useEffect(() => {
+    fetchWaitlist();
+  }, [fetchWaitlist]);
+
+  function handleRefresh() {
+    fetchWaitlist();
+  }
+
+  async function handleToggleStandby(enable: boolean) {
+    if (!selectedEventId) return;
+
+    setIsTogglingStandby(true);
+    setNotifyError(null);
+    setNotifySuccess(null);
+
+    try {
+      const response = await fetch("/api/events", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: selectedEventId, standbyEnabled: enable }),
+      });
 
       if (!response.ok) {
-        let errorMessage = "Failed to fetch waitlist";
+        let errorMessage = "Failed to toggle standby mode";
         try {
           const errorData = await response.json();
           errorMessage = errorData.error || errorMessage;
@@ -95,39 +172,19 @@ export default function WaitlistViewerClient({
         throw new Error(errorMessage);
       }
 
-      const contentType = response.headers.get("content-type");
-      if (!contentType || !contentType.includes("application/json")) {
-        throw new Error("Invalid response format from server");
-      }
-
-      const data = await response.json();
-
-      if (data.grouped) {
-        setWaitlist(data.leaderboard || []);
-        setIsGrouped(true);
-      } else {
-        setWaitlist(data.waitlist || []);
-        setIsGrouped(false);
-      }
+      updateEvent(selectedEventId, { standbyEnabled: enable });
+      setNotifySuccess(enable ? "Standby line enabled." : "Standby line disabled.");
     } catch (err) {
-      console.error("Error fetching waitlist:", err);
-      setError(err instanceof Error ? err.message : "Failed to load waitlist");
+      console.error("Error toggling standby mode:", err);
+      setNotifyError(err instanceof Error ? err.message : "Failed to toggle standby mode");
     } finally {
-      setIsLoading(false);
+      setIsTogglingStandby(false);
+      setShowStandbyConfirm(false);
     }
   }
 
-  useEffect(() => {
-    fetchWaitlist();
-  }, [selectedEventId]);
-
-  function handleRefresh() {
-    fetchWaitlist();
-  }
-
-  async function handleNotifyWaitlistClosed(eventId?: string) {
-    const targetEventId = eventId || selectedEventId;
-    if (!targetEventId) {
+  async function handleSendStandbyEmails() {
+    if (!selectedEventId) {
       setNotifyError("Please select an event first");
       return;
     }
@@ -143,14 +200,14 @@ export default function WaitlistViewerClient({
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          eventId: targetEventId,
-          waitlistOpenTime,
+          eventId: selectedEventId,
+          waitlistOpenTime: standbyOpenTime,
           expectedCapacity,
         }),
       });
 
       if (!response.ok) {
-        let errorMessage = "Failed to send waitlist closed emails";
+        let errorMessage = "Failed to send standby emails";
         try {
           const errorData = await response.json();
           errorMessage = errorData.error || errorMessage;
@@ -164,9 +221,10 @@ export default function WaitlistViewerClient({
       setNotifySuccess(
         `Successfully sent ${data.emailsSent} email${data.emailsSent !== 1 ? "s" : ""} to waitlist entries${data.errors > 0 ? ` (${data.errors} failed)` : ""}`,
       );
-      setShowNotifyDialog(false);
+      setShowSendDialog(false);
+      fetchWaitlist();
     } catch (err) {
-      console.error("Error sending waitlist closed emails:", err);
+      console.error("Error sending standby emails:", err);
       setNotifyError(
         err instanceof Error ? err.message : "Failed to send emails",
       );
@@ -175,20 +233,61 @@ export default function WaitlistViewerClient({
     }
   }
 
-  // Grouped view (all events)
-  if (isGrouped && Array.isArray(waitlist) && waitlist.length > 0) {
-    const eventGroups = waitlist as EventGroup[];
-    return (
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
-          <div>
-            <h1 className="text-2xl sm:text-3xl font-bold text-white font-serif mb-2">
-              Waitlist Management
-            </h1>
-            <p className="text-zinc-400">
-              View and manage event waitlist entries
-            </p>
-          </div>
+  return (
+    <div className="px-4 sm:px-6 py-8">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
+        <div>
+          <h1 className="text-2xl sm:text-3xl font-bold text-white font-serif mb-2">
+            Waitlist Management
+          </h1>
+          <p className="text-zinc-400">
+            View and manage event waitlist entries
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          {selectedEventId && (
+            <>
+              {/* Standby Line Toggle */}
+              <button
+                onClick={() => {
+                  if (isStandbyMode) {
+                    handleToggleStandby(false);
+                  } else {
+                    setShowStandbyConfirm(true);
+                  }
+                }}
+                disabled={isTogglingStandby}
+                className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-medium transition-colors disabled:opacity-50 shrink-0 ${
+                  isStandbyMode
+                    ? "bg-emerald-600 text-white hover:bg-emerald-700"
+                    : "bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-white"
+                }`}
+              >
+                {isTogglingStandby ? (
+                  <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <div className={`w-8 h-5 rounded-full relative transition-colors ${isStandbyMode ? "bg-emerald-400" : "bg-zinc-600"}`}>
+                    <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${isStandbyMode ? "translate-x-3.5" : "translate-x-0.5"}`} />
+                  </div>
+                )}
+                Standby Line
+              </button>
+
+              {/* Send Standby Emails — only when standby is ON and entries exist */}
+              {isStandbyMode && waitlist.length > 0 && (
+                <button
+                  onClick={() => setShowSendDialog(true)}
+                  disabled={isLoading || isSendingEmails}
+                  className="flex items-center gap-2 px-5 py-2.5 bg-emerald-600 text-white rounded-xl font-medium hover:bg-emerald-700 transition-colors disabled:opacity-50 shrink-0"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                  </svg>
+                  Send Standby Emails
+                </button>
+              )}
+            </>
+          )}
           <button
             onClick={handleRefresh}
             disabled={isLoading}
@@ -210,353 +309,6 @@ export default function WaitlistViewerClient({
             Refresh
           </button>
         </div>
-
-        {/* Event Filter */}
-        <div className="mb-6">
-          <label className="block text-sm font-medium text-zinc-300 mb-2">
-            Filter by Event
-          </label>
-          <select
-            value={selectedEventId}
-            onChange={(e) => setSelectedEventId(e.target.value)}
-            className="w-full max-w-md px-4 py-3 bg-zinc-900 border border-zinc-800 rounded-xl text-white focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50"
-          >
-            <option value="">All Events</option>
-            {initialEvents.map((event) => (
-              <option key={event.id} value={event.id}>
-                {event.name || "Unnamed Event"}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {error && (
-          <div className="mb-6 p-4 bg-rose-500/10 border border-rose-500/30 rounded-xl flex items-center gap-3">
-            <svg
-              className="w-5 h-5 text-rose-400 shrink-0"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-              />
-            </svg>
-            <p className="text-rose-400 text-sm">{error}</p>
-          </div>
-        )}
-
-        {notifySuccess && (
-          <div className="mb-6 p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-xl flex items-center gap-3">
-            <svg
-              className="w-5 h-5 text-emerald-400 shrink-0"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-              />
-            </svg>
-            <p className="text-emerald-400 text-sm">{notifySuccess}</p>
-          </div>
-        )}
-
-        {notifyError && (
-          <div className="mb-6 p-4 bg-rose-500/10 border border-rose-500/30 rounded-xl flex items-center gap-3">
-            <svg
-              className="w-5 h-5 text-rose-400 shrink-0"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-              />
-            </svg>
-            <p className="text-rose-400 text-sm">{notifyError}</p>
-          </div>
-        )}
-
-        {isLoading ? (
-          <div className="text-center py-16 bg-zinc-900/50 rounded-2xl border border-zinc-800">
-            <div className="w-16 h-16 bg-zinc-800 rounded-full flex items-center justify-center mx-auto mb-4">
-              <div className="w-8 h-8 border-2 border-zinc-600 border-t-zinc-400 rounded-full animate-spin" />
-            </div>
-            <p className="text-zinc-400">Loading waitlist...</p>
-          </div>
-        ) : (
-          <div className="space-y-8">
-            {eventGroups.map((group) => (
-              <div
-                key={group.event.id}
-                className="bg-zinc-900 rounded-2xl border border-zinc-800 overflow-hidden"
-              >
-                <div className="p-6 border-b border-zinc-800">
-                  <div className="flex items-start justify-between gap-4">
-                    <div>
-                      <h2 className="text-xl font-bold text-white mb-2">
-                        {group.event.name || "Unnamed Event"}
-                      </h2>
-                      <div className="flex items-center gap-4 text-sm text-zinc-400">
-                        <span>
-                          Total Waitlist:{" "}
-                          <span className="text-emerald-400 font-semibold">
-                            {group.totalCount}
-                          </span>
-                        </span>
-                        {group.event.venue && (
-                          <span className="flex items-center gap-1">
-                            <svg
-                              className="w-4 h-4"
-                              fill="none"
-                              stroke="currentColor"
-                              viewBox="0 0 24 24"
-                            >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"
-                              />
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"
-                              />
-                            </svg>
-                            {group.event.venue}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                    <button
-                      onClick={() => {
-                        setSelectedEventId(group.event.id);
-                        setShowNotifyDialog(true);
-                      }}
-                      disabled={isSendingEmails}
-                      className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 transition-colors disabled:opacity-50 shrink-0"
-                    >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                      </svg>
-                      Notify Waitlist Closed
-                    </button>
-                  </div>
-                </div>
-
-                {group.waitlist.length === 0 ? (
-                  <div className="p-6">
-                    <p className="text-zinc-400 text-sm text-center">
-                      No waitlist entries yet
-                    </p>
-                  </div>
-                ) : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full">
-                      <thead>
-                        <tr className="border-b border-zinc-800 bg-zinc-800/50">
-                          <th className="text-left px-6 py-3 text-xs font-medium text-zinc-400 uppercase tracking-wider">
-                            Position
-                          </th>
-                          <th className="text-left px-6 py-3 text-xs font-medium text-zinc-400 uppercase tracking-wider">
-                            Name
-                          </th>
-                          <th className="text-left px-6 py-3 text-xs font-medium text-zinc-400 uppercase tracking-wider">
-                            Email
-                          </th>
-                          <th className="text-left px-6 py-3 text-xs font-medium text-zinc-400 uppercase tracking-wider">
-                            Referral
-                          </th>
-                          <th className="text-left px-6 py-3 text-xs font-medium text-zinc-400 uppercase tracking-wider">
-                            Joined
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-zinc-800">
-                        {group.waitlist.map((entry, index) => (
-                          <tr
-                            key={entry.id}
-                            className="hover:bg-zinc-800/30 transition-colors"
-                          >
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <span className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-zinc-800 text-white font-semibold text-sm">
-                                {index + 1}
-                              </span>
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-white">
-                              {entry.name || "—"}
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-white font-medium">
-                              {entry.email}
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-zinc-400">
-                              {entry.referral || "—"}
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-zinc-400 text-sm">
-                              {formatDisplayDate(entry.created_at)}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Notify Dialog */}
-        {showNotifyDialog && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <div className="bg-zinc-900 rounded-2xl border border-zinc-800 p-6 max-w-md w-full">
-              <h2 className="text-xl font-bold text-white mb-4">
-                Notify Waitlist Closed
-              </h2>
-              <p className="text-zinc-400 mb-6">
-                This will send an email to all waitlist entries for the selected
-                event, notifying them to come in-person for their ticket.
-              </p>
-              <div className="space-y-4 mb-6">
-                <div>
-                  <label className="block text-sm font-medium text-zinc-300 mb-2">
-                    In-Person Waitlist Open Time
-                  </label>
-                  <input
-                    type="text"
-                    value={waitlistOpenTime}
-                    onChange={(e) => setWaitlistOpenTime(e.target.value)}
-                    placeholder="7:30 PM"
-                    className="w-full px-4 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-zinc-300 mb-2">
-                    Expected Capacity
-                  </label>
-                  <input
-                    type="text"
-                    value={expectedCapacity}
-                    onChange={(e) => setExpectedCapacity(e.target.value)}
-                    placeholder="100-200"
-                    className="w-full px-4 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50"
-                  />
-                </div>
-              </div>
-              <div className="flex items-center gap-3">
-                <button
-                  onClick={() => {
-                    setShowNotifyDialog(false);
-                    setNotifyError(null);
-                    setNotifySuccess(null);
-                  }}
-                  disabled={isSendingEmails}
-                  className="flex-1 px-4 py-2 bg-zinc-800 text-white rounded-lg font-medium hover:bg-zinc-700 transition-colors disabled:opacity-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={() => handleNotifyWaitlistClosed()}
-                  disabled={isSendingEmails}
-                  className="flex-1 px-4 py-2 bg-emerald-600 text-white rounded-lg font-medium hover:bg-emerald-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
-                >
-                  {isSendingEmails ? (
-                    <>
-                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                      Sending...
-                    </>
-                  ) : (
-                    "Send Emails"
-                  )}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  // Single event view
-  const entries = waitlist as WaitlistEntry[];
-  const selectedEvent = initialEvents.find((e) => e.id === selectedEventId);
-
-  return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-white font-serif mb-2">
-            Waitlist Management
-          </h1>
-          <p className="text-zinc-400">
-            View and manage event waitlist entries
-          </p>
-        </div>
-        <button
-          onClick={handleRefresh}
-          disabled={isLoading}
-          className="flex items-center gap-2 px-5 py-2.5 bg-zinc-800 text-white rounded-xl font-medium hover:bg-zinc-700 transition-colors disabled:opacity-50"
-        >
-          <svg
-            className={`w-5 h-5 ${isLoading ? "animate-spin" : ""}`}
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-            />
-          </svg>
-          Refresh
-        </button>
-      </div>
-
-      {/* Event Filter + Notify Action */}
-      <div className="mb-6 flex flex-col sm:flex-row sm:items-end gap-3">
-        <div className="flex-1 max-w-md">
-          <label className="block text-sm font-medium text-zinc-300 mb-2">
-            Filter by Event
-          </label>
-          <select
-            value={selectedEventId}
-            onChange={(e) => setSelectedEventId(e.target.value)}
-            className="w-full px-4 py-3 bg-zinc-900 border border-zinc-800 rounded-xl text-white focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50"
-          >
-            <option value="">All Events</option>
-            {initialEvents.map((event) => (
-              <option key={event.id} value={event.id}>
-                {event.name || "Unnamed Event"}
-              </option>
-            ))}
-          </select>
-        </div>
-        {selectedEventId && (
-          <button
-            onClick={() => setShowNotifyDialog(true)}
-            disabled={isLoading || isSendingEmails}
-            className="flex items-center gap-2 px-5 py-3 bg-emerald-600 text-white rounded-xl font-medium hover:bg-emerald-700 transition-colors disabled:opacity-50 shrink-0"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-            </svg>
-            Notify Waitlist Closed
-          </button>
-        )}
       </div>
 
       {error && (
@@ -616,14 +368,47 @@ export default function WaitlistViewerClient({
         </div>
       )}
 
-      {isLoading ? (
+      {isStandbyMode && ticketsStillAvailable && selectedEventId && (
+        <div className="mb-6 p-4 bg-amber-500/10 border border-amber-500/30 rounded-xl flex items-center gap-3">
+          <svg className="w-5 h-5 text-amber-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
+          </svg>
+          <p className="text-amber-400 text-sm">
+            Standby line is active but regular tickets are still available. Users can still get standard tickets.
+          </p>
+        </div>
+      )}
+
+      {!selectedEventId ? (
+        <div className="text-center py-16 bg-zinc-900/50 rounded-2xl border border-zinc-800">
+          <div className="w-16 h-16 bg-zinc-800 rounded-full flex items-center justify-center mx-auto mb-4">
+            <svg
+              className="w-8 h-8 text-zinc-600"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
+              />
+            </svg>
+          </div>
+          <p className="text-zinc-400 text-lg mb-2">No event selected</p>
+          <p className="text-zinc-600 text-sm">
+            Select an event from the sidebar to view its waitlist
+          </p>
+        </div>
+      ) : isLoading ? (
         <div className="text-center py-16 bg-zinc-900/50 rounded-2xl border border-zinc-800">
           <div className="w-16 h-16 bg-zinc-800 rounded-full flex items-center justify-center mx-auto mb-4">
             <div className="w-8 h-8 border-2 border-zinc-600 border-t-zinc-400 rounded-full animate-spin" />
           </div>
           <p className="text-zinc-400">Loading waitlist...</p>
         </div>
-      ) : entries.length === 0 ? (
+      ) : waitlist.length === 0 ? (
         <div className="text-center py-16 bg-zinc-900/50 rounded-2xl border border-zinc-800">
           <div className="w-16 h-16 bg-zinc-800 rounded-full flex items-center justify-center mx-auto mb-4">
             <svg
@@ -642,9 +427,7 @@ export default function WaitlistViewerClient({
           </div>
           <p className="text-zinc-400 text-lg mb-2">No waitlist entries</p>
           <p className="text-zinc-600 text-sm">
-            {selectedEventId
-              ? `No waitlist entries for ${selectedEvent?.name || "this event"}`
-              : "No waitlist entries across any events"}
+            No waitlist entries for {selectedEvent?.name || "this event"}
           </p>
         </div>
       ) : (
@@ -654,7 +437,7 @@ export default function WaitlistViewerClient({
               <span>
                 Total Entries:{" "}
                 <span className="text-emerald-400 font-semibold">
-                  {entries.length}
+                  {waitlist.length}
                 </span>
               </span>
               {selectedEvent && (
@@ -687,7 +470,7 @@ export default function WaitlistViewerClient({
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-800">
-                {entries.map((entry, index) => (
+                {waitlist.map((entry, index) => (
                   <tr
                     key={entry.id}
                     className="hover:bg-zinc-800/30 transition-colors"
@@ -698,13 +481,13 @@ export default function WaitlistViewerClient({
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-white">
-                      {entry.name || "—"}
+                      {entry.name || "\u2014"}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-white font-medium">
                       {entry.email}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-zinc-400">
-                      {entry.referral || "—"}
+                      {entry.referral || "\u2014"}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-zinc-400 text-sm">
                       {formatDisplayDate(entry.created_at)}
@@ -717,26 +500,123 @@ export default function WaitlistViewerClient({
         </div>
       )}
 
-      {/* Notify Dialog */}
-      {showNotifyDialog && (
+      {/* Standby Tickets Table */}
+      {isStandbyMode && standbyTickets.length > 0 && selectedEventId && (
+        <div className="mt-6 bg-zinc-900 rounded-2xl border border-zinc-800 overflow-hidden">
+          <div className="p-6 border-b border-zinc-800">
+            <div className="flex items-center gap-4 text-sm text-zinc-400">
+              <span>
+                Standby Tickets:{" "}
+                <span className="text-amber-400 font-semibold">
+                  {standbyTickets.length}
+                </span>
+              </span>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-zinc-800 bg-zinc-800/50">
+                  <th className="text-left px-6 py-3 text-xs font-medium text-zinc-400 uppercase tracking-wider">
+                    #
+                  </th>
+                  <th className="text-left px-6 py-3 text-xs font-medium text-zinc-400 uppercase tracking-wider">
+                    Name
+                  </th>
+                  <th className="text-left px-6 py-3 text-xs font-medium text-zinc-400 uppercase tracking-wider">
+                    Email
+                  </th>
+                  <th className="text-left px-6 py-3 text-xs font-medium text-zinc-400 uppercase tracking-wider">
+                    Issued
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-800">
+                {standbyTickets.map((ticket, index) => (
+                  <tr
+                    key={ticket.id}
+                    className="hover:bg-zinc-800/30 transition-colors"
+                  >
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-amber-500/10 text-amber-400 font-semibold text-sm border border-amber-500/20">
+                        {index + 1}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-white">
+                      {ticket.name || "\u2014"}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-white font-medium">
+                      {ticket.email}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-zinc-400 text-sm">
+                      {formatDisplayDate(ticket.created_at)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Standby Enable Confirmation Dialog */}
+      {showStandbyConfirm && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-zinc-900 rounded-2xl border border-zinc-800 p-6 max-w-md w-full">
             <h2 className="text-xl font-bold text-white mb-4">
-              Notify Waitlist Closed
+              Enable Standby Line?
             </h2>
             <p className="text-zinc-400 mb-6">
-              This will send an email to all waitlist entries for the selected
-              event, notifying them to come in-person for their ticket.
+              This closes the online waitlist and shows the standby ticket option on the event page.
+            </p>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setShowStandbyConfirm(false)}
+                disabled={isTogglingStandby}
+                className="flex-1 px-4 py-2 bg-zinc-800 text-white rounded-lg font-medium hover:bg-zinc-700 transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleToggleStandby(true)}
+                disabled={isTogglingStandby}
+                className="flex-1 px-4 py-2 bg-emerald-600 text-white rounded-lg font-medium hover:bg-emerald-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {isTogglingStandby ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    Enabling...
+                  </>
+                ) : (
+                  "Enable"
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Send Standby Emails Dialog */}
+      {showSendDialog && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-zinc-900 rounded-2xl border border-zinc-800 p-6 max-w-md w-full">
+            <h2 className="text-xl font-bold text-white mb-4">
+              Send Standby Emails
+            </h2>
+            <p className="text-zinc-400 mb-6">
+              This will send standby line emails to all waitlist entries for the
+              selected event, converting them to standby tickets.
             </p>
             <div className="space-y-4 mb-6">
               <div>
                 <label className="block text-sm font-medium text-zinc-300 mb-2">
-                  In-Person Waitlist Open Time
+                  Standby Line Open Time
                 </label>
                 <input
                   type="text"
-                  value={waitlistOpenTime}
-                  onChange={(e) => setWaitlistOpenTime(e.target.value)}
+                  value={standbyOpenTime}
+                  onChange={(e) => setStandbyOpenTime(e.target.value)}
                   placeholder="7:30 PM"
                   className="w-full px-4 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50"
                 />
@@ -757,7 +637,7 @@ export default function WaitlistViewerClient({
             <div className="flex items-center gap-3">
               <button
                 onClick={() => {
-                  setShowNotifyDialog(false);
+                  setShowSendDialog(false);
                   setNotifyError(null);
                   setNotifySuccess(null);
                 }}
@@ -767,7 +647,7 @@ export default function WaitlistViewerClient({
                 Cancel
               </button>
               <button
-                onClick={() => handleNotifyWaitlistClosed()}
+                onClick={() => handleSendStandbyEmails()}
                 disabled={isSendingEmails}
                 className="flex-1 px-4 py-2 bg-emerald-600 text-white rounded-lg font-medium hover:bg-emerald-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
               >

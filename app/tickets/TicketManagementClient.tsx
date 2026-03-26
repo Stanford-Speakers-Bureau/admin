@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useEventContext } from "@/app/EventContext";
+import { formatDate } from "@/app/lib/formatting";
 
 export type Ticket = {
   id: string;
@@ -31,43 +33,9 @@ type TicketManagementClientProps = {
   initialStandardCount: number;
   initialVipCount: number;
   initialExternalCount: number;
-  initialWaitlistCount: number;
-  initialEvents: {
-    id: string;
-    name: string | null;
-    start_time_date: string | null;
-    waitlist: boolean;
-  }[];
+  initialStandbyCount: number;
 };
 
-function formatDate(dateString: string | null): string {
-  if (!dateString) return "N/A";
-  const date = new Date(dateString);
-  if (Number.isNaN(date.getTime())) return "N/A";
-
-  return new Intl.DateTimeFormat("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: true,
-  }).format(date);
-}
-
-function getNextEventId(
-  events: { id: string; start_time_date: string | null }[],
-): string {
-  if (!events.length) return "";
-  const now = new Date().toISOString();
-  const sorted = [...events].sort((a, b) => {
-    const aVal = a.start_time_date ?? "";
-    const bVal = b.start_time_date ?? "";
-    return aVal.localeCompare(bVal);
-  });
-  const next = sorted.find((e) => (e.start_time_date ?? "") >= now);
-  return next?.id ?? sorted[0]?.id ?? "";
-}
 
 export default function TicketManagementClient({
   initialTickets,
@@ -78,10 +46,9 @@ export default function TicketManagementClient({
   initialStandardCount,
   initialVipCount,
   initialExternalCount,
-  initialWaitlistCount,
-  initialEvents,
+  initialStandbyCount,
 }: TicketManagementClientProps) {
-  const defaultEventId = getNextEventId(initialEvents);
+  const { events, selectedEventId } = useEventContext();
   const [tickets, setTickets] = useState<Ticket[]>(initialTickets);
   const [total, setTotal] = useState(initialTotal);
   const [scannedCount, setScannedCount] = useState(initialScannedCount);
@@ -90,10 +57,7 @@ export default function TicketManagementClient({
   const [standardCount, setStandardCount] = useState(initialStandardCount);
   const [vipCount, setVipCount] = useState(initialVipCount);
   const [externalCount, setExternalCount] = useState(initialExternalCount);
-  const [waitlistCount, setWaitlistCount] = useState(initialWaitlistCount);
-  const [events, setEvents] = useState(initialEvents);
-  const [isTogglingWaitlist, setIsTogglingWaitlist] = useState(false);
-  const [selectedEventId, setSelectedEventId] = useState<string>(defaultEventId);
+  const [standbyCount, setStandbyCount] = useState(initialStandbyCount);
   const [search, setSearch] = useState("");
   const [ticketTypeFilter, setTicketTypeFilter] = useState<string>("");
   const [scannedFilter, setScannedFilter] = useState<string>("");
@@ -104,7 +68,7 @@ export default function TicketManagementClient({
   const [newTicketRows, setNewTicketRows] = useState<TicketRow[]>([
     { name: "", email: "" },
   ]);
-  const [newTicketEventId, setNewTicketEventId] = useState(defaultEventId);
+  const [newTicketEventId, setNewTicketEventId] = useState(selectedEventId);
   const [newTicketType, setNewTicketType] = useState("VIP");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [offset, setOffset] = useState(0);
@@ -150,7 +114,7 @@ export default function TicketManagementClient({
       setStandardCount(0);
       setVipCount(0);
       setExternalCount(0);
-      setWaitlistCount(0);
+      setStandbyCount(0);
       return;
     }
 
@@ -195,7 +159,7 @@ export default function TicketManagementClient({
       setStandardCount(data.standardCount || 0);
       setVipCount(data.vipCount || 0);
       setExternalCount(data.externalCount || 0);
-      setWaitlistCount(data.waitlistCount || 0);
+      setStandbyCount(data.standbyCount || 0);
     } catch (err) {
       console.error("Error fetching tickets:", err);
       setError(err instanceof Error ? err.message : "Failed to load tickets");
@@ -248,8 +212,8 @@ export default function TicketManagementClient({
         setStandardCount((prev) => prev - 1);
       } else if (ticketToDelete?.type === "EXTERNAL") {
         setExternalCount((prev) => prev - 1);
-      } else if (ticketToDelete?.type === "WAITLIST") {
-        setWaitlistCount((prev) => prev - 1);
+      } else if (ticketToDelete?.type === "STANDBY") {
+        setStandbyCount((prev) => prev - 1);
       } else {
         setVipCount((prev) => prev - 1);
       }
@@ -316,12 +280,12 @@ export default function TicketManagementClient({
         if (oldType === "STANDARD") setStandardCount((prev) => prev - 1);
         else if (oldType === "VIP") setVipCount((prev) => prev - 1);
         else if (oldType === "EXTERNAL") setExternalCount((prev) => prev - 1);
-        else if (oldType === "WAITLIST") setWaitlistCount((prev) => prev - 1);
+        else if (oldType === "STANDBY") setStandbyCount((prev) => prev - 1);
 
         if (newType === "STANDARD") setStandardCount((prev) => prev + 1);
         else if (newType === "VIP") setVipCount((prev) => prev + 1);
         else if (newType === "EXTERNAL") setExternalCount((prev) => prev + 1);
-        else if (newType === "WAITLIST") setWaitlistCount((prev) => prev + 1);
+        else if (newType === "STANDBY") setStandbyCount((prev) => prev + 1);
       }
       setSuccess("Ticket type updated successfully!");
     } catch (err) {
@@ -633,46 +597,6 @@ export default function TicketManagementClient({
     }
   }
 
-  async function handleToggleWaitlist() {
-    if (!selectedEventId) return;
-    const currentEvent = events.find((e) => e.id === selectedEventId);
-    if (!currentEvent) return;
-    const newWaitlist = !currentEvent.waitlist;
-
-    setIsTogglingWaitlist(true);
-    setError(null);
-    setSuccess(null);
-
-    try {
-      const response = await fetch("/api/events", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: selectedEventId, waitlist: newWaitlist }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || "Failed to update waitlist status");
-      }
-
-      setEvents((prev) =>
-        prev.map((e) =>
-          e.id === selectedEventId ? { ...e, waitlist: newWaitlist } : e,
-        ),
-      );
-      setSuccess(
-        `Waitlist ${newWaitlist ? "opened" : "closed"} for this event.`,
-      );
-    } catch (err) {
-      console.error("Error toggling waitlist:", err);
-      setError(
-        err instanceof Error ? err.message : "Failed to update waitlist status",
-      );
-    } finally {
-      setIsTogglingWaitlist(false);
-    }
-  }
-
   async function handleAddTicket(e: React.FormEvent) {
     e.preventDefault();
 
@@ -754,8 +678,8 @@ export default function TicketManagementClient({
         setStandardCount((prev) => prev + successCount);
       } else if (newTicketType === "EXTERNAL") {
         setExternalCount((prev) => prev + successCount);
-      } else if (newTicketType === "WAITLIST") {
-        setWaitlistCount((prev) => prev + successCount);
+      } else if (newTicketType === "STANDBY") {
+        setStandbyCount((prev) => prev + successCount);
       } else {
         setVipCount((prev) => prev + successCount);
       }
@@ -780,7 +704,7 @@ export default function TicketManagementClient({
   }
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
+    <div className="px-4 sm:px-6 py-8">
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-8">
         <div className="min-w-0">
           <h1 className="text-2xl sm:text-3xl font-bold text-white font-serif mb-2">
@@ -814,9 +738,9 @@ export default function TicketManagementClient({
                   </span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="text-zinc-400">Waitlist:</span>
+                  <span className="text-zinc-400">Standby:</span>
                   <span className="text-amber-400 font-semibold">
-                    {waitlistCount}
+                    {standbyCount}
                   </span>
                 </div>
                 <div className="flex items-center gap-2">
@@ -846,149 +770,103 @@ export default function TicketManagementClient({
         </div>
         <div className="flex flex-col items-end gap-2 shrink-0">
           <div className="flex flex-wrap items-center gap-3">
-          <div className="flex items-stretch rounded-xl overflow-hidden border border-zinc-600 bg-zinc-800/80 shadow-sm">
-            <select
-              value={massEmailType}
-              onChange={(e) =>
-                setMassEmailType(e.target.value as "early" | "day-of")
-              }
-              disabled={
-                isSendingEarlyReminders ||
-                isSendingReminders ||
-                !selectedEventId ||
-                total === 0
-              }
-              className="pl-4 pr-8 py-2.5 bg-transparent text-zinc-200 font-medium border-0 focus:ring-0 focus:outline-none cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed appearance-none bg-[length:1rem_1rem] bg-[right_0.75rem_center] bg-no-repeat"
-              style={{
-                backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%239ca3af' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e")`,
-              }}
-              aria-label="Email type"
-            >
-              <option value="early">Early reminders</option>
-              <option value="day-of">Day-of reminders</option>
-            </select>
+            <div className="flex items-stretch rounded-xl overflow-hidden border border-zinc-600 bg-zinc-800/80 shadow-sm">
+              <select
+                value={massEmailType}
+                onChange={(e) =>
+                  setMassEmailType(e.target.value as "early" | "day-of")
+                }
+                disabled={
+                  isSendingEarlyReminders ||
+                  isSendingReminders ||
+                  !selectedEventId ||
+                  total === 0
+                }
+                className="pl-4 pr-8 py-2.5 bg-transparent text-zinc-200 font-medium border-0 focus:ring-0 focus:outline-none cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed appearance-none bg-[length:1rem_1rem] bg-[right_0.75rem_center] bg-no-repeat"
+                style={{
+                  backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%239ca3af' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e")`,
+                }}
+                aria-label="Email type"
+              >
+                <option value="early">Early reminders</option>
+                <option value="day-of">Day-of reminders</option>
+              </select>
+              <button
+                onClick={handleSendMassEmail}
+                disabled={
+                  !selectedEventId ||
+                  total === 0 ||
+                  isSendingEarlyReminders ||
+                  isSendingReminders
+                }
+                className="flex items-center gap-2 px-4 py-2.5 bg-zinc-600 text-white font-medium hover:bg-zinc-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed border-l border-zinc-600"
+                title={
+                  massEmailType === "early"
+                    ? "Send early reminder emails to all ticket holders"
+                    : "Send day-of reminder emails to all ticket holders"
+                }
+              >
+                {(isSendingEarlyReminders || isSendingReminders) ? (
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <svg
+                    className="w-4 h-4"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
+                    />
+                  </svg>
+                )}
+                Send
+              </button>
+            </div>
             <button
-              onClick={handleSendMassEmail}
-              disabled={
-                !selectedEventId ||
-                total === 0 ||
-                isSendingEarlyReminders ||
-                isSendingReminders
-              }
-              className="flex items-center gap-2 px-4 py-2.5 bg-zinc-600 text-white font-medium hover:bg-zinc-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed border-l border-zinc-600"
-              title={
-                massEmailType === "early"
-                  ? "Send early reminder emails to all ticket holders"
-                  : "Send day-of reminder emails to all ticket holders"
-              }
+              onClick={() => fetchTickets()}
+              disabled={isLoading}
+              className="flex items-center gap-2 px-5 py-2.5 bg-zinc-800 border border-zinc-700 text-white rounded-xl font-medium hover:bg-zinc-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              title="Reload tickets"
             >
-              {(isSendingEarlyReminders || isSendingReminders) ? (
-                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-              ) : (
-                <svg
-                  className="w-4 h-4"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
-                  />
-                </svg>
-              )}
-              Send
+              <svg
+                className={`w-5 h-5 ${isLoading ? "animate-spin" : ""}`}
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                />
+              </svg>
+              Reload
             </button>
-          </div>{selectedEventId && (() => {
-            const currentEvent = events.find((e) => e.id === selectedEventId);
-            const isOpen = currentEvent?.waitlist ?? false;
-            return (
-              <button
-                onClick={handleToggleWaitlist}
-                disabled={isTogglingWaitlist}
-                title={isOpen ? "Waitlist is open — click to close" : "Waitlist is closed — click to open"}
-                className={`px-4 py-2.5 rounded-xl border font-medium text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap ${isOpen
-                    ? "bg-amber-500/20 border-amber-500/40 text-amber-400 hover:bg-amber-500/30"
-                    : "bg-zinc-800 border-zinc-700 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200"
-                  }`}
+            <button
+              onClick={() => setShowAddForm(!showAddForm)}
+              className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-emerald-500 to-teal-500 text-white rounded-xl font-medium hover:opacity-90 transition-opacity"
+            >
+              <svg
+                className="w-5 h-5"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
               >
-                {isTogglingWaitlist ? (
-                  <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                ) : isOpen ? (
-                  "Waitlist: Open"
-                ) : (
-                  "Waitlist: Closed"
-                )}
-              </button>
-            );
-          })()}
-          <button
-            onClick={() => fetchTickets()}
-            disabled={isLoading}
-            className="flex items-center gap-2 px-5 py-2.5 bg-zinc-800 border border-zinc-700 text-white rounded-xl font-medium hover:bg-zinc-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            title="Reload tickets"
-          >
-            <svg
-              className={`w-5 h-5 ${isLoading ? "animate-spin" : ""}`}
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-              />
-            </svg>
-            Reload
-          </button>
-          <button
-            onClick={() => setShowAddForm(!showAddForm)}
-            className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-emerald-500 to-teal-500 text-white rounded-xl font-medium hover:opacity-90 transition-opacity"
-          >
-            <svg
-              className="w-5 h-5"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M12 6v6m0 0v6m0-6h6m-6 0H6"
-              />
-            </svg>
-            Add Ticket
-          </button>
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 6v6m0 0v6m0-6h6m-6 0H6"
+                />
+              </svg>
+              Add Ticket
+            </button>
           </div>
-          {selectedEventId && (() => {
-            const currentEvent = events.find((e) => e.id === selectedEventId);
-            const isOpen = currentEvent?.waitlist ?? false;
-            return (
-              <button
-                onClick={handleToggleWaitlist}
-                disabled={isTogglingWaitlist}
-                title={isOpen ? "Waitlist is open — click to close" : "Waitlist is closed — click to open"}
-                className={`px-4 py-2.5 rounded-xl border font-medium text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap ${
-                  isOpen
-                    ? "bg-amber-500/20 border-amber-500/40 text-amber-400 hover:bg-amber-500/30"
-                    : "bg-zinc-800 border-zinc-700 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200"
-                }`}
-              >
-                {isTogglingWaitlist ? (
-                  <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                ) : isOpen ? (
-                  "Waitlist: Open"
-                ) : (
-                  "Waitlist: Closed"
-                )}
-              </button>
-            );
-          })()}
         </div>
       </div>
 
@@ -1107,7 +985,7 @@ export default function TicketManagementClient({
                   <option value="VIP">VIP</option>
                   <option value="STANDARD">STANDARD</option>
                   <option value="EXTERNAL">EXTERNAL</option>
-                  <option value="WAITLIST">WAITLIST</option>
+                  <option value="STANDBY">STANDBY</option>
                 </select>
               </div>
             </div>
@@ -1257,27 +1135,7 @@ export default function TicketManagementClient({
       )}
 
       {/* Filters */}
-      <div className="mb-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div>
-          <label className="block text-sm font-medium text-zinc-300 mb-2">
-            Filter by Event
-          </label>
-          <select
-            value={selectedEventId}
-            onChange={(e) => {
-              setSelectedEventId(e.target.value);
-              setOffset(0);
-            }}
-            className="w-full px-4 py-3 bg-zinc-900 border border-zinc-800 rounded-xl text-white focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50"
-          >
-            <option value="">Select an event</option>
-            {events.map((event) => (
-              <option key={event.id} value={event.id}>
-                {event.name || "Unnamed Event"}
-              </option>
-            ))}
-          </select>
-        </div>
+      <div className="mb-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         <div>
           <label className="block text-sm font-medium text-zinc-300 mb-2">
             Search by Name or Email
@@ -1308,7 +1166,7 @@ export default function TicketManagementClient({
             <option value="VIP">VIP</option>
             <option value="STANDARD">STANDARD</option>
             <option value="EXTERNAL">EXTERNAL</option>
-            <option value="WAITLIST">WAITLIST</option>
+            <option value="STANDBY">STANDBY</option>
           </select>
         </div>
         <div>
@@ -1459,7 +1317,7 @@ export default function TicketManagementClient({
                           ? "bg-blue-500/20 text-blue-400 border-blue-500/30"
                           : ticket.type === "EXTERNAL"
                             ? "bg-green-500/20 text-green-400 border-green-500/30"
-                            : ticket.type === "WAITLIST"
+                            : ticket.type === "STANDBY"
                               ? "bg-amber-500/20 text-amber-400 border-amber-500/30"
                               : ""
                           }`}
@@ -1467,7 +1325,7 @@ export default function TicketManagementClient({
                         <option value="VIP">VIP</option>
                         <option value="STANDARD">STANDARD</option>
                         <option value="EXTERNAL">EXTERNAL</option>
-                        <option value="WAITLIST">WAITLIST</option>
+                        <option value="STANDBY">STANDBY</option>
                       </select>
                     </td>
                     <td className="hidden lg:table-cell px-3 sm:px-4 py-3 sm:py-4 whitespace-nowrap">

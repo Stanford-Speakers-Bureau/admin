@@ -1,9 +1,26 @@
 import { NextResponse } from "next/server";
 import { verifyAdminRequest } from "@/app/lib/supabase";
 import { isValidUUID } from "@/app/lib/validation";
-import { sendWaitlistClosedEmail } from "@/app/lib/email";
+import { sendStandbyLineEmail } from "@/app/lib/email";
 import { PACIFIC_TIMEZONE } from "@/app/lib/constants";
-import { db, eq, inArray, waitlist, events, tickets } from "@ssb/db";
+import { db, eq, and, inArray, waitlist, events, tickets } from "@ssb/db";
+
+async function sendWithRetry(
+  fn: () => Promise<void>,
+  maxAttempts = 4,
+): Promise<void> {
+  let delay = 500;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      await fn();
+      return;
+    } catch (err) {
+      if (attempt === maxAttempts) throw err;
+      await new Promise((res) => setTimeout(res, delay));
+      delay *= 2;
+    }
+  }
+}
 
 export async function GET(req: Request) {
   try {
@@ -34,6 +51,7 @@ export async function GET(req: Request) {
           reserved: true,
           startTimeDate: true,
           venue: true,
+          standbyEnabled: true,
         },
       });
 
@@ -64,6 +82,7 @@ export async function GET(req: Request) {
             reserved: event.reserved ?? null,
             start_time_date: event.startTimeDate?.toISOString() ?? null,
             venue: event.venue,
+            standbyMode: event.standbyEnabled,
           },
           waitlist: waitlistEntries.map((e) => ({
             id: e.id,
@@ -230,9 +249,6 @@ export async function POST(req: Request) {
       );
     }
 
-    // Enable in-person waitlist mode on the event
-    await db.update(events).set({ waitlistMode: true }).where(eq(events.id, eventId));
-
     // Format doors open time from event, falling back to request body or default
     const doorsOpenFormatted = event.doorsOpen
       ? new Intl.DateTimeFormat("en-US", {
@@ -243,48 +259,65 @@ export async function POST(req: Request) {
         }).format(new Date(event.doorsOpen))
       : (waitlistOpenTime ?? "7:30 PM");
 
-    // Issue a WAITLIST ticket to each person and send the email
+    // Issue a STANDBY ticket to each person and send the email
     let successCount = 0;
     let errorCount = 0;
+    let skippedExistingCount = 0;
     const errors: string[] = [];
-    const issuedWaitlistIds: string[] = [];
+    const issuedStandbyIds: string[] = [];
 
     for (const entry of waitlistEntries) {
       try {
-        // Create WAITLIST ticket
+        const existingTicket = await db.query.tickets.findFirst({
+          where: and(
+            eq(tickets.eventId, eventId),
+            eq(tickets.email, entry.email),
+          ),
+          columns: { id: true },
+        });
+
+        if (existingTicket) {
+          issuedStandbyIds.push(entry.id);
+          skippedExistingCount++;
+          continue;
+        }
+
+        // Create STANDBY ticket
         const [inserted] = await db.insert(tickets).values({
           eventId,
           email: entry.email,
           name: entry.name ?? null,
-          type: "WAITLIST",
+          type: "STANDBY",
         }).returning({ id: tickets.id });
 
-        await sendWaitlistClosedEmail({
-          email: entry.email,
-          name: entry.name,
-          eventName: event.name || "Event",
-          eventStartTime: event.startTimeDate?.toISOString() ?? null,
-          eventVenue: event.venue,
-          eventVenueLink: event.venueLink,
-          waitlistOpenTime: doorsOpenFormatted,
-          expectedCapacity: expectedCapacity || "100-200",
-          ticketId: inserted.id,
-        });
+        await sendWithRetry(() =>
+          sendStandbyLineEmail({
+            email: entry.email,
+            name: entry.name,
+            eventName: event.name || "Event",
+            eventStartTime: event.startTimeDate?.toISOString() ?? null,
+            eventVenue: event.venue,
+            eventVenueLink: event.venueLink,
+            standbyOpenTime: doorsOpenFormatted,
+            expectedCapacity: expectedCapacity || "100-200",
+            ticketId: inserted.id,
+          })
+        );
 
-        issuedWaitlistIds.push(entry.id);
+        issuedStandbyIds.push(entry.id);
         successCount++;
       } catch (error) {
         errorCount++;
         const errorMessage =
           error instanceof Error ? error.message : "Unknown error";
         errors.push(`${entry.email}: ${errorMessage}`);
-        console.error(`Failed to process waitlist entry ${entry.email}:`, error);
+        console.error(`Failed to issue standby ticket for ${entry.email}:`, error);
       }
     }
 
     // Remove successfully processed entries from the online waitlist
-    if (issuedWaitlistIds.length > 0) {
-      await db.delete(waitlist).where(inArray(waitlist.id, issuedWaitlistIds));
+    if (issuedStandbyIds.length > 0) {
+      await db.delete(waitlist).where(inArray(waitlist.id, issuedStandbyIds));
     }
 
     return NextResponse.json(
@@ -293,6 +326,7 @@ export async function POST(req: Request) {
         totalEntries: waitlistEntries.length,
         emailsSent: successCount,
         errors: errorCount,
+        skippedExistingTickets: skippedExistingCount,
         errorDetails: errors.length > 0 ? errors : undefined,
       },
       { status: 200 },

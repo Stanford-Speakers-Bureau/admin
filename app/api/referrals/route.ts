@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { verifyAdminRequest } from "@/app/lib/supabase";
-import { db, eq, and, isNotNull, referrals, tickets } from "@ssb/db";
+import { isValidUUID } from "@/app/lib/validation";
+import { db, eq, and, isNotNull, count as dbCount, referrals, tickets, events } from "@ssb/db";
 
 export async function GET(req: Request) {
   try {
@@ -12,14 +13,21 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const eventId = searchParams.get("eventId");
 
+    if (eventId && !isValidUUID(eventId)) {
+      return NextResponse.json(
+        { error: "Valid event ID is required" },
+        { status: 400 },
+      );
+    }
+
     // Build where conditions
     const referralConditions = eventId ? eq(referrals.eventId, eventId) : undefined;
     const ticketConditions = eventId
       ? and(eq(tickets.scanned, true), isNotNull(tickets.referral), eq(tickets.eventId, eventId))
       : and(eq(tickets.scanned, true), isNotNull(tickets.referral));
 
-    // Fetch referrals and checked-in tickets in parallel
-    const [referralResults, ticketResults] = await Promise.all([
+    // Fetch referrals and checked-in ticket counts in parallel
+    const [referralResults, checkedInCounts] = await Promise.all([
       db.query.referrals.findMany({
         where: referralConditions,
         columns: { referralCode: true, count: true, eventId: true },
@@ -30,23 +38,18 @@ export async function GET(req: Request) {
         },
         orderBy: (t, { desc }) => [desc(t.count)],
       }),
-      db.query.tickets.findMany({
-        where: ticketConditions,
-        columns: { referral: true, eventId: true },
-      }),
+      db.select({ referral: tickets.referral, eventId: tickets.eventId, count: dbCount() })
+        .from(tickets).where(ticketConditions).groupBy(tickets.referral, tickets.eventId),
     ]);
 
     // Build a map of referral_code -> event_id -> checked_in_count
     const checkedInMap: Record<string, Record<string, number>> = {};
-    ticketResults.forEach((ticket) => {
-      if (!ticket.referral || !ticket.eventId) return;
-      if (!checkedInMap[ticket.referral]) {
-        checkedInMap[ticket.referral] = {};
+    checkedInCounts.forEach((row) => {
+      if (!row.referral || !row.eventId) return;
+      if (!checkedInMap[row.referral]) {
+        checkedInMap[row.referral] = {};
       }
-      if (!checkedInMap[ticket.referral][ticket.eventId]) {
-        checkedInMap[ticket.referral][ticket.eventId] = 0;
-      }
-      checkedInMap[ticket.referral][ticket.eventId]++;
+      checkedInMap[row.referral][row.eventId] = row.count;
     });
 
     // Group by event if no eventId filter
@@ -106,23 +109,66 @@ export async function GET(req: Request) {
       }))
       .sort((a, b) => b.count - a.count);
 
-    // Get event data from first referral
-    const eventData = referralResults[0]?.event
-      ? {
-          id: referralResults[0].event.id,
-          name: referralResults[0].event.name ?? null,
-          route: referralResults[0].event.route ?? null,
-          start_time_date: referralResults[0].event.startTimeDate?.toISOString() ?? null,
-        }
-      : null;
+    // Query event directly for full data including referralsEnabled
+    const event = await db.query.events.findFirst({
+      where: eq(events.id, eventId),
+      columns: { id: true, name: true, route: true, startTimeDate: true, referralsEnabled: true },
+    });
 
     return NextResponse.json({
       leaderboard,
-      event: eventData,
+      event: event
+        ? {
+            id: event.id,
+            name: event.name ?? null,
+            route: event.route ?? null,
+            start_time_date: event.startTimeDate?.toISOString() ?? null,
+            referrals_enabled: event.referralsEnabled,
+          }
+        : null,
       grouped: false,
     });
   } catch (error) {
     console.error("Referral leaderboard fetch error:", error);
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 },
+    );
+  }
+}
+
+export async function PATCH(req: Request) {
+  try {
+    const auth = await verifyAdminRequest();
+    if (!auth.authorized) {
+      return NextResponse.json({ error: auth.error }, { status: 401 });
+    }
+
+    const body = await req.json();
+    const { eventId, referrals_enabled } = body;
+
+    if (!eventId || typeof eventId !== "string" || !isValidUUID(eventId)) {
+      return NextResponse.json(
+        { error: "Valid eventId is required" },
+        { status: 400 },
+      );
+    }
+
+    if (typeof referrals_enabled !== "boolean") {
+      return NextResponse.json(
+        { error: "referrals_enabled must be a boolean" },
+        { status: 400 },
+      );
+    }
+
+    await db
+      .update(events)
+      .set({ referralsEnabled: referrals_enabled })
+      .where(eq(events.id, eventId));
+
+    return NextResponse.json({ success: true, referrals_enabled });
+  } catch (error) {
+    console.error("Referral toggle error:", error);
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 },

@@ -1,10 +1,16 @@
 import { NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import { fromZonedTime } from "date-fns-tz";
-import { getSignedImageUrl, verifyAdminRequest, serializeEvent } from "@/app/lib/supabase";
+import {
+  getSignedImageUrl,
+  getSupabaseClient,
+  verifyAdminRequest,
+  serializeEvent,
+} from "@/app/lib/supabase";
 import { PACIFIC_TIMEZONE } from "@/app/lib/constants";
 import { pullFromWaitlist } from "@/app/lib/waitlist";
-import { db, eq, ne, and, events } from "@ssb/db";
+import { db, eq, ne, events } from "@ssb/db";
+import type { InferInsertModel, InferSelectModel } from "@ssb/db";
 import {
   isValidUUID,
   isValidUrl,
@@ -17,6 +23,55 @@ import {
   isValidLongitude,
   isValidAddress,
 } from "@/app/lib/validation";
+
+async function uploadEventImage(
+  adminClient: ReturnType<typeof getSupabaseClient>,
+  imageFile: File | null,
+): Promise<string | null> {
+  if (!imageFile || imageFile.size === 0) {
+    return null;
+  }
+
+  if (!isValidImageSize(imageFile.size)) {
+    throw new Error("Image file too large. Maximum size is 5MB.");
+  }
+
+  if (!isValidImageExtension(imageFile.name)) {
+    throw new Error(
+      "Invalid image file type. Allowed types: JPG, PNG, GIF, WebP.",
+    );
+  }
+
+  const fileExt = imageFile.name.split(".").pop();
+  const fileName = `${Date.now()}-${randomUUID()}.${fileExt}`;
+
+  const { error: uploadError } = await adminClient.storage
+    .from("speakers")
+    .upload(fileName, imageFile, {
+      cacheControl: "3600",
+      upsert: false,
+    });
+
+  if (uploadError) {
+    console.error("Image upload error:", uploadError);
+    throw new Error("Failed to upload image");
+  }
+
+  return fileName;
+}
+
+async function serializeEventWithImages(event: InferSelectModel<typeof events>) {
+  const serialized = serializeEvent(event);
+  return {
+    ...serialized,
+    image_url: event.img
+      ? await getSignedImageUrl(event.img, 60 * 60)
+      : null,
+    mobile_image_url: event.mobileImg
+      ? await getSignedImageUrl(event.mobileImg, 60 * 60)
+      : null,
+  };
+}
 
 export async function POST(req: Request) {
   try {
@@ -39,13 +94,19 @@ export async function POST(req: Request) {
     const release_date = formData.get("release_date") as string;
     const ticketing_date = formData.get("ticketing_date") as string;
     const start_time_date = formData.get("start_time_date") as string;
+    const end_time_date = formData.get("end_time_date") as string;
     const doors_open = formData.get("doors_open") as string;
     const route = formData.get("route") as string;
-    const banner = formData.get("banner") === "true";
+    const priority = formData.get("priority") as string;
+    const hide_ticketing_date = formData.get("hide_ticketing_date") === "true";
+    const referrals_enabled = formData.get("referrals_enabled") === "true";
+    const standby_enabled = formData.get("standby_enabled") === "true";
+    const livestream = formData.get("livestream") as string;
     const latitude = formData.get("latitude") as string;
     const longitude = formData.get("longitude") as string;
     const address = formData.get("address") as string;
     const imageFile = formData.get("image") as File | null;
+    const mobileImageFile = formData.get("mobile_image") as File | null;
 
     // Validate ID if provided
     if (id && !isValidUUID(id)) {
@@ -59,6 +120,22 @@ export async function POST(req: Request) {
     if (capacity && !isValidCapacity(capacity)) {
       return NextResponse.json(
         { error: "Invalid capacity value" },
+        { status: 400 },
+      );
+    }
+
+    // Validate priority notice length
+    if (priority && priority.trim().length > 300) {
+      return NextResponse.json(
+        { error: "Priority notice must be 300 characters or less" },
+        { status: 400 },
+      );
+    }
+
+    // Validate livestream URL
+    if (livestream && !isValidUrl(livestream)) {
+      return NextResponse.json(
+        { error: "Invalid livestream URL" },
         { status: 400 },
       );
     }
@@ -98,6 +175,12 @@ export async function POST(req: Request) {
     if (start_time_date && !isValidDateString(start_time_date)) {
       return NextResponse.json(
         { error: "Invalid start time date format" },
+        { status: 400 },
+      );
+    }
+    if (end_time_date && !isValidDateString(end_time_date)) {
+      return NextResponse.json(
+        { error: "Invalid end time date format" },
         { status: 400 },
       );
     }
@@ -147,86 +230,70 @@ export async function POST(req: Request) {
     }
 
     let imgName: string | null = null;
+    let mobileImgName: string | null = null;
 
-    // Handle image upload with validation (still uses Supabase Storage)
-    if (imageFile && imageFile.size > 0) {
-      // Validate file size
-      if (!isValidImageSize(imageFile.size)) {
-        return NextResponse.json(
-          { error: "Image file too large. Maximum size is 5MB." },
-          { status: 400 },
-        );
-      }
-
-      // Validate file extension
-      if (!isValidImageExtension(imageFile.name)) {
-        return NextResponse.json(
-          {
-            error:
-              "Invalid image file type. Allowed types: JPG, PNG, GIF, WebP.",
-          },
-          { status: 400 },
-        );
-      }
-
-      const fileExt = imageFile.name.split(".").pop();
-      const fileName = `${Date.now()}-${randomUUID()}.${fileExt}`;
-
-      const { error: uploadError } = await adminClient.storage
-        .from("speakers")
-        .upload(fileName, imageFile, {
-          cacheControl: "3600",
-          upsert: false,
-        });
-
-      if (uploadError) {
-        console.error("Image upload error:", uploadError);
-        return NextResponse.json(
-          { error: "Failed to upload image" },
-          { status: 500 },
-        );
-      }
-
-      imgName = fileName;
+    try {
+      imgName = await uploadEventImage(adminClient, imageFile);
+      mobileImgName = await uploadEventImage(adminClient, mobileImageFile);
+    } catch (error) {
+      const message = error instanceof Error
+        ? error.message
+        : "Failed to upload image";
+      return NextResponse.json(
+        { error: message },
+        { status: message.startsWith("Invalid") || message.startsWith("Image file too large") ? 400 : 500 },
+      );
     }
 
+    const parsedCapacity = capacity ? parseInt(capacity, 10) : 0;
+    const parsedReserved = reserved ? parseInt(reserved, 10) : 0;
+    const parsedTickets = tickets ? parseInt(tickets, 10) : parsedReserved;
+    const releaseDateValue = release_date
+      ? fromZonedTime(release_date, PACIFIC_TIMEZONE)
+      : null;
+    const ticketingDateValue = ticketing_date
+      ? fromZonedTime(ticketing_date, PACIFIC_TIMEZONE)
+      : null;
+    const startTimeDateValue = start_time_date
+      ? fromZonedTime(start_time_date, PACIFIC_TIMEZONE)
+      : null;
+    const endTimeDateValue = end_time_date
+      ? fromZonedTime(end_time_date, PACIFIC_TIMEZONE)
+      : null;
+    const doorsOpenValue = doors_open
+      ? fromZonedTime(doors_open, PACIFIC_TIMEZONE)
+      : null;
+
     // Build event data object
-    const eventData: Record<string, unknown> = {
+    const eventData: InferInsertModel<typeof events> = {
       name: name || null,
       desc: desc || null,
       tagline: tagline || null,
-      capacity: capacity ? parseInt(capacity) : 0,
-      tickets: tickets
-        ? parseInt(tickets)
-        : reserved
-          ? parseInt(reserved)
-          : null,
-      reserved: reserved ? parseInt(reserved) : null,
+      capacity: parsedCapacity,
+      tickets: parsedTickets,
+      reserved: parsedReserved,
       venue: venue || null,
       venueLink: venue_link || null,
-      releaseDate: release_date
-        ? fromZonedTime(release_date, PACIFIC_TIMEZONE)
-        : null,
-      ticketingDate: ticketing_date
-        ? fromZonedTime(ticketing_date, PACIFIC_TIMEZONE)
-        : null,
-      startTimeDate: start_time_date
-        ? fromZonedTime(start_time_date, PACIFIC_TIMEZONE)
-        : null,
-      doorsOpen: doors_open
-        ? fromZonedTime(doors_open, PACIFIC_TIMEZONE)
-        : null,
+      releaseDate: releaseDateValue,
+      ticketingDate: ticketingDateValue,
+      startTimeDate: startTimeDateValue,
+      endTimeDate: endTimeDateValue,
+      doorsOpen: doorsOpenValue,
       route: route || null,
-      banner: banner,
-      latitude: parseFloat(latitude),
-      longitude: parseFloat(longitude),
-      address: address || null,
+      priority: priority?.trim() || null,
+      hideTicketingDate: hide_ticketing_date,
+      referralsEnabled: referrals_enabled,
+      standbyEnabled: standby_enabled,
+      livestream: livestream || null,
+      latitude,
+      longitude,
+      address: address || "",
     };
 
     // Enforce: ticketing date must be on/after release date when both are set
-    if (eventData.releaseDate && eventData.ticketingDate) {
-      const publishMs = (eventData.releaseDate as Date).getTime();
-      const ticketingMs = (eventData.ticketingDate as Date).getTime();
+    if (releaseDateValue && ticketingDateValue) {
+      const publishMs = releaseDateValue.getTime();
+      const ticketingMs = ticketingDateValue.getTime();
       if (Number.isNaN(publishMs) || Number.isNaN(ticketingMs)) {
         return NextResponse.json(
           { error: "Invalid date format" },
@@ -244,18 +311,41 @@ export async function POST(req: Request) {
       }
     }
 
-    if (imgName) {
-      eventData.img = imgName;
-      // Increment img_version when image is updated (for cache busting)
-      if (id && existingEvent) {
-        eventData.imgVersion = existingEvent.imgVersion + 1;
-      } else {
-        // For new events, start at version 1
-        eventData.imgVersion = 1;
+    if (startTimeDateValue && endTimeDateValue) {
+      const startMs = startTimeDateValue.getTime();
+      const endMs = endTimeDateValue.getTime();
+      if (Number.isNaN(startMs) || Number.isNaN(endMs)) {
+        return NextResponse.json(
+          { error: "Invalid date format" },
+          { status: 400 },
+        );
+      }
+      if (endMs < startMs) {
+        return NextResponse.json(
+          {
+            error:
+              "End time must be on or after the event start time.",
+          },
+          { status: 400 },
+        );
       }
     }
 
-    let savedEvent: any;
+    if (imgName) {
+      eventData.img = imgName;
+    }
+
+    if (mobileImgName) {
+      eventData.mobileImg = mobileImgName;
+    }
+
+    if (imgName || mobileImgName) {
+      eventData.imgVersion = id && existingEvent
+        ? existingEvent.imgVersion + 1
+        : 1;
+    }
+
+    let savedEvent: InferSelectModel<typeof events> | undefined;
 
     if (id) {
       // Update existing event
@@ -267,9 +357,16 @@ export async function POST(req: Request) {
     } else {
       // Create new event
       const [created] = await db.insert(events)
-        .values(eventData as any)
+        .values(eventData)
         .returning();
       savedEvent = created;
+    }
+
+    if (!savedEvent) {
+      return NextResponse.json(
+        { error: "Failed to save event" },
+        { status: 500 },
+      );
     }
 
     if (id && existingEvent && savedEvent) {
@@ -293,13 +390,7 @@ export async function POST(req: Request) {
       }
     }
 
-    const serialized = serializeEvent(savedEvent);
-    const eventWithImage = {
-      ...serialized,
-      image_url: savedEvent.img
-        ? await getSignedImageUrl(savedEvent.img, 60 * 60)
-        : null,
-    };
+    const eventWithImage = await serializeEventWithImages(savedEvent);
 
     return NextResponse.json({ success: true, event: eventWithImage });
   } catch (error) {
@@ -319,7 +410,7 @@ export async function PATCH(req: Request) {
     }
 
     const body = await req.json();
-    const { id, live, waitlist } = body;
+    const { id, live, standbyEnabled } = body;
 
     if (!id) {
       return NextResponse.json(
@@ -328,26 +419,20 @@ export async function PATCH(req: Request) {
       );
     }
 
-    if (typeof waitlist === "boolean") {
+    if (typeof standbyEnabled === "boolean") {
       const [updatedEvent] = await db.update(events)
-        .set({ waitlistMode: waitlist })
+        .set({ standbyEnabled })
         .where(eq(events.id, id))
         .returning();
 
-      const serialized = serializeEvent(updatedEvent);
-      const eventWithImage = {
-        ...serialized,
-        image_url: updatedEvent.img
-          ? await getSignedImageUrl(updatedEvent.img, 60 * 60)
-          : null,
-      };
+      const eventWithImage = await serializeEventWithImages(updatedEvent);
 
       return NextResponse.json({ success: true, event: eventWithImage });
     }
 
     if (typeof live !== "boolean") {
       return NextResponse.json(
-        { error: "Either 'live' or 'waitlist' boolean is required" },
+        { error: "Either 'live' or 'standbyEnabled' boolean is required" },
         { status: 400 },
       );
     }
@@ -364,13 +449,7 @@ export async function PATCH(req: Request) {
         .where(eq(events.id, id))
         .returning();
 
-      const serialized = serializeEvent(updatedEvent);
-      const eventWithImage = {
-        ...serialized,
-        image_url: updatedEvent.img
-          ? await getSignedImageUrl(updatedEvent.img, 60 * 60)
-          : null,
-      };
+      const eventWithImage = await serializeEventWithImages(updatedEvent);
 
       return NextResponse.json({ success: true, event: eventWithImage });
     } else {
@@ -380,13 +459,7 @@ export async function PATCH(req: Request) {
         .where(eq(events.id, id))
         .returning();
 
-      const serialized = serializeEvent(updatedEvent);
-      const eventWithImage = {
-        ...serialized,
-        image_url: updatedEvent.img
-          ? await getSignedImageUrl(updatedEvent.img, 60 * 60)
-          : null,
-      };
+      const eventWithImage = await serializeEventWithImages(updatedEvent);
 
       return NextResponse.json({ success: true, event: eventWithImage });
     }
@@ -427,13 +500,14 @@ export async function DELETE(req: Request) {
     // Get the event first to delete its image
     const event = await db.query.events.findFirst({
       where: eq(events.id, id),
-      columns: { img: true },
+      columns: { img: true, mobileImg: true },
     });
 
     // Delete the image from storage if it exists (Supabase Storage)
-    if (event?.img) {
+    const imagesToDelete = [event?.img, event?.mobileImg].filter((value): value is string => !!value);
+    if (imagesToDelete.length > 0) {
       const adminClient = auth.adminClient!;
-      await adminClient.storage.from("speakers").remove([event.img]);
+      await adminClient.storage.from("speakers").remove(imagesToDelete);
     }
 
     // Delete the event

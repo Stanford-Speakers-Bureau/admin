@@ -424,7 +424,8 @@ export default function TicketSalesGraph({
   }
 
   const { totalTickets, vipCount, standardCount, milestones } = salesData;
-  const fillRate = capacity > 0 ? (totalTickets / capacity) * 100 : 0;
+  const effectiveCapacity = capacity > 0 ? capacity : salesData.capacity;
+  const fillRate = effectiveCapacity > 0 ? (totalTickets / effectiveCapacity) * 100 : 0;
 
   return (
     <div className="flex-1 flex flex-col min-h-0 space-y-5 overflow-y-auto pr-1">
@@ -434,7 +435,7 @@ export default function TicketSalesGraph({
           <h3 className="text-lg font-semibold text-white">
             {totalTickets}{" "}
             <span className="text-zinc-400 font-normal text-sm">
-              / {capacity} tickets sold
+              / {effectiveCapacity} tickets sold
             </span>
           </h3>
           <span
@@ -451,7 +452,7 @@ export default function TicketSalesGraph({
         </div>
         <ProgressBar
           value={totalTickets}
-          max={capacity}
+          max={effectiveCapacity}
           color={
             fillRate >= 90
               ? "#10b981"
