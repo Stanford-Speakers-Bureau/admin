@@ -1,20 +1,8 @@
 import { NextResponse } from "next/server";
-import { verifyAdminRequest } from "@/app/lib/supabase";
+import { verifyAdminRequest } from "@/app/lib/auth";
 import { getAdminSuggestions } from "@/app/suggest/data";
 import { isValidUUID } from "@/app/lib/validation";
 import { db, eq, suggest, votes } from "@ssb/db";
-
-const MIN_SPEAKER_LENGTH = 2;
-const MAX_SPEAKER_LENGTH = 500;
-
-function toTitleCase(input: string): string {
-  return input
-    .split(" ")
-    .map((word) =>
-      word ? word.charAt(0).toUpperCase() + word.slice(1).toLowerCase() : "",
-    )
-    .join(" ");
-}
 
 export async function POST(req: Request) {
   try {

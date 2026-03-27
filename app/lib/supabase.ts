@@ -1,7 +1,5 @@
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
-import { createServerClient } from "@supabase/ssr";
-import { cookies } from "next/headers";
-import { db, eq, events, roles } from "@ssb/db";
+import { db, events } from "@ssb/db";
 import type { InferSelectModel } from "@ssb/db";
 import {
   getTicketCounts as _getTicketCounts,
@@ -85,19 +83,6 @@ export function serializeEvent(e: DBEvent): Event {
   };
 }
 
-type UnauthorizedResult = {
-  authorized: false;
-  error: string;
-};
-
-type AuthorizedResult = {
-  authorized: true;
-  email: string;
-  adminClient: ReturnType<typeof getSupabaseClient>;
-};
-
-export type AdminVerificationResult = UnauthorizedResult | AuthorizedResult;
-
 /**
  * Supabase client for Auth and Storage operations only.
  * Database queries use Drizzle via @ssb/db.
@@ -106,62 +91,6 @@ export function getSupabaseClient() {
   return createSupabaseClient(
     process.env.SUPABASE_URL!,
     process.env.SUPABASE_KEY!,
-  );
-}
-
-/**
- * Verify that the current request is authenticated and belongs to an admin user.
- * Returns the admin client for privileged Storage/Auth access when authorized.
- */
-export async function verifyAdminRequest(): Promise<AdminVerificationResult> {
-  const supabase = await createServerSupabaseClient();
-  const {
-    data: { user },
-    error: userError,
-  } = await supabase.auth.getUser();
-
-  if (userError || !user?.email) {
-    return { authorized: false, error: "Not authenticated" };
-  }
-
-  const roleRecord = await db.query.roles.findFirst({
-    where: eq(roles.email, user.email),
-    columns: { roles: true },
-  });
-
-  if (!roleRecord || !roleRecord.roles?.split(",").includes("admin")) {
-    return { authorized: false, error: "Not authorized" };
-  }
-
-  const adminClient = getSupabaseClient();
-  return { authorized: true, email: user.email, adminClient };
-}
-
-/**
- * Create a Supabase client for use on the server (server components, API routes)
- */
-export async function createServerSupabaseClient() {
-  const cookieStore = await cookies();
-
-  return createServerClient(
-    process.env.SUPABASE_URL!,
-    process.env.SUPABASE_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return cookieStore.getAll();
-        },
-        setAll(cookiesToSet) {
-          try {
-            cookiesToSet.forEach(({ name, value, options }) =>
-              cookieStore.set(name, value, options),
-            );
-          } catch {
-            // Ignore - called from Server Component
-          }
-        },
-      },
-    },
   );
 }
 

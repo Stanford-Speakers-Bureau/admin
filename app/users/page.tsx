@@ -1,5 +1,5 @@
 import AdminUsersClient, { Admin, Ban, Scanner } from "./AdminUsersClient";
-import { verifyAdminRequest } from "@/app/lib/supabase";
+import { verifyAdminRequest } from "@/app/lib/auth";
 import { db } from "@ssb/db";
 
 export const dynamic = "force-dynamic";

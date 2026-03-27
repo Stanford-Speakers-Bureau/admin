@@ -1,6 +1,7 @@
 import { EventSync } from "@/app/EventSync";
 import EditEventClient from "../EditEventClient";
-import { getSignedImageUrl, verifyAdminRequest, serializeEvent } from "@/app/lib/supabase";
+import { getSignedImageUrl, serializeEvent } from "@/app/lib/supabase";
+import { verifyAdminRequest } from "@/app/lib/auth";
 import { db } from "@ssb/db";
 import { Event } from "../../AdminEventsClient";
 

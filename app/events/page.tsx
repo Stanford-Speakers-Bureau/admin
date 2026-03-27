@@ -1,5 +1,6 @@
 import AdminEventsClient, { Event } from "./AdminEventsClient";
-import { getSignedImageUrl, verifyAdminRequest, serializeEvent } from "@/app/lib/supabase";
+import { getSignedImageUrl, serializeEvent } from "@/app/lib/supabase";
+import { verifyAdminRequest } from "@/app/lib/auth";
 import { db, eq, ne, count as dbCount, tickets, waitlist } from "@ssb/db";
 
 export const dynamic = "force-dynamic";

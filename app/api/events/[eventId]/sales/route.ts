@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { verifyAdminRequest } from "@/app/lib/supabase";
+import { verifyAdminRequest } from "@/app/lib/auth";
 import { db, eq, events, tickets } from "@ssb/db";
 
 export async function GET(

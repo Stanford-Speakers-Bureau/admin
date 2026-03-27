@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
-import { verifyAdminRequest } from "@/app/lib/supabase";
+import { verifyAdminRequest } from "@/app/lib/auth";
 import { isValidUUID } from "@/app/lib/validation";
-import { db, eq, events, notify, tickets } from "@ssb/db";
+import { db, eq, events, inArray, notify, tickets, userProfiles } from "@ssb/db";
 
 export async function GET(req: Request) {
   try {
@@ -58,7 +58,25 @@ export async function GET(req: Request) {
     }
 
     const ticketEmailSet = new Set(
-      ticketResults.map((t) => t.email.toLowerCase()),
+      ticketResults.map((t) => t.email.trim().toLowerCase()),
+    );
+    const notificationEmails = [...new Set(
+      notifications.map((n) => n.email.trim().toLowerCase()),
+    )];
+    const profiles = notificationEmails.length > 0
+      ? await db.query.userProfiles.findMany({
+        where: inArray(userProfiles.email, notificationEmails),
+        columns: {
+          email: true,
+          eduPersonAffiliation: true,
+        },
+      })
+      : [];
+    const profileByEmail = new Map(
+      profiles.map((profile) => [
+        profile.email.toLowerCase(),
+        profile,
+      ]),
     );
 
     const now = new Date();
@@ -71,7 +89,9 @@ export async function GET(req: Request) {
         id: n.id,
         email: n.email,
         created_at: n.createdAt.toISOString(),
-        hasTicket: ticketEmailSet.has(n.email.toLowerCase()),
+        hasTicket: ticketEmailSet.has(n.email.trim().toLowerCase()),
+        hasProfile: profileByEmail.has(n.email.trim().toLowerCase()),
+        affiliations: profileByEmail.get(n.email.trim().toLowerCase())?.eduPersonAffiliation ?? [],
       })),
       eventData: {
         name: event.name,

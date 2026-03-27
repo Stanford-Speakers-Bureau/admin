@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import {
-  verifyAdminRequest,
   getAvailablePublicTickets,
   isEventUnderCapacity,
 } from "@/app/lib/supabase";
+import { verifyAdminRequest } from "@/app/lib/auth";
 import {
   sendDayOfReminderEmail,
   sendEarlyReminderEmail,
