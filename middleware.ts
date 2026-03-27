@@ -19,13 +19,13 @@ function getAllowedOrigins(request: NextRequest): string[] {
   const host = request.headers.get("host") || "";
   const isProduction = process.env.NODE_ENV === "production";
 
-  const origins = [`https://${host}`, `http://${host}`];
+  const origins = [`https://${host}`];
 
   // Only allow localhost in development
   if (!isProduction) {
     origins.push(
-      process.env.NEXT_PUBLIC_ROOT_URL ?? "http://localhost:3000",
-      "http://localhost:3000",
+      process.env.NEXT_PUBLIC_ROOT_URL ?? "http://localhost:3001",
+      `http://${host}`,
     );
   }
 
