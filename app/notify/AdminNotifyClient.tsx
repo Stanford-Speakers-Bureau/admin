@@ -77,6 +77,38 @@ async function fetchNotificationsForEvent(eventId: string): Promise<NotifyRespon
   return response.json() as Promise<NotifyResponse>;
 }
 
+async function loadNotificationsForSelection(
+  eventId: string | null,
+  options: {
+    setNotifications: (notifications: Notification[]) => void;
+    setEventData: (eventData: EventData | null) => void;
+    setIsLoading: (isLoading: boolean) => void;
+    setError: (error: string | null) => void;
+  },
+) {
+  const { setNotifications, setEventData, setIsLoading, setError } = options;
+
+  if (!eventId) {
+    setNotifications([]);
+    setEventData(null);
+    return;
+  }
+
+  setIsLoading(true);
+  setError(null);
+
+  try {
+    const data = await fetchNotificationsForEvent(eventId);
+    setNotifications(data.notifications || []);
+    setEventData(data.eventData || null);
+  } catch (err) {
+    console.error("Error fetching notifications:", err);
+    setError(err instanceof Error ? err.message : "Failed to load notifications");
+  } finally {
+    setIsLoading(false);
+  }
+}
+
 export default function AdminNotifyClient() {
   const { events, selectedEventId } = useEventContext();
   const [notifications, setNotifications] = useState<Notification[]>([]);
@@ -95,49 +127,21 @@ export default function AdminNotifyClient() {
   const [notifyError, setNotifyError] = useState<string | null>(null);
 
   async function fetchNotifications() {
-    if (!selectedEventId) {
-      setNotifications([]);
-      setEventData(null);
-      return;
-    }
-
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      const data = await fetchNotificationsForEvent(selectedEventId);
-      setNotifications(data.notifications || []);
-      setEventData(data.eventData || null);
-    } catch (err) {
-      console.error("Error fetching notifications:", err);
-      setError(err instanceof Error ? err.message : "Failed to load notifications");
-    } finally {
-      setIsLoading(false);
-    }
+    await loadNotificationsForSelection(selectedEventId, {
+      setNotifications,
+      setEventData,
+      setIsLoading,
+      setError,
+    });
   }
 
   useEffect(() => {
-    if (!selectedEventId) {
-      setNotifications([]);
-      setEventData(null);
-      return;
-    }
-
-    setIsLoading(true);
-    setError(null);
-
-    void (async () => {
-      try {
-        const data = await fetchNotificationsForEvent(selectedEventId);
-        setNotifications(data.notifications || []);
-        setEventData(data.eventData || null);
-      } catch (err) {
-        console.error("Error fetching notifications:", err);
-        setError(err instanceof Error ? err.message : "Failed to load notifications");
-      } finally {
-        setIsLoading(false);
-      }
-    })();
+    void loadNotificationsForSelection(selectedEventId, {
+      setNotifications,
+      setEventData,
+      setIsLoading,
+      setError,
+    });
   }, [selectedEventId]);
 
   function openSendEmailModal(singleEmail?: string) {
