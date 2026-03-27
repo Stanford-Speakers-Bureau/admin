@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createSamlClient } from "@/app/lib/saml";
 import { isValidRedirect } from "@/app/lib/security";
+import { createLoginState, getSession } from "@/app/lib/session";
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
@@ -8,8 +9,13 @@ export async function GET(req: Request) {
   const redirectTo = isValidRedirect(redirectToParam) ? redirectToParam : "/";
 
   try {
+    const session = await getSession();
+    const loginState = createLoginState(redirectTo);
+    session.loginState = loginState;
+    await session.save();
+
     const url = await createSamlClient(req).getAuthorizeUrlAsync(
-      redirectTo,
+      loginState.nonce,
       undefined,
       {},
     );
