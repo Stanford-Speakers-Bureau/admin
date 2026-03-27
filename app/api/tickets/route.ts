@@ -13,6 +13,7 @@ import {
 import { PACIFIC_TIMEZONE } from "@/app/lib/constants";
 import { pullFromWaitlist } from "@/app/lib/waitlist";
 import { db, eq, and, or, ilike, isNotNull, count as dbCount, tickets, events, waitlist, referrals } from "@ssb/db";
+import { isValidUUID } from "@/app/lib/validation";
 
 /** Helper to serialize a ticket (with optional event relation) to snake_case for API response */
 function serializeTicket(ticket: {
@@ -25,15 +26,15 @@ function serializeTicket(ticket: {
   scanTime: Date | null;
   referral: string | null;
   eventId: string | null;
-    event?: {
-      id: string;
-      name: string | null;
-      route: string | null;
-      startTimeDate: Date | null;
-      endTimeDate?: Date | null;
-      venue?: string | null;
-      venueLink?: string | null;
-      desc?: string | null;
+  event?: {
+    id: string;
+    name: string | null;
+    route: string | null;
+    startTimeDate: Date | null;
+    endTimeDate?: Date | null;
+    venue?: string | null;
+    venueLink?: string | null;
+    desc?: string | null;
     doorsOpen?: Date | null;
   } | null;
 }) {
@@ -49,16 +50,16 @@ function serializeTicket(ticket: {
     event_id: ticket.eventId,
     events: ticket.event
       ? {
-          id: ticket.event.id,
-          name: ticket.event.name,
-          route: ticket.event.route,
-          start_time_date: ticket.event.startTimeDate?.toISOString() ?? null,
-          ...(ticket.event.endTimeDate !== undefined ? { end_time_date: ticket.event.endTimeDate?.toISOString() ?? null } : {}),
-          ...(ticket.event.venue !== undefined ? { venue: ticket.event.venue } : {}),
-          ...(ticket.event.venueLink !== undefined ? { venue_link: ticket.event.venueLink } : {}),
-          ...(ticket.event.desc !== undefined ? { desc: ticket.event.desc } : {}),
-          ...(ticket.event.doorsOpen !== undefined ? { doors_open: ticket.event.doorsOpen?.toISOString() ?? null } : {}),
-        }
+        id: ticket.event.id,
+        name: ticket.event.name,
+        route: ticket.event.route,
+        start_time_date: ticket.event.startTimeDate?.toISOString() ?? null,
+        ...(ticket.event.endTimeDate !== undefined ? { end_time_date: ticket.event.endTimeDate?.toISOString() ?? null } : {}),
+        ...(ticket.event.venue !== undefined ? { venue: ticket.event.venue } : {}),
+        ...(ticket.event.venueLink !== undefined ? { venue_link: ticket.event.venueLink } : {}),
+        ...(ticket.event.desc !== undefined ? { desc: ticket.event.desc } : {}),
+        ...(ticket.event.doorsOpen !== undefined ? { doors_open: ticket.event.doorsOpen?.toISOString() ?? null } : {}),
+      }
       : null,
   };
 }
