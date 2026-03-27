@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
 import { verifyAdminRequest } from "@/app/lib/auth";
+import { isValidUUID } from "@/app/lib/validation";
 import {
   sendTicketsAvailableNowEmail,
   sendTicketsAvailableInEmail,
 } from "@/app/lib/email";
-import { db, eq, events, notify, tickets } from "@ssb/db";
+import { db, eq, notify, events, tickets } from "@ssb/db";
 
 export async function POST(req: Request) {
   try {
@@ -27,9 +28,9 @@ export async function POST(req: Request) {
 
     const { eventId, variant, approxTimeUntilAvailable, singleEmail } = body;
 
-    if (!eventId || typeof eventId !== "string") {
+    if (!eventId || typeof eventId !== "string" || !isValidUUID(eventId)) {
       return NextResponse.json(
-        { error: "eventId is required" },
+        { error: "eventId is required and must be a valid UUID" },
         { status: 400 },
       );
     }
@@ -65,6 +66,15 @@ export async function POST(req: Request) {
     const eventRoute = event.route ?? null;
     const eventStartTime = event.startTimeDate?.toISOString() ?? null;
 
+    const notifications = await db.query.notify.findMany({
+      where: eq(notify.speakerId, eventId),
+      columns: { email: true },
+    });
+
+    const allNotifyEmails = new Set(
+      notifications.map((n) => n.email.toLowerCase()),
+    );
+
     let emails: string[];
     if (singleEmail && typeof singleEmail === "string") {
       const email = singleEmail.trim().toLowerCase();
@@ -74,14 +84,15 @@ export async function POST(req: Request) {
           { status: 400 },
         );
       }
+      if (!allNotifyEmails.has(email)) {
+        return NextResponse.json(
+          { error: "Email not in notification list for this event" },
+          { status: 400 },
+        );
+      }
       emails = [email];
     } else {
-      const notifications = await db.query.notify.findMany({
-        where: eq(notify.speakerId, eventId),
-        columns: { email: true },
-      });
-
-      emails = [...new Set(notifications.map((n) => n.email.toLowerCase()))];
+      emails = [...allNotifyEmails];
     }
 
     // For "claim" variant, filter out emails that already have tickets
