@@ -557,7 +557,7 @@ export default function AdminSuggestClient({
                             d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
                           />
                         </svg>
-                        {new Date(suggestion.created_at).toLocaleDateString()}
+                        {new Date(suggestion.created_at).toLocaleDateString("en-US", { timeZone: "America/Los_Angeles" })}
                       </span>
                     </div>
                     {/* Matching approved suggestions (for pending and rejected items) */}

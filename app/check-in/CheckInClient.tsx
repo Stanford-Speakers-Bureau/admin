@@ -133,6 +133,7 @@ function formatTime(iso: string): string {
     hour: "numeric",
     minute: "2-digit",
     hour12: true,
+    timeZone: "America/Los_Angeles",
   });
 }
 
@@ -744,6 +745,7 @@ function CheckInContent({ eventId }: { eventId: string }) {
               hour: "numeric",
               minute: "2-digit",
               hour12: true,
+              timeZone: "America/Los_Angeles",
             })}</b>`,
             `<span style="color:#a1a1aa">${total} scans this ${seriesLabel.toLowerCase()}</span>`,
             `<span style="color:#fb923c">Visible avg: ${visibleAverageScanRate.toFixed(1)}/min</span>`,

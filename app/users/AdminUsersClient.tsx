@@ -439,7 +439,7 @@ export default function AdminUsersClient({
                   <div>
                     <p className="text-white font-medium">{admin.email}</p>
                     <p className="text-zinc-500 text-sm">
-                      Added {new Date(admin.created_at).toLocaleDateString()}
+                      Added {new Date(admin.created_at).toLocaleDateString("en-US", { timeZone: "America/Los_Angeles" })}
                     </p>
                   </div>
                 </div>
@@ -495,7 +495,7 @@ export default function AdminUsersClient({
                   <div>
                     <p className="text-white font-medium">{scanner.email}</p>
                     <p className="text-zinc-500 text-sm">
-                      Added {new Date(scanner.created_at).toLocaleDateString()}
+                      Added {new Date(scanner.created_at).toLocaleDateString("en-US", { timeZone: "America/Los_Angeles" })}
                     </p>
                   </div>
                 </div>
@@ -550,7 +550,7 @@ export default function AdminUsersClient({
                 <div>
                   <p className="text-white font-medium">{ban.email}</p>
                   <p className="text-zinc-500 text-sm">
-                    Banned {new Date(ban.created_at).toLocaleDateString()}
+                    Banned {new Date(ban.created_at).toLocaleDateString("en-US", { timeZone: "America/Los_Angeles" })}
                   </p>
                 </div>
               </div>

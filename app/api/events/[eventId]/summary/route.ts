@@ -219,7 +219,7 @@ export async function GET(
           const idx = Math.min(Math.floor((ms - minScan) / bucketSize), BUCKET_COUNT - 1);
           counts[idx]++;
         }
-        const fmt = (ms: number) => new Date(ms).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
+        const fmt = (ms: number) => new Date(ms).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true, timeZone: "America/Los_Angeles" });
         const buckets = counts.map((count, i) => ({
           label: fmt(minScan + i * bucketSize),
           count,

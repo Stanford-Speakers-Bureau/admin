@@ -1,3 +1,5 @@
+import { PACIFIC_TIMEZONE } from "./constants";
+
 export function formatDate(dateString: string | null): string {
   if (!dateString) return "N/A";
   const date = new Date(dateString);
@@ -10,6 +12,7 @@ export function formatDate(dateString: string | null): string {
     hour: "numeric",
     minute: "2-digit",
     hour12: true,
+    timeZone: PACIFIC_TIMEZONE,
   }).format(date);
 }
 
@@ -19,6 +22,7 @@ export function formatDateShort(iso: string | null): string {
     month: "short",
     day: "numeric",
     year: "numeric",
+    timeZone: PACIFIC_TIMEZONE,
   });
 }
 

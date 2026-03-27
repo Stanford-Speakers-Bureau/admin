@@ -391,7 +391,7 @@ export default function AdminNotifyClient() {
                       </td>
                     )}
                     <td className="px-6 py-4 whitespace-nowrap text-zinc-400 text-sm">
-                      {new Date(notification.created_at).toLocaleString()}
+                      {new Date(notification.created_at).toLocaleString("en-US", { timeZone: "America/Los_Angeles" })}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right">
                       {!(eventData?.ticketingOpen && notification.hasTicket) && (
