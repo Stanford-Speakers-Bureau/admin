@@ -8,6 +8,8 @@ type Notification = {
   email: string;
   created_at: string;
   hasTicket: boolean;
+  hasProfile: boolean;
+  affiliations: string[];
 };
 
 type EventData = {
@@ -16,6 +18,12 @@ type EventData = {
   start_time_date: string | null;
   ticketing_date: string | null;
   ticketingOpen: boolean;
+};
+
+type NotifyResponse = {
+  notifications?: Notification[];
+  eventData?: EventData | null;
+  error?: string;
 };
 
 /** Returns a duration from now to ticketing_date (e.g. "2 hours", "1 day"). */
@@ -31,6 +39,74 @@ function approxDurationUntil(ticketingDate: string): string {
   if (minutes < 60) return minutes <= 1 ? "1 minute" : `${minutes} minutes`;
   if (hours < 24) return hours === 1 ? "1 hour" : `${hours} hours`;
   return days === 1 ? "1 day" : `${days} days`;
+}
+
+function formatAffiliationLabel(affiliation: string): string {
+  return affiliation
+    .split(/[_-]/g)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+const AFFILIATION_STAT_ORDER = [
+  "student",
+  "faculty",
+  "staff",
+  "postdoc",
+  "alum",
+  "affiliate",
+  "member",
+  "employee",
+] as const;
+
+async function fetchNotificationsForEvent(eventId: string): Promise<NotifyResponse> {
+  const response = await fetch(`/api/notify?eventId=${eventId}`);
+
+  if (!response.ok) {
+    let errorMessage = "Failed to fetch notifications";
+    try {
+      const errorData = await response.json() as NotifyResponse;
+      errorMessage = errorData.error || errorMessage;
+    } catch {
+      errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+    }
+    throw new Error(errorMessage);
+  }
+
+  return response.json() as Promise<NotifyResponse>;
+}
+
+async function loadNotificationsForSelection(
+  eventId: string | null,
+  options: {
+    setNotifications: (notifications: Notification[]) => void;
+    setEventData: (eventData: EventData | null) => void;
+    setIsLoading: (isLoading: boolean) => void;
+    setError: (error: string | null) => void;
+  },
+) {
+  const { setNotifications, setEventData, setIsLoading, setError } = options;
+
+  if (!eventId) {
+    setNotifications([]);
+    setEventData(null);
+    return;
+  }
+
+  setIsLoading(true);
+  setError(null);
+
+  try {
+    const data = await fetchNotificationsForEvent(eventId);
+    setNotifications(data.notifications || []);
+    setEventData(data.eventData || null);
+  } catch (err) {
+    console.error("Error fetching notifications:", err);
+    setError(err instanceof Error ? err.message : "Failed to load notifications");
+  } finally {
+    setIsLoading(false);
+  }
 }
 
 export default function AdminNotifyClient() {
@@ -51,42 +127,21 @@ export default function AdminNotifyClient() {
   const [notifyError, setNotifyError] = useState<string | null>(null);
 
   async function fetchNotifications() {
-    if (!selectedEventId) {
-      setNotifications([]);
-      setEventData(null);
-      return;
-    }
-
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      const response = await fetch(`/api/notify?eventId=${selectedEventId}`);
-
-      if (!response.ok) {
-        let errorMessage = "Failed to fetch notifications";
-        try {
-          const errorData = await response.json();
-          errorMessage = errorData.error || errorMessage;
-        } catch {
-          errorMessage = `HTTP ${response.status}: ${response.statusText}`;
-        }
-        throw new Error(errorMessage);
-      }
-
-      const data = await response.json();
-      setNotifications(data.notifications || []);
-      setEventData(data.eventData || null);
-    } catch (err) {
-      console.error("Error fetching notifications:", err);
-      setError(err instanceof Error ? err.message : "Failed to load notifications");
-    } finally {
-      setIsLoading(false);
-    }
+    await loadNotificationsForSelection(selectedEventId, {
+      setNotifications,
+      setEventData,
+      setIsLoading,
+      setError,
+    });
   }
 
   useEffect(() => {
-    fetchNotifications();
+    void loadNotificationsForSelection(selectedEventId, {
+      setNotifications,
+      setEventData,
+      setIsLoading,
+      setError,
+    });
   }, [selectedEventId]);
 
   function openSendEmailModal(singleEmail?: string) {
@@ -187,9 +242,10 @@ export default function AdminNotifyClient() {
 
   function exportToCSV() {
     const csv = [
-      "Email,Has Ticket,Signup Date",
+      "Email,Affiliations,Has Profile,Has Ticket,Signup Date",
       ...notifications.map(
-        (n) => `${n.email},${n.hasTicket ? "Yes" : "No"},${new Date(n.created_at).toISOString()}`,
+        (n) =>
+          `${n.email},"${n.affiliations.map(formatAffiliationLabel).join("; ")}",${n.hasProfile ? "Yes" : "No"},${n.hasTicket ? "Yes" : "No"},${new Date(n.created_at).toISOString()}`,
       ),
     ].join("\n");
 
@@ -206,9 +262,72 @@ export default function AdminNotifyClient() {
 
   const filtered = searchTerm
     ? notifications.filter((n) =>
-        n.email.toLowerCase().includes(searchTerm.toLowerCase()),
+        n.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        n.affiliations.some((affiliation) =>
+          formatAffiliationLabel(affiliation).toLowerCase().includes(searchTerm.toLowerCase()) ||
+          affiliation.toLowerCase().includes(searchTerm.toLowerCase()),
+        ),
       )
     : notifications;
+
+  const affiliationCounts = new Map<string, number>();
+  let missingAffiliationCount = 0;
+
+  for (const notification of notifications) {
+    if (notification.affiliations.length === 0) {
+      missingAffiliationCount += 1;
+      continue;
+    }
+
+    for (const affiliation of notification.affiliations) {
+      affiliationCounts.set(
+        affiliation,
+        (affiliationCounts.get(affiliation) ?? 0) + 1,
+      );
+    }
+  }
+
+  const preferredAffiliationStats = AFFILIATION_STAT_ORDER
+    .filter((affiliation) => (affiliationCounts.get(affiliation) ?? 0) > 0)
+    .map((affiliation) => ({
+      key: affiliation,
+      label: formatAffiliationLabel(affiliation),
+      value: affiliationCounts.get(affiliation) ?? 0,
+    }));
+
+  const additionalAffiliationStats = [...affiliationCounts.entries()]
+    .filter(([affiliation]) => !AFFILIATION_STAT_ORDER.includes(
+      affiliation as (typeof AFFILIATION_STAT_ORDER)[number],
+    ))
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .map(([affiliation, value]) => ({
+      key: affiliation,
+      label: formatAffiliationLabel(affiliation),
+      value,
+    }));
+
+  const statCards = [
+    {
+      key: "total",
+      label: "Total Signups",
+      value: notifications.length,
+      tone: "text-blue-400",
+    },
+    ...preferredAffiliationStats.map((stat) => ({
+      ...stat,
+      tone: "text-emerald-400",
+    })),
+    ...additionalAffiliationStats.map((stat) => ({
+      ...stat,
+      tone: "text-violet-300",
+    })),
+    {
+      key: "missing",
+      label: "Missing Affiliation",
+      value: missingAffiliationCount,
+      tone: "text-amber-400",
+    },
+  ];
 
   return (
     <div className="px-4 sm:px-6 py-8">
@@ -310,37 +429,51 @@ export default function AdminNotifyClient() {
       ) : (
         <div className="bg-zinc-900 rounded-2xl border border-zinc-800 overflow-hidden">
           <div className="p-6 border-b border-zinc-800">
-            <div className="flex items-center justify-between gap-4">
-              <div className="flex items-center gap-4 text-sm text-zinc-400">
-                <span>
-                  Total Signups:{" "}
-                  <span className="text-blue-400 font-semibold">
-                    {notifications.length}
-                  </span>
-                </span>
-                {eventData?.ticketingOpen && (
-                  <span className="text-amber-400">
-                    {notifications.filter((n) => !n.hasTicket).length} without ticket
-                  </span>
-                )}
+            <div className="flex flex-col gap-5">
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-6">
+                {statCards.map((stat) => (
+                  <div
+                    key={stat.key}
+                    className="rounded-xl border border-zinc-800 bg-zinc-950/70 px-4 py-3"
+                  >
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
+                      {stat.label}
+                    </p>
+                    <p className={`mt-2 text-2xl font-bold ${stat.tone}`}>
+                      {stat.value}
+                    </p>
+                  </div>
+                ))}
               </div>
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                <div className="flex flex-wrap items-center gap-4 text-sm text-zinc-400">
+                  {eventData?.ticketingOpen && (
+                    <span className="text-amber-400">
+                      {notifications.filter((n) => !n.hasTicket).length} without ticket
+                    </span>
+                  )}
+                  <span>
+                    Rows without a Stanford profile are marked as unavailable.
+                  </span>
+                </div>
               {/* Search within results */}
-              <div className="relative">
-                <svg
-                  className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                </svg>
-                <input
-                  type="text"
-                  placeholder="Search emails..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-9 pr-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:border-rose-500/50 text-sm w-64"
-                />
+                <div className="relative">
+                  <svg
+                    className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                  </svg>
+                  <input
+                    type="text"
+                    placeholder="Search email or affiliation..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="pl-9 pr-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:border-rose-500/50 text-sm w-full lg:w-72"
+                  />
+                </div>
               </div>
             </div>
           </div>
@@ -351,6 +484,9 @@ export default function AdminNotifyClient() {
                 <tr className="border-b border-zinc-800 bg-zinc-800/50">
                   <th className="text-left px-6 py-3 text-xs font-medium text-zinc-400 uppercase tracking-wider">
                     Email
+                  </th>
+                  <th className="text-left px-6 py-3 text-xs font-medium text-zinc-400 uppercase tracking-wider">
+                    Affiliation
                   </th>
                   {eventData?.ticketingOpen && (
                     <th className="text-left px-6 py-3 text-xs font-medium text-zinc-400 uppercase tracking-wider">
@@ -373,6 +509,26 @@ export default function AdminNotifyClient() {
                   >
                     <td className="px-6 py-4 whitespace-nowrap text-white font-medium">
                       {notification.email}
+                    </td>
+                    <td className="px-6 py-4 text-sm text-zinc-300">
+                      {notification.affiliations.length > 0 ? (
+                        <div className="flex flex-wrap gap-2">
+                          {notification.affiliations.map((affiliation) => (
+                            <span
+                              key={`${notification.id}-${affiliation}`}
+                              className="inline-flex items-center rounded-full border border-zinc-700 bg-zinc-800 px-2.5 py-1 text-xs font-medium text-zinc-200"
+                            >
+                              {formatAffiliationLabel(affiliation)}
+                            </span>
+                          ))}
+                        </div>
+                      ) : notification.hasProfile ? (
+                        <span className="text-zinc-500">No affiliation provided</span>
+                      ) : (
+                        <span className="text-zinc-500">
+                          Unavailable for backfilled signup
+                        </span>
+                      )}
                     </td>
                     {eventData?.ticketingOpen && (
                       <td className="px-6 py-4 whitespace-nowrap">

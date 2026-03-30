@@ -1,5 +1,5 @@
 import type { Suggestion } from "./AdminSuggestClient";
-import { verifyAdminRequest } from "@/app/lib/supabase";
+import { verifyAdminRequest } from "@/app/lib/auth";
 import { db, inArray, votes } from "@ssb/db";
 
 export async function getAdminSuggestions(): Promise<{
@@ -17,7 +17,17 @@ export async function getAdminSuggestions(): Promise<{
     });
 
     // Attach voters for each suggestion (admin-only view)
-    let suggestionsWithVoters: any[] = suggestions;
+    let suggestionsWithVoters: Suggestion[] = suggestions.map((s) => ({
+      id: s.id,
+      created_at: s.createdAt.toISOString(),
+      email: s.email ?? "",
+      speaker: s.speaker ?? "",
+      approved: !!s.approved,
+      votes: s.votes ?? 0,
+      reviewed: !!s.reviewed,
+      duplicate: !!s.duplicate,
+      voters: [],
+    }));
     try {
       const suggestionIds = suggestions.map((s) => s.id).filter(Boolean);
 
@@ -37,12 +47,12 @@ export async function getAdminSuggestions(): Promise<{
         suggestionsWithVoters = suggestions.map((s) => ({
           id: s.id,
           created_at: s.createdAt.toISOString(),
-          email: s.email,
-          speaker: s.speaker,
-          approved: s.approved,
-          votes: s.votes,
-          reviewed: s.reviewed,
-          duplicate: s.duplicate,
+          email: s.email ?? "",
+          speaker: s.speaker ?? "",
+          approved: !!s.approved,
+          votes: s.votes ?? 0,
+          reviewed: !!s.reviewed,
+          duplicate: !!s.duplicate,
           voters: votersBySpeaker[s.id] || [],
         }));
       }
@@ -51,7 +61,7 @@ export async function getAdminSuggestions(): Promise<{
     }
 
     return {
-      suggestions: suggestionsWithVoters as Suggestion[],
+      suggestions: suggestionsWithVoters,
     };
   } catch (error) {
     console.error("Failed to fetch initial suggestions:", error);

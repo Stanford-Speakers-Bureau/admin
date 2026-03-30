@@ -4,9 +4,9 @@ import { fromZonedTime } from "date-fns-tz";
 import {
   getSignedImageUrl,
   getSupabaseClient,
-  verifyAdminRequest,
   serializeEvent,
 } from "@/app/lib/supabase";
+import { verifyAdminRequest } from "@/app/lib/auth";
 import { PACIFIC_TIMEZONE } from "@/app/lib/constants";
 import { pullFromWaitlist } from "@/app/lib/waitlist";
 import { db, eq, ne, events } from "@ssb/db";
