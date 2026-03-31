@@ -167,6 +167,20 @@ export default function EditEventClient({ allEvents }: EditEventClientProps) {
     setEvents(allEvents);
   }, [allEvents]);
 
+  useEffect(() => {
+    if (!success) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setSuccess(null);
+    }, 1800);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [success]);
+
   // Sync form when selected event changes
   useEffect(() => {
     const syncKey = isCreating
@@ -235,6 +249,7 @@ export default function EditEventClient({ allEvents }: EditEventClientProps) {
     e.preventDefault();
     setIsSubmitting(true);
     setError(null);
+    setSuccess(null);
 
     try {
       if (formData.release_date && formData.ticketing_date) {
@@ -344,6 +359,11 @@ export default function EditEventClient({ allEvents }: EditEventClientProps) {
   const editingEvent = isCreating ? null : currentEvent;
   const hasEvent = !!selectedEventId && !!currentEvent;
   const mobileImageDisplayPreview = mobileImagePreview || imagePreview;
+  const saveToastMessage = isSubmitting
+    ? isCreating
+      ? "Saving event..."
+      : "Saving changes..."
+    : success;
 
   return (
     <div className="px-4 sm:px-6 py-8">
@@ -377,15 +397,6 @@ export default function EditEventClient({ allEvents }: EditEventClientProps) {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
           <p className="text-rose-400 text-sm">{error}</p>
-        </div>
-      )}
-
-      {success && (
-        <div className="mb-6 p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-xl flex items-center gap-3">
-          <svg className="w-5 h-5 text-emerald-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-          </svg>
-          <p className="text-emerald-400 text-sm">{success}</p>
         </div>
       )}
 
@@ -611,6 +622,23 @@ export default function EditEventClient({ allEvents }: EditEventClientProps) {
               )}
             </div>
           </form>
+        </div>
+      )}
+
+      {saveToastMessage && (
+        <div className="pointer-events-none fixed inset-x-0 bottom-6 z-50 flex justify-center px-4">
+          <div className="flex items-center gap-3 rounded-full border border-zinc-700 bg-zinc-900/95 px-5 py-3 shadow-2xl shadow-black/30 backdrop-blur">
+            {isSubmitting ? (
+              <div className="h-5 w-5 rounded-full border-2 border-emerald-300/80 border-t-transparent animate-spin" />
+            ) : (
+              <div className="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500/20">
+                <svg className="h-3.5 w-3.5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                </svg>
+              </div>
+            )}
+            <p className="text-sm font-medium text-white">{saveToastMessage}</p>
+          </div>
         </div>
       )}
     </div>
