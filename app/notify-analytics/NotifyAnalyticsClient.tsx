@@ -1,0 +1,789 @@
+"use client";
+
+import { useEffect, useState, useMemo, useCallback, useRef } from "react";
+import { useEventContext } from "@/app/EventContext";
+import ReactECharts from "echarts-for-react";
+
+// ── Types ────────────────────────────────────────────────────────────────
+
+type CrossPollinationItem = {
+  eventId: string;
+  eventName: string | null;
+  sharedCount: number;
+};
+
+type AnalyticsResponse = {
+  eventName: string | null;
+  ticketingDate: string | null;
+  totalSignups: number;
+  uniqueSignups: number;
+  ticketHolders: number;
+  conversionRate: number;
+  timestamps: string[];
+  affiliations: string[][];
+  crossPollination: CrossPollinationItem[];
+};
+
+// ── Bucketing helpers (same as TicketSalesGraph) ─────────────────────────
+
+const MIN = 60_000;
+const HOUR = 60 * MIN;
+const DAY = 24 * HOUR;
+
+function pickInterval(spanMs: number): number {
+  if (spanMs <= 3 * HOUR) return MIN;
+  if (spanMs <= 12 * HOUR) return 5 * MIN;
+  if (spanMs <= 3 * DAY) return 15 * MIN;
+  if (spanMs <= 14 * DAY) return HOUR;
+  return DAY;
+}
+
+function intervalLabel(ms: number): string {
+  if (ms <= MIN) return "Minute";
+  if (ms < HOUR) return `${ms / MIN} Min`;
+  if (ms === HOUR) return "Hour";
+  if (ms === DAY) return "Day";
+  return `${ms / HOUR}h`;
+}
+
+function bucketEpochs(
+  epochs: number[],
+  intervalMs: number,
+  rangeStart: number,
+  rangeEnd: number,
+): [number, number, number][] {
+  const alignedStart = Math.floor(rangeStart / intervalMs) * intervalMs;
+  const result: [number, number, number][] = [];
+  let cumulative = 0;
+
+  let idx = 0;
+  while (idx < epochs.length && epochs[idx] < alignedStart) {
+    cumulative++;
+    idx++;
+  }
+
+  let bucketStart = alignedStart;
+  while (bucketStart <= rangeEnd) {
+    const bucketEnd = bucketStart + intervalMs;
+    let count = 0;
+    while (idx < epochs.length && epochs[idx] < bucketEnd) {
+      count++;
+      idx++;
+    }
+    cumulative += count;
+    result.push([bucketStart, count, cumulative]);
+    bucketStart = bucketEnd;
+  }
+
+  return result;
+}
+
+// ── Affiliation helpers ──────────────────────────────────────────────────
+
+const AFFILIATION_CATEGORIES = [
+  { key: "student", label: "Student", color: "#3b82f6" },
+  { key: "faculty", label: "Faculty", color: "#8b5cf6" },
+  { key: "staff", label: "Staff", color: "#10b981" },
+  { key: "postdoc", label: "Postdoc", color: "#06b6d4" },
+  { key: "alum", label: "Alum", color: "#f59e0b" },
+  { key: "other", label: "Other", color: "#71717a" },
+] as const;
+
+const KNOWN_AFFILIATIONS: Set<string> = new Set(
+  AFFILIATION_CATEGORIES.filter((c) => c.key !== "other").map((c) => c.key),
+);
+
+function classifyAffiliation(affiliation: string): string {
+  const lower = affiliation.toLowerCase();
+  if (KNOWN_AFFILIATIONS.has(lower)) return lower;
+  // Map common compound affiliations
+  if (lower.includes("student")) return "student";
+  if (lower.includes("faculty")) return "faculty";
+  if (lower.includes("staff")) return "staff";
+  return "other";
+}
+
+type AffiliationBucket = {
+  ts: number;
+  counts: Record<string, number>;
+  cumulative: Record<string, number>;
+};
+
+function bucketAffiliations(
+  epochs: number[],
+  affiliations: string[][],
+  intervalMs: number,
+  rangeStart: number,
+  rangeEnd: number,
+): AffiliationBucket[] {
+  const alignedStart = Math.floor(rangeStart / intervalMs) * intervalMs;
+  const result: AffiliationBucket[] = [];
+  const cumulative: Record<string, number> = {};
+  for (const cat of AFFILIATION_CATEGORIES) cumulative[cat.key] = 0;
+
+  let idx = 0;
+  // Count before visible range
+  while (idx < epochs.length && epochs[idx] < alignedStart) {
+    const cats = getCategoriesForSignup(affiliations[idx]);
+    for (const c of cats) cumulative[c] = (cumulative[c] ?? 0) + 1;
+    idx++;
+  }
+
+  let bucketStart = alignedStart;
+  while (bucketStart <= rangeEnd) {
+    const bucketEnd = bucketStart + intervalMs;
+    const counts: Record<string, number> = {};
+    for (const cat of AFFILIATION_CATEGORIES) counts[cat.key] = 0;
+
+    while (idx < epochs.length && epochs[idx] < bucketEnd) {
+      const cats = getCategoriesForSignup(affiliations[idx]);
+      for (const c of cats) {
+        counts[c] = (counts[c] ?? 0) + 1;
+        cumulative[c] = (cumulative[c] ?? 0) + 1;
+      }
+      idx++;
+    }
+
+    result.push({
+      ts: bucketStart,
+      counts,
+      cumulative: { ...cumulative },
+    });
+    bucketStart = bucketEnd;
+  }
+
+  return result;
+}
+
+function getCategoriesForSignup(affiliations: string[]): string[] {
+  if (affiliations.length === 0) return ["other"];
+  const cats = new Set(affiliations.map(classifyAffiliation));
+  return [...cats];
+}
+
+function formatAffiliationLabel(affiliation: string): string {
+  return affiliation
+    .split(/[_-]/g)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+// ── Main Component ───────────────────────────────────────────────────────
+
+export default function NotifyAnalyticsClient() {
+  const { events, selectedEventId } = useEventContext();
+  const [data, setData] = useState<AnalyticsResponse | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Zoom state for signups chart
+  const [zoomRange, setZoomRange] = useState<[number, number] | null>(null);
+  const chartRef = useRef<ReactECharts>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+
+  const currentEvent = events.find((e) => e.id === selectedEventId);
+
+  useEffect(() => {
+    if (!selectedEventId) {
+      setData(null);
+      return;
+    }
+    async function fetchData() {
+      setIsLoading(true);
+      setError(null);
+      setZoomRange(null);
+      try {
+        const res = await fetch(
+          `/api/notify/analytics?eventId=${selectedEventId}`,
+        );
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.error || "Failed to fetch analytics");
+        }
+        setData(await res.json());
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to load data");
+      } finally {
+        setIsLoading(false);
+      }
+    }
+    fetchData();
+  }, [selectedEventId]);
+
+  // ── Pre-parse timestamps ──
+  const epochs = useMemo(() => {
+    if (!data) return [];
+    return data.timestamps.map((t) => new Date(t).getTime());
+  }, [data]);
+
+  const fullRange = useMemo<[number, number]>(() => {
+    if (epochs.length === 0) return [Date.now(), Date.now()];
+    return [epochs[0], Math.max(epochs[epochs.length - 1], epochs[0] + MIN)];
+  }, [epochs]);
+
+  const visibleRange = zoomRange ?? fullRange;
+  const visibleSpan = visibleRange[1] - visibleRange[0];
+
+  // ── Signups over time chart data ──
+  const { bucketedData, seriesLabel } = useMemo(() => {
+    if (epochs.length === 0)
+      return {
+        bucketedData: [] as [number, number, number][],
+        seriesLabel: "Minute",
+      };
+    const interval = pickInterval(Math.max(visibleSpan, MIN));
+    return {
+      bucketedData: bucketEpochs(epochs, interval, fullRange[0], fullRange[1]),
+      seriesLabel: intervalLabel(interval),
+    };
+  }, [epochs, fullRange, visibleSpan]);
+
+  // ── Affiliation chart data ──
+  const affiliationBuckets = useMemo(() => {
+    if (!data || epochs.length === 0) return [];
+    const interval = pickInterval(Math.max(visibleSpan, MIN));
+    return bucketAffiliations(
+      epochs,
+      data.affiliations,
+      interval,
+      fullRange[0],
+      fullRange[1],
+    );
+  }, [data, epochs, fullRange, visibleSpan]);
+
+  // ── Zoom handler ──
+  const onDataZoom = useCallback(() => {
+    clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      const instance = chartRef.current?.getEchartsInstance();
+      if (!instance) return;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const opt = instance.getOption() as any;
+      const dz = opt.dataZoom?.[0];
+      if (!dz) return;
+
+      if (dz.startValue != null && dz.endValue != null) {
+        setZoomRange([dz.startValue, dz.endValue]);
+      } else if (dz.start != null && dz.end != null) {
+        const span = fullRange[1] - fullRange[0];
+        setZoomRange([
+          fullRange[0] + (dz.start / 100) * span,
+          fullRange[0] + (dz.end / 100) * span,
+        ]);
+      }
+    }, 120);
+  }, [fullRange]);
+
+  const onEvents = useMemo(() => ({ datazoom: onDataZoom }), [onDataZoom]);
+
+  // ── Signups chart option ──
+  const signupsChartOption = useMemo(() => {
+    if (bucketedData.length === 0) return {};
+
+    const barData = bucketedData.map(([ts, sold]) => [ts, sold]);
+    const lineData = bucketedData.map(([ts, , cum]) => [ts, cum]);
+    const zoomProps = zoomRange
+      ? { startValue: zoomRange[0], endValue: zoomRange[1] }
+      : {};
+
+    return {
+      backgroundColor: "transparent",
+      animation: false,
+      tooltip: {
+        trigger: "axis" as const,
+        backgroundColor: "#18181b",
+        borderColor: "#3f3f46",
+        borderWidth: 1,
+        textStyle: { color: "#fafafa", fontSize: 12 },
+        axisPointer: {
+          type: "cross" as const,
+          crossStyle: { color: "#71717a" },
+        },
+      },
+      legend: {
+        data: ["Cumulative", `Per ${seriesLabel}`],
+        textStyle: { color: "#a1a1aa", fontSize: 12 },
+        top: 0,
+        left: "center",
+        itemGap: 24,
+        icon: "roundRect",
+        itemWidth: 14,
+        itemHeight: 8,
+      },
+      grid: {
+        top: 40,
+        right: 56,
+        bottom: 80,
+        left: 56,
+        containLabel: false,
+      },
+      xAxis: {
+        type: "time" as const,
+        axisLabel: { color: "#71717a", fontSize: 10, hideOverlap: true },
+        axisLine: { show: false },
+        axisTick: { show: false },
+        splitLine: { show: false },
+      },
+      yAxis: [
+        {
+          type: "value" as const,
+          name: "Cumulative",
+          nameTextStyle: {
+            color: "#71717a",
+            fontSize: 10,
+            padding: [0, 0, 0, -24],
+          },
+          axisLabel: { color: "#71717a", fontSize: 10 },
+          axisLine: { show: false },
+          axisTick: { show: false },
+          splitLine: {
+            lineStyle: { color: "#27272a", type: "dashed" as const },
+          },
+          minInterval: 1,
+        },
+        {
+          type: "value" as const,
+          name: `Per ${seriesLabel}`,
+          nameTextStyle: {
+            color: "#71717a",
+            fontSize: 10,
+            padding: [0, -24, 0, 0],
+          },
+          axisLabel: { color: "#71717a", fontSize: 10 },
+          axisLine: { show: false },
+          axisTick: { show: false },
+          splitLine: { show: false },
+          minInterval: 1,
+        },
+      ],
+      dataZoom: [
+        {
+          type: "inside" as const,
+          xAxisIndex: 0,
+          filterMode: "none" as const,
+          zoomOnMouseWheel: true,
+          moveOnMouseMove: true,
+          ...zoomProps,
+        },
+        {
+          type: "slider" as const,
+          xAxisIndex: 0,
+          filterMode: "none" as const,
+          height: 24,
+          bottom: 8,
+          borderColor: "#3f3f46",
+          backgroundColor: "#18181b",
+          fillerColor: "rgba(59,130,246,0.15)",
+          handleStyle: { color: "#3b82f6", borderColor: "#3b82f6" },
+          dataBackground: {
+            lineStyle: { color: "#3f3f46" },
+            areaStyle: { color: "#27272a" },
+          },
+          selectedDataBackground: {
+            lineStyle: { color: "#3b82f6" },
+            areaStyle: { color: "rgba(59,130,246,0.15)" },
+          },
+          textStyle: { color: "#71717a", fontSize: 10 },
+          moveHandleStyle: { color: "#3f3f46" },
+          ...zoomProps,
+        },
+      ],
+      series: [
+        {
+          name: `Per ${seriesLabel}`,
+          type: "bar" as const,
+          yAxisIndex: 1,
+          data: barData,
+          itemStyle: {
+            color: "rgba(16,185,129,0.5)",
+            borderRadius: [2, 2, 0, 0],
+          },
+          emphasis: { itemStyle: { color: "#10b981" } },
+          barMaxWidth: 28,
+          large: true,
+          z: 1,
+        },
+        {
+          name: "Cumulative",
+          type: "line" as const,
+          yAxisIndex: 0,
+          data: lineData,
+          smooth: true,
+          symbol: "none",
+          lineStyle: { width: 2, color: "#3b82f6" },
+          areaStyle: {
+            color: {
+              type: "linear" as const,
+              x: 0,
+              y: 0,
+              x2: 0,
+              y2: 1,
+              colorStops: [
+                { offset: 0, color: "rgba(59,130,246,0.25)" },
+                { offset: 1, color: "rgba(59,130,246,0)" },
+              ],
+            },
+          },
+          z: 2,
+        },
+      ],
+    };
+  }, [bucketedData, seriesLabel, zoomRange]);
+
+  // ── Affiliation chart option ──
+  const affiliationChartOption = useMemo(() => {
+    if (affiliationBuckets.length === 0) return {};
+
+    return {
+      backgroundColor: "transparent",
+      animation: false,
+      tooltip: {
+        trigger: "axis" as const,
+        backgroundColor: "#18181b",
+        borderColor: "#3f3f46",
+        borderWidth: 1,
+        textStyle: { color: "#fafafa", fontSize: 12 },
+      },
+      legend: {
+        data: AFFILIATION_CATEGORIES.map((c) => c.label),
+        textStyle: { color: "#a1a1aa", fontSize: 12 },
+        top: 0,
+        left: "center",
+        itemGap: 16,
+        icon: "roundRect",
+        itemWidth: 14,
+        itemHeight: 8,
+      },
+      grid: {
+        top: 40,
+        right: 24,
+        bottom: 24,
+        left: 56,
+        containLabel: false,
+      },
+      xAxis: {
+        type: "time" as const,
+        axisLabel: { color: "#71717a", fontSize: 10, hideOverlap: true },
+        axisLine: { show: false },
+        axisTick: { show: false },
+        splitLine: { show: false },
+      },
+      yAxis: {
+        type: "value" as const,
+        axisLabel: { color: "#71717a", fontSize: 10 },
+        axisLine: { show: false },
+        axisTick: { show: false },
+        splitLine: {
+          lineStyle: { color: "#27272a", type: "dashed" as const },
+        },
+        minInterval: 1,
+      },
+      series: AFFILIATION_CATEGORIES.map((cat) => ({
+        name: cat.label,
+        type: "line" as const,
+        stack: "affiliations",
+        areaStyle: { opacity: 0.6 },
+        emphasis: { focus: "series" as const },
+        data: affiliationBuckets.map((b) => [
+          b.ts,
+          b.cumulative[cat.key] ?? 0,
+        ]),
+        lineStyle: { width: 1, color: cat.color },
+        itemStyle: { color: cat.color },
+        symbol: "none",
+      })),
+    };
+  }, [affiliationBuckets]);
+
+  // ── Student percentage ──
+  const studentStats = useMemo(() => {
+    if (!data || data.totalSignups === 0) return { count: 0, pct: 0 };
+    let count = 0;
+    for (const affs of data.affiliations) {
+      if (affs.some((a) => classifyAffiliation(a) === "student")) {
+        count++;
+      }
+    }
+    return {
+      count,
+      pct: (count / data.totalSignups) * 100,
+    };
+  }, [data]);
+
+  // ── Render ─────────────────────────────────────────────────────────────
+
+  if (!selectedEventId) {
+    return (
+      <div className="px-4 sm:px-6 py-8">
+        <div className="mb-8">
+          <h1 className="text-2xl sm:text-3xl font-bold text-white font-serif mb-2">
+            Notify Analytics
+          </h1>
+        </div>
+        <div className="text-center py-16 bg-zinc-900/50 rounded-2xl border border-zinc-800">
+          <div className="w-16 h-16 bg-zinc-800 rounded-full flex items-center justify-center mx-auto mb-4">
+            <svg
+              className="w-8 h-8 text-zinc-600"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"
+              />
+            </svg>
+          </div>
+          <p className="text-zinc-400 text-lg mb-2">No event selected</p>
+          <p className="text-zinc-600 text-sm">
+            Select an event from the sidebar to view notify analytics
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (isLoading) {
+    return (
+      <div className="px-4 sm:px-6 py-8">
+        <div className="mb-8">
+          <h1 className="text-2xl sm:text-3xl font-bold text-white font-serif mb-2">
+            Notify Analytics
+          </h1>
+          {currentEvent && (
+            <p className="text-zinc-400">
+              {currentEvent.name || "Unnamed Event"}
+            </p>
+          )}
+        </div>
+        <div className="flex items-center justify-center py-20">
+          <div className="flex items-center gap-3 text-zinc-400">
+            <div className="w-5 h-5 border-2 border-zinc-600 border-t-zinc-400 rounded-full animate-spin" />
+            <span className="text-sm">Loading notify analytics...</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="px-4 sm:px-6 py-8">
+        <div className="mb-8">
+          <h1 className="text-2xl sm:text-3xl font-bold text-white font-serif mb-2">
+            Notify Analytics
+          </h1>
+        </div>
+        <div className="flex items-center justify-center py-20">
+          <div className="text-center">
+            <svg
+              className="w-10 h-10 text-rose-400 mx-auto mb-2"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+              />
+            </svg>
+            <p className="text-rose-400 text-sm">{error}</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!data || data.totalSignups === 0) {
+    return (
+      <div className="px-4 sm:px-6 py-8">
+        <div className="mb-8">
+          <h1 className="text-2xl sm:text-3xl font-bold text-white font-serif mb-2">
+            Notify Analytics
+          </h1>
+          {currentEvent && (
+            <p className="text-zinc-400">
+              {currentEvent.name || "Unnamed Event"}
+            </p>
+          )}
+        </div>
+        <div className="flex items-center justify-center py-20">
+          <div className="text-center">
+            <svg
+              className="w-10 h-10 text-zinc-600 mx-auto mb-2"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"
+              />
+            </svg>
+            <p className="text-zinc-400 text-sm">No notify signups yet</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const maxSharedCount = data.crossPollination.length > 0
+    ? data.crossPollination[0].sharedCount
+    : 0;
+
+  return (
+    <div className="px-4 sm:px-6 py-8">
+      <div className="mb-8">
+        <h1 className="text-2xl sm:text-3xl font-bold text-white font-serif mb-2">
+          Notify Analytics
+        </h1>
+        {currentEvent && (
+          <p className="text-zinc-400">
+            {currentEvent.name || "Unnamed Event"}
+          </p>
+        )}
+      </div>
+
+      <div className="space-y-5">
+        {/* Stat Cards */}
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 px-4 py-3">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
+              Total Signups
+            </p>
+            <p className="mt-2 text-2xl font-bold text-blue-400">
+              {data.totalSignups}
+            </p>
+            <p className="text-xs text-zinc-500 mt-1">
+              {data.uniqueSignups} unique emails
+            </p>
+          </div>
+
+          <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 px-4 py-3">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
+              Conversion Rate
+            </p>
+            <p
+              className={`mt-2 text-2xl font-bold ${
+                data.conversionRate >= 50
+                  ? "text-emerald-400"
+                  : data.conversionRate >= 25
+                    ? "text-blue-400"
+                    : "text-amber-400"
+              }`}
+            >
+              {data.conversionRate.toFixed(1)}%
+            </p>
+            <p className="text-xs text-zinc-500 mt-1">
+              {data.ticketHolders} got tickets
+            </p>
+          </div>
+
+          <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 px-4 py-3">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
+              Students
+            </p>
+            <p className="mt-2 text-2xl font-bold text-violet-400">
+              {studentStats.pct.toFixed(1)}%
+            </p>
+            <p className="text-xs text-zinc-500 mt-1">
+              {studentStats.count} of {data.totalSignups} signups
+            </p>
+          </div>
+
+          <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 px-4 py-3">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
+              Cross-Pollination
+            </p>
+            <p className="mt-2 text-2xl font-bold text-rose-400">
+              {data.crossPollination.length}
+            </p>
+            <p className="text-xs text-zinc-500 mt-1">
+              other events share subscribers
+            </p>
+          </div>
+        </div>
+
+        {/* Signups Over Time Chart */}
+        <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
+          <h3 className="text-sm font-semibold text-white mb-1">
+            Signups Over Time
+          </h3>
+          <p className="text-[10px] text-zinc-600 mb-1">
+            Scroll to zoom &middot; Drag to pan &middot; Click legend to toggle
+          </p>
+          <ReactECharts
+            ref={chartRef}
+            option={signupsChartOption}
+            style={{ height: 400 }}
+            opts={{ renderer: "canvas" }}
+            onEvents={onEvents}
+            notMerge
+          />
+        </div>
+
+        {/* Affiliation Breakdown Over Time */}
+        <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
+          <h3 className="text-sm font-semibold text-white mb-1">
+            Affiliation Breakdown Over Time
+          </h3>
+          <p className="text-[10px] text-zinc-600 mb-3">
+            Cumulative signups by affiliation type
+          </p>
+          <ReactECharts
+            option={affiliationChartOption}
+            style={{ height: 350 }}
+            opts={{ renderer: "canvas" }}
+            notMerge
+          />
+        </div>
+
+        {/* Cross-Pollination */}
+        <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
+          <h3 className="text-sm font-semibold text-white mb-1">
+            Cross-Pollination
+          </h3>
+          <p className="text-[10px] text-zinc-600 mb-4">
+            Events that share notify subscribers with this event
+          </p>
+          {data.crossPollination.length === 0 ? (
+            <p className="text-zinc-500 text-sm py-4 text-center">
+              No shared subscribers with other events
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {data.crossPollination.map((item) => (
+                <div
+                  key={item.eventId}
+                  className="flex items-center gap-3 py-1.5"
+                >
+                  <span className="text-sm text-zinc-300 flex-1 truncate">
+                    {item.eventName || "Unnamed Event"}
+                  </span>
+                  <span className="text-sm text-zinc-400 tabular-nums w-12 text-right">
+                    {item.sharedCount}
+                  </span>
+                  <div className="w-32 bg-zinc-800 rounded-full h-2 overflow-hidden">
+                    <div
+                      className="h-full rounded-full bg-rose-500/70 transition-all duration-500"
+                      style={{
+                        width: `${maxSharedCount > 0 ? (item.sharedCount / maxSharedCount) * 100 : 0}%`,
+                      }}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}

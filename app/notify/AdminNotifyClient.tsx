@@ -9,6 +9,7 @@ type Notification = {
   created_at: string;
   hasTicket: boolean;
   hasProfile: boolean;
+  displayName: string | null;
   affiliations: string[];
 };
 
@@ -116,6 +117,7 @@ export default function AdminNotifyClient() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
+  const [affiliationFilter, setAffiliationFilter] = useState<string | null>(null);
 
   // Send email modal state
   const [showSendModal, setShowSendModal] = useState(false);
@@ -260,15 +262,27 @@ export default function AdminNotifyClient() {
 
   const selectedEvent = events.find((e) => e.id === selectedEventId);
 
-  const filtered = searchTerm
-    ? notifications.filter((n) =>
-        n.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        n.affiliations.some((affiliation) =>
-          formatAffiliationLabel(affiliation).toLowerCase().includes(searchTerm.toLowerCase()) ||
-          affiliation.toLowerCase().includes(searchTerm.toLowerCase()),
-        ),
-      )
-    : notifications;
+  const filtered = notifications.filter((n) => {
+    if (affiliationFilter) {
+      if (affiliationFilter === "missing") {
+        if (n.affiliations.length > 0) return false;
+      } else {
+        if (!n.affiliations.some((a) => a === affiliationFilter)) return false;
+      }
+    }
+    if (searchTerm) {
+      const lower = searchTerm.toLowerCase();
+      if (
+        !(n.displayName?.toLowerCase().includes(lower) ?? false) &&
+        !n.email.toLowerCase().includes(lower) &&
+        !n.affiliations.some((affiliation) =>
+          formatAffiliationLabel(affiliation).toLowerCase().includes(lower) ||
+          affiliation.toLowerCase().includes(lower),
+        )
+      ) return false;
+    }
+    return true;
+  });
 
   const affiliationCounts = new Map<string, number>();
   let missingAffiliationCount = 0;
@@ -313,14 +327,6 @@ export default function AdminNotifyClient() {
       value: notifications.length,
       tone: "text-blue-400",
     },
-    ...preferredAffiliationStats.map((stat) => ({
-      ...stat,
-      tone: "text-emerald-400",
-    })),
-    ...additionalAffiliationStats.map((stat) => ({
-      ...stat,
-      tone: "text-violet-300",
-    })),
     {
       key: "missing",
       label: "Missing Affiliation",
@@ -430,7 +436,7 @@ export default function AdminNotifyClient() {
         <div className="bg-zinc-900 rounded-2xl border border-zinc-800 overflow-hidden">
           <div className="p-6 border-b border-zinc-800">
             <div className="flex flex-col gap-5">
-              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-6">
+              <div className="grid gap-3 sm:grid-cols-2">
                 {statCards.map((stat) => (
                   <div
                     key={stat.key}
@@ -446,17 +452,56 @@ export default function AdminNotifyClient() {
                 ))}
               </div>
               <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                <div className="flex flex-wrap items-center gap-4 text-sm text-zinc-400">
-                  {eventData?.ticketingOpen && (
-                    <span className="text-amber-400">
-                      {notifications.filter((n) => !n.hasTicket).length} without ticket
-                    </span>
+                <div className="flex flex-wrap items-center gap-2">
+                  {[...preferredAffiliationStats, ...additionalAffiliationStats].map((stat) => {
+                    const isActive = affiliationFilter === stat.key;
+                    return (
+                      <button
+                        key={stat.key}
+                        type="button"
+                        onClick={() => setAffiliationFilter(isActive ? null : stat.key)}
+                        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
+                          isActive
+                            ? "bg-rose-500/20 text-rose-400 border border-rose-500/40"
+                            : "bg-zinc-800 text-zinc-300 border border-zinc-700 hover:border-zinc-500"
+                        }`}
+                      >
+                        {stat.label}
+                        <span className={isActive ? "text-rose-400/70" : "text-zinc-500"}>
+                          {stat.value}
+                        </span>
+                      </button>
+                    );
+                  })}
+                  {missingAffiliationCount > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setAffiliationFilter(affiliationFilter === "missing" ? null : "missing")}
+                      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
+                        affiliationFilter === "missing"
+                          ? "bg-rose-500/20 text-rose-400 border border-rose-500/40"
+                          : "bg-zinc-800 text-zinc-300 border border-zinc-700 hover:border-zinc-500"
+                      }`}
+                    >
+                      Missing
+                      <span className={affiliationFilter === "missing" ? "text-rose-400/70" : "text-zinc-500"}>
+                        {missingAffiliationCount}
+                      </span>
+                    </button>
                   )}
-                  <span>
-                    Rows without a Stanford profile are marked as unavailable.
-                  </span>
+                  {affiliationFilter && (
+                    <button
+                      type="button"
+                      onClick={() => setAffiliationFilter(null)}
+                      className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium text-zinc-500 hover:text-zinc-300 transition-colors"
+                    >
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                      Clear
+                    </button>
+                  )}
                 </div>
-              {/* Search within results */}
                 <div className="relative">
                   <svg
                     className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500"
@@ -468,7 +513,7 @@ export default function AdminNotifyClient() {
                   </svg>
                   <input
                     type="text"
-                    placeholder="Search email or affiliation..."
+                    placeholder="Search name, email, or affiliation..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                     className="pl-9 pr-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:border-rose-500/50 text-sm w-full lg:w-72"
@@ -482,6 +527,9 @@ export default function AdminNotifyClient() {
             <table className="w-full">
               <thead>
                 <tr className="border-b border-zinc-800 bg-zinc-800/50">
+                  <th className="text-left px-6 py-3 text-xs font-medium text-zinc-400 uppercase tracking-wider">
+                    Name
+                  </th>
                   <th className="text-left px-6 py-3 text-xs font-medium text-zinc-400 uppercase tracking-wider">
                     Email
                   </th>
@@ -507,6 +555,9 @@ export default function AdminNotifyClient() {
                     key={notification.id}
                     className="hover:bg-zinc-800/30 transition-colors"
                   >
+                    <td className="px-6 py-4 whitespace-nowrap text-white font-medium">
+                      {notification.displayName || <span className="text-zinc-600">—</span>}
+                    </td>
                     <td className="px-6 py-4 whitespace-nowrap text-white font-medium">
                       {notification.email}
                     </td>

@@ -68,6 +68,7 @@ export async function GET(req: Request) {
         where: inArray(userProfiles.email, notificationEmails),
         columns: {
           email: true,
+          displayName: true,
           eduPersonAffiliation: true,
         },
       })
@@ -91,6 +92,7 @@ export async function GET(req: Request) {
         created_at: n.createdAt.toISOString(),
         hasTicket: ticketEmailSet.has(n.email.trim().toLowerCase()),
         hasProfile: profileByEmail.has(n.email.trim().toLowerCase()),
+        displayName: profileByEmail.get(n.email.trim().toLowerCase())?.displayName ?? null,
         affiliations: profileByEmail.get(n.email.trim().toLowerCase())?.eduPersonAffiliation ?? [],
       })),
       eventData: {
