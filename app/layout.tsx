@@ -6,6 +6,7 @@ import { db, eq, desc, events } from "@ssb/db";
 import "./globals.css";
 import { Hedvig_Letters_Serif, Inter } from "next/font/google";
 import { Metadata } from "next";
+import { connection } from "next/server";
 
 const baseURL = process.env.BASE_URL || "http://localhost:3000";
 
@@ -155,6 +156,7 @@ async function getEvents() {
 }
 
 export default async function AdminLayout({ children }: AdminLayoutProps) {
+  await connection();
   const auth = await verifyAdminRequest();
 
   if (!auth.authorized) {

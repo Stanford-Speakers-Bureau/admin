@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { db, eq, count as dbCount, suggest, events, notify, roles } from "@ssb/db";
+import { db, eq, count as dbCount, suggest, events, notify } from "@ssb/db";
+import { connection } from "next/server";
 
 type Stats = {
   pendingSuggestions: number;
@@ -63,6 +64,7 @@ async function getStats(): Promise<Stats> {
 }
 
 export default async function AdminDashboard() {
+  await connection();
   const stats = await getStats();
 
   const cards = [

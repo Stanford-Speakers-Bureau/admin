@@ -2,6 +2,7 @@ import AdminEventsClient, { Event } from "./AdminEventsClient";
 import { getSignedImageUrl, serializeEvent } from "@/app/lib/supabase";
 import { verifyAdminRequest } from "@/app/lib/auth";
 import { db, eq, ne, count as dbCount, tickets, waitlist } from "@ssb/db";
+import { connection } from "next/server";
 
 export const dynamic = "force-dynamic";
 
@@ -61,6 +62,7 @@ async function getInitialEvents(): Promise<Event[]> {
 }
 
 export default async function AdminEventsPage() {
+  await connection();
   const initialEvents = await getInitialEvents();
   return <AdminEventsClient initialEvents={initialEvents} />;
 }

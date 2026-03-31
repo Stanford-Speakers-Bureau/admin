@@ -3,6 +3,7 @@ import EditEventClient from "../EditEventClient";
 import { getSignedImageUrl, serializeEvent } from "@/app/lib/supabase";
 import { verifyAdminRequest } from "@/app/lib/auth";
 import { db } from "@ssb/db";
+import { connection } from "next/server";
 import { Event } from "../../AdminEventsClient";
 
 export const dynamic = "force-dynamic";
@@ -43,6 +44,7 @@ export default async function EditEventWithIdPage({
 }: {
   params: Promise<{ eventId: string }>;
 }) {
+  await connection();
   const { eventId } = await params;
   const events = await getAllEvents();
   return (

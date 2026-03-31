@@ -1,6 +1,7 @@
 import AdminUsersClient, { Admin, Ban, Scanner } from "./AdminUsersClient";
 import { verifyAdminRequest } from "@/app/lib/auth";
 import { db } from "@ssb/db";
+import { connection } from "next/server";
 
 export const dynamic = "force-dynamic";
 
@@ -49,6 +50,7 @@ async function getInitialUsers(): Promise<{
 }
 
 export default async function AdminUsersPage() {
+  await connection();
   const { admins, bans, scanners } = await getInitialUsers();
   return (
     <AdminUsersClient

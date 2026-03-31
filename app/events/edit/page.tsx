@@ -1,6 +1,7 @@
 import { getSignedImageUrl, serializeEvent } from "@/app/lib/supabase";
 import { verifyAdminRequest } from "@/app/lib/auth";
 import { db } from "@ssb/db";
+import { connection } from "next/server";
 import { Event } from "../AdminEventsClient";
 import EditEventClient from "./EditEventClient";
 
@@ -38,6 +39,7 @@ async function getAllEvents(): Promise<Event[]> {
 }
 
 export default async function EditEventPage() {
+  await connection();
   const events = await getAllEvents();
   return <EditEventClient allEvents={events} />;
 }
