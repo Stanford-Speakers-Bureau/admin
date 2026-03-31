@@ -161,6 +161,7 @@ export default function EditEventClient({ allEvents }: EditEventClientProps) {
   const [success, setSuccess] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mobileFileInputRef = useRef<HTMLInputElement>(null);
+  const lastSyncedViewKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
     setEvents(allEvents);
@@ -168,6 +169,20 @@ export default function EditEventClient({ allEvents }: EditEventClientProps) {
 
   // Sync form when selected event changes
   useEffect(() => {
+    const syncKey = isCreating
+      ? "create"
+      : currentEvent
+        ? currentEvent.id
+        : "empty";
+
+    // Preserve local edits and just-saved state unless the user is actually
+    // switching which event view they are on.
+    if (lastSyncedViewKeyRef.current === syncKey) {
+      return;
+    }
+
+    lastSyncedViewKeyRef.current = syncKey;
+
     if (isCreating) {
       setFormData(emptyForm);
       setImagePreview(null);
@@ -318,8 +333,6 @@ export default function EditEventClient({ allEvents }: EditEventClientProps) {
       if (isCreating) {
         router.push(`/events/edit/${savedEvent.id}`);
       }
-
-      router.refresh();
     } catch (err) {
       console.error("Failed to save event:", err);
       setError("Failed to save event. Please try again.");
