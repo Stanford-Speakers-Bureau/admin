@@ -50,6 +50,15 @@ function formatAffiliationLabel(affiliation: string): string {
     .join(" ");
 }
 
+const MEMBER_OVERRIDE_AFFILIATIONS = ["student", "faculty", "staff", "affiliate"];
+
+function getDisplayAffiliations(affiliations: string[]): string[] {
+  if (affiliations.some((a) => MEMBER_OVERRIDE_AFFILIATIONS.includes(a))) {
+    return affiliations.filter((a) => a !== "member");
+  }
+  return affiliations;
+}
+
 const AFFILIATION_STAT_ORDER = [
   "student",
   "faculty",
@@ -247,7 +256,7 @@ export default function AdminNotifyClient() {
       "Email,Affiliations,Has Profile,Has Ticket,Signup Date",
       ...notifications.map(
         (n) =>
-          `${n.email},"${n.affiliations.map(formatAffiliationLabel).join("; ")}",${n.hasProfile ? "Yes" : "No"},${n.hasTicket ? "Yes" : "No"},${new Date(n.created_at).toISOString()}`,
+          `${n.email},"${getDisplayAffiliations(n.affiliations).map(formatAffiliationLabel).join("; ")}",${n.hasProfile ? "Yes" : "No"},${n.hasTicket ? "Yes" : "No"},${new Date(n.created_at).toISOString()}`,
       ),
     ].join("\n");
 
@@ -263,11 +272,12 @@ export default function AdminNotifyClient() {
   const selectedEvent = events.find((e) => e.id === selectedEventId);
 
   const filtered = notifications.filter((n) => {
+    const displayAffiliations = getDisplayAffiliations(n.affiliations);
     if (affiliationFilter) {
       if (affiliationFilter === "missing") {
-        if (n.affiliations.length > 0) return false;
+        if (displayAffiliations.length > 0) return false;
       } else {
-        if (!n.affiliations.some((a) => a === affiliationFilter)) return false;
+        if (!displayAffiliations.some((a) => a === affiliationFilter)) return false;
       }
     }
     if (searchTerm) {
@@ -275,7 +285,7 @@ export default function AdminNotifyClient() {
       if (
         !(n.displayName?.toLowerCase().includes(lower) ?? false) &&
         !n.email.toLowerCase().includes(lower) &&
-        !n.affiliations.some((affiliation) =>
+        !displayAffiliations.some((affiliation) =>
           formatAffiliationLabel(affiliation).toLowerCase().includes(lower) ||
           affiliation.toLowerCase().includes(lower),
         )
@@ -288,12 +298,13 @@ export default function AdminNotifyClient() {
   let missingAffiliationCount = 0;
 
   for (const notification of notifications) {
-    if (notification.affiliations.length === 0) {
+    const displayAffiliations = getDisplayAffiliations(notification.affiliations);
+    if (displayAffiliations.length === 0) {
       missingAffiliationCount += 1;
       continue;
     }
 
-    for (const affiliation of notification.affiliations) {
+    for (const affiliation of displayAffiliations) {
       affiliationCounts.set(
         affiliation,
         (affiliationCounts.get(affiliation) ?? 0) + 1,
@@ -562,9 +573,11 @@ export default function AdminNotifyClient() {
                       {notification.email}
                     </td>
                     <td className="px-6 py-4 text-sm text-zinc-300">
-                      {notification.affiliations.length > 0 ? (
+                      {(() => {
+                        const displayAffiliations = getDisplayAffiliations(notification.affiliations);
+                        return displayAffiliations.length > 0 ? (
                         <div className="flex flex-wrap gap-2">
-                          {notification.affiliations.map((affiliation) => (
+                          {displayAffiliations.map((affiliation) => (
                             <span
                               key={`${notification.id}-${affiliation}`}
                               className="inline-flex items-center rounded-full border border-zinc-700 bg-zinc-800 px-2.5 py-1 text-xs font-medium text-zinc-200"
@@ -579,7 +592,8 @@ export default function AdminNotifyClient() {
                         <span className="text-zinc-500">
                           Unavailable for backfilled signup
                         </span>
-                      )}
+                      );
+                      })()}
                     </td>
                     {eventData?.ticketingOpen && (
                       <td className="px-6 py-4 whitespace-nowrap">
