@@ -33,6 +33,7 @@ export async function GET(req: Request) {
         where: eq(events.id, eventId),
         columns: {
           name: true,
+          releaseDate: true,
           startTimeDate: true,
           ticketingDate: true,
         },
@@ -136,6 +137,7 @@ export async function GET(req: Request) {
 
     return NextResponse.json({
       eventName: event.name,
+      releaseDate: event.releaseDate?.toISOString() ?? null,
       ticketingDate: event.ticketingDate?.toISOString() ?? null,
       totalSignups: notifications.length,
       uniqueSignups: uniqueEmails.length,

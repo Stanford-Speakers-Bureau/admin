@@ -14,6 +14,7 @@ type CrossPollinationItem = {
 
 type AnalyticsResponse = {
   eventName: string | null;
+  releaseDate: string | null;
   ticketingDate: string | null;
   totalSignups: number;
   uniqueSignups: number;
@@ -211,16 +212,34 @@ export default function NotifyAnalyticsClient() {
     fetchData();
   }, [selectedEventId]);
 
-  // ── Pre-parse timestamps ──
-  const epochs = useMemo(() => {
-    if (!data) return [];
-    return data.timestamps.map((t) => new Date(t).getTime());
+  // ── Pre-parse timestamps, filtered to release date ──
+  const releaseEpoch = useMemo(() => {
+    if (!data?.releaseDate) return null;
+    return new Date(data.releaseDate).getTime();
   }, [data]);
+
+  const { epochs, filteredAffiliations } = useMemo(() => {
+    if (!data) return { epochs: [], filteredAffiliations: [] as string[][] };
+    const allEpochs = data.timestamps.map((t) => new Date(t).getTime());
+    if (releaseEpoch == null) {
+      return { epochs: allEpochs, filteredAffiliations: data.affiliations };
+    }
+    const ep: number[] = [];
+    const af: string[][] = [];
+    for (let i = 0; i < allEpochs.length; i++) {
+      if (allEpochs[i] >= releaseEpoch) {
+        ep.push(allEpochs[i]);
+        af.push(data.affiliations[i]);
+      }
+    }
+    return { epochs: ep, filteredAffiliations: af };
+  }, [data, releaseEpoch]);
 
   const fullRange = useMemo<[number, number]>(() => {
     if (epochs.length === 0) return [Date.now(), Date.now()];
-    return [epochs[0], Math.max(epochs[epochs.length - 1], epochs[0] + MIN)];
-  }, [epochs]);
+    const start = releaseEpoch ?? epochs[0];
+    return [start, Math.max(epochs[epochs.length - 1], start + MIN)];
+  }, [epochs, releaseEpoch]);
 
   const visibleRange = zoomRange ?? fullRange;
   const visibleSpan = visibleRange[1] - visibleRange[0];
@@ -245,7 +264,7 @@ export default function NotifyAnalyticsClient() {
     const interval = pickInterval(Math.max(visibleSpan, MIN));
     return bucketAffiliations(
       epochs,
-      data.affiliations,
+      filteredAffiliations,
       interval,
       fullRange[0],
       fullRange[1],
