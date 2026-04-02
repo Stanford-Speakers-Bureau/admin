@@ -56,7 +56,7 @@ export async function POST(req: Request) {
 
     const event = await db.query.events.findFirst({
       where: eq(events.id, eventId),
-      columns: { id: true, name: true, route: true, startTimeDate: true },
+      columns: { id: true, name: true, route: true, startTimeDate: true, tagline: true, imgVersion: true },
     });
 
     if (!event) {
@@ -140,6 +140,9 @@ export async function POST(req: Request) {
               eventName,
               eventRoute,
               eventStartTime,
+              eventId: event.id,
+              imgVersion: event.imgVersion,
+              eventTagline: event.tagline || null,
             })
           : variant === "claim"
           ? sendClaimTicketEmail({
@@ -147,6 +150,9 @@ export async function POST(req: Request) {
               eventName,
               eventRoute,
               eventStartTime,
+              eventId: event.id,
+              imgVersion: event.imgVersion,
+              eventTagline: event.tagline || null,
             })
           : sendTicketsAvailableInEmail({
               email,
@@ -154,6 +160,9 @@ export async function POST(req: Request) {
               eventRoute,
               eventStartTime,
               approxTimeUntilAvailable: approxTime,
+              eventId: event.id,
+              imgVersion: event.imgVersion,
+              eventTagline: event.tagline || null,
             })
         ).then(
           () => ({ success: true, email }),

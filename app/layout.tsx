@@ -106,6 +106,12 @@ const navItems = [
     icon: "M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9",
   },
   {
+    href: "/audience",
+    label: "Audience",
+    group: "events" as const,
+    icon: "M17 20h5v-1a4 4 0 00-5.874-3.57M17 20H2v-1a4 4 0 014-4h7a4 4 0 014 4zm-5-9a3 3 0 110-6 3 3 0 010 6zm6-1a2 2 0 110-4 2 2 0 010 4z",
+  },
+  {
     href: "/attendance",
     label: "Attendance",
     group: "admin" as const,
