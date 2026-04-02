@@ -469,7 +469,7 @@ function buildHeroCard(data: {
             ${gmailBlendEnd}
             ${data.eventTagline ? `
             ${gmailBlendStart}
-              <p style="margin: 0 0 4px 0; color: #a1a1aa; font-size: 15px; line-height: 1.5;">${data.eventTagline}</p>
+              <p style="margin: 0 0 4px 0; color: #a1a1aa; font-size: 15px; line-height: 1.5;">${markdownToEmailHTML(data.eventTagline)}</p>
             ${gmailBlendEnd}
             ` : ""}
             ${pills}
