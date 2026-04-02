@@ -65,7 +65,7 @@ export async function pullFromWaitlist(
         columns: { id: true, email: true, name: true, type: true, eventId: true },
         with: {
           event: {
-            columns: { id: true, name: true, route: true, startTimeDate: true, endTimeDate: true, venue: true, venueLink: true, desc: true },
+            columns: { id: true, name: true, route: true, startTimeDate: true, endTimeDate: true, venue: true, venueLink: true, desc: true, tagline: true, imgVersion: true },
           },
         },
       })
@@ -100,6 +100,9 @@ export async function pullFromWaitlist(
           eventVenue: newTicket.event?.venue || null,
           eventVenueLink: newTicket.event?.venueLink || null,
           eventDescription: newTicket.event?.desc || null,
+          eventId: newTicket.event?.id || null,
+          imgVersion: newTicket.event?.imgVersion ?? null,
+          eventTagline: newTicket.event?.tagline || null,
         })
       );
       confirmedEmails.add(newTicket.email);

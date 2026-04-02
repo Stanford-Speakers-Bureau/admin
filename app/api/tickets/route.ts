@@ -77,7 +77,7 @@ const TICKET_WITH_EVENT = {
 
 /** Extended event relation (includes venue/desc/doorsOpen for emails) */
 const TICKET_WITH_EVENT_DETAILS = {
-  event: { columns: { id: true, name: true, route: true, startTimeDate: true, endTimeDate: true, venue: true, venueLink: true, desc: true, doorsOpen: true } },
+  event: { columns: { id: true, name: true, route: true, startTimeDate: true, endTimeDate: true, venue: true, venueLink: true, desc: true, doorsOpen: true, tagline: true, imgVersion: true } },
 } as const;
 
 function formatDoorsOpenTime(doorsOpen: Date | null | undefined): string | undefined {
@@ -92,7 +92,7 @@ function formatDoorsOpenTime(doorsOpen: Date | null | undefined): string | undef
 
 /** Extended event relation with doors_open for reminders */
 const TICKET_WITH_DOORS_OPEN = {
-  event: { columns: { id: true, name: true, route: true, startTimeDate: true, endTimeDate: true, venue: true, venueLink: true, desc: true, doorsOpen: true } },
+  event: { columns: { id: true, name: true, route: true, startTimeDate: true, endTimeDate: true, venue: true, venueLink: true, desc: true, doorsOpen: true, tagline: true, imgVersion: true } },
 } as const;
 
 export async function GET(req: Request) {
@@ -391,6 +391,9 @@ export async function PATCH(req: Request) {
               eventVenueLink: ticket.event?.venueLink,
               standbyOpenTime: formatDoorsOpenTime(ticket.event?.doorsOpen),
               ticketId: ticket.id,
+              eventId: ticket.event?.id || null,
+              imgVersion: ticket.event?.imgVersion ?? null,
+              eventTagline: ticket.event?.tagline || null,
             });
           } else {
             await sendTicketEmail({
@@ -405,6 +408,9 @@ export async function PATCH(req: Request) {
               eventVenue: ticket.event?.venue || null,
               eventVenueLink: ticket.event?.venueLink || null,
               eventDescription: ticket.event?.desc || null,
+              eventId: ticket.event?.id || null,
+              imgVersion: ticket.event?.imgVersion ?? null,
+              eventTagline: ticket.event?.tagline || null,
             });
           }
         } catch (emailError) {
@@ -464,6 +470,9 @@ export async function PATCH(req: Request) {
                   eventVenue: newTicket.event?.venue || null,
                   eventVenueLink: newTicket.event?.venueLink || null,
                   eventDescription: newTicket.event?.desc || null,
+                  eventId: newTicket.event?.id || null,
+                  imgVersion: newTicket.event?.imgVersion ?? null,
+                  eventTagline: newTicket.event?.tagline || null,
                 });
               } catch (emailError) {
                 console.error(
@@ -550,6 +559,9 @@ export async function PATCH(req: Request) {
           eventVenue: ticket.event?.venue || null,
           eventVenueLink: ticket.event?.venueLink || null,
           eventDescription: ticket.event?.desc || null,
+          eventId: ticket.event?.id || null,
+          imgVersion: ticket.event?.imgVersion ?? null,
+          eventTagline: ticket.event?.tagline || null,
         });
       } catch (emailError) {
         console.error("Email sending error:", emailError);
@@ -595,6 +607,8 @@ export async function PATCH(req: Request) {
           venue: true,
           venueLink: true,
           desc: true,
+          tagline: true,
+          imgVersion: true,
         },
       });
 
@@ -643,6 +657,9 @@ export async function PATCH(req: Request) {
             eventVenueLink: event.venueLink || null,
             eventDescription: event.desc || null,
             doorsOpenTime: event.doorsOpen?.toISOString() || null,
+            eventId: event.id,
+            imgVersion: event.imgVersion,
+            eventTagline: event.tagline || null,
           }).then(
             () => ({ success: true, email: ticket.email }),
             (error) => ({
@@ -734,6 +751,9 @@ export async function PATCH(req: Request) {
           eventVenueLink: ticket.event?.venueLink || null,
           eventDescription: ticket.event?.desc || null,
           doorsOpenTime: ticket.event?.doorsOpen?.toISOString() || null,
+          eventId: ticket.event?.id || null,
+          imgVersion: ticket.event?.imgVersion ?? null,
+          eventTagline: ticket.event?.tagline || null,
         });
       } catch (emailError) {
         console.error("Email sending error:", emailError);
@@ -778,6 +798,8 @@ export async function PATCH(req: Request) {
           venue: true,
           venueLink: true,
           desc: true,
+          tagline: true,
+          imgVersion: true,
         },
       });
 
@@ -825,6 +847,9 @@ export async function PATCH(req: Request) {
             eventDescription: event.desc || null,
             doorsOpenTime: event.doorsOpen?.toISOString() || null,
             promo: promo || null,
+            eventId: event.id,
+            imgVersion: event.imgVersion,
+            eventTagline: event.tagline || null,
           }).then(
             () => ({ success: true, email: ticket.email }),
             (error) => ({
@@ -917,6 +942,9 @@ export async function PATCH(req: Request) {
           eventDescription: ticket.event?.desc || null,
           doorsOpenTime: ticket.event?.doorsOpen?.toISOString() || null,
           promo: promo || null,
+          eventId: ticket.event?.id || null,
+          imgVersion: ticket.event?.imgVersion ?? null,
+          eventTagline: ticket.event?.tagline || null,
         });
       } catch (emailError) {
         console.error("Email sending error:", emailError);
@@ -1054,6 +1082,9 @@ export async function POST(req: Request) {
               eventVenueLink: updatedTicket.event?.venueLink,
               standbyOpenTime: formatDoorsOpenTime(updatedTicket.event?.doorsOpen),
               ticketId: updatedTicket.id,
+              eventId: updatedTicket.event?.id || null,
+              imgVersion: updatedTicket.event?.imgVersion ?? null,
+              eventTagline: updatedTicket.event?.tagline || null,
             });
           } else {
             await sendTicketEmail({
@@ -1068,6 +1099,9 @@ export async function POST(req: Request) {
               eventVenue: updatedTicket.event?.venue || null,
               eventVenueLink: updatedTicket.event?.venueLink || null,
               eventDescription: updatedTicket.event?.desc || null,
+              eventId: updatedTicket.event?.id || null,
+              imgVersion: updatedTicket.event?.imgVersion ?? null,
+              eventTagline: updatedTicket.event?.tagline || null,
             });
           }
         } catch (emailError) {
@@ -1126,6 +1160,9 @@ export async function POST(req: Request) {
           eventVenueLink: ticket!.event?.venueLink,
           standbyOpenTime: formatDoorsOpenTime(event.doorsOpen),
           ticketId: ticket!.id,
+          eventId: ticket!.event?.id || null,
+          imgVersion: ticket!.event?.imgVersion ?? null,
+          eventTagline: ticket!.event?.tagline || null,
         });
       } else {
         await sendTicketEmail({
@@ -1140,6 +1177,9 @@ export async function POST(req: Request) {
           eventVenue: ticket!.event?.venue || null,
           eventVenueLink: ticket!.event?.venueLink || null,
           eventDescription: ticket!.event?.desc || null,
+          eventId: ticket!.event?.id || null,
+          imgVersion: ticket!.event?.imgVersion ?? null,
+          eventTagline: ticket!.event?.tagline || null,
         });
       }
     } catch (emailError) {
