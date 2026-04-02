@@ -171,9 +171,6 @@ async function sendRawEmailViaSES(rawMessage: string): Promise<void> {
   }
 }
 
-// Toggle to enable/disable referral info in ticket emails
-const REFERRAL_ENABLED = false;
-
 const FROM_EMAIL =
   process.env.SES_FROM_EMAIL || "tickets@stanfordspeakersbureau.com";
 
