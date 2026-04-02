@@ -4,6 +4,7 @@ import { isValidUUID } from "@/app/lib/validation";
 import {
   sendTicketsAvailableNowEmail,
   sendTicketsAvailableInEmail,
+  sendClaimTicketEmail,
 } from "@/app/lib/email";
 import { db, eq, notify, events, tickets } from "@ssb/db";
 
@@ -133,8 +134,15 @@ export async function POST(req: Request) {
       const batchStartTime = Date.now();
       const batch = emails.slice(i, i + BATCH_SIZE);
       const batchPromises = batch.map((email) =>
-        (variant === "now" || variant === "claim"
+        (variant === "now"
           ? sendTicketsAvailableNowEmail({
+              email,
+              eventName,
+              eventRoute,
+              eventStartTime,
+            })
+          : variant === "claim"
+          ? sendClaimTicketEmail({
               email,
               eventName,
               eventRoute,
