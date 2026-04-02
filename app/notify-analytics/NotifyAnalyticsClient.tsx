@@ -22,6 +22,7 @@ type AnalyticsResponse = {
   conversionRate: number;
   timestamps: string[];
   affiliations: string[][];
+  crossPollinatedPeople: number;
   crossPollination: CrossPollinationItem[];
 };
 
@@ -125,8 +126,8 @@ function bucketAffiliations(
   let idx = 0;
   // Count before visible range
   while (idx < epochs.length && epochs[idx] < alignedStart) {
-    const cats = getCategoriesForSignup(affiliations[idx]);
-    for (const c of cats) cumulative[c] = (cumulative[c] ?? 0) + 1;
+    const category = getTopCategoryForSignup(affiliations[idx]);
+    cumulative[category] = (cumulative[category] ?? 0) + 1;
     idx++;
   }
 
@@ -137,11 +138,9 @@ function bucketAffiliations(
     for (const cat of AFFILIATION_CATEGORIES) counts[cat.key] = 0;
 
     while (idx < epochs.length && epochs[idx] < bucketEnd) {
-      const cats = getCategoriesForSignup(affiliations[idx]);
-      for (const c of cats) {
-        counts[c] = (counts[c] ?? 0) + 1;
-        cumulative[c] = (cumulative[c] ?? 0) + 1;
-      }
+      const category = getTopCategoryForSignup(affiliations[idx]);
+      counts[category] = (counts[category] ?? 0) + 1;
+      cumulative[category] = (cumulative[category] ?? 0) + 1;
       idx++;
     }
 
@@ -156,18 +155,15 @@ function bucketAffiliations(
   return result;
 }
 
-function getCategoriesForSignup(affiliations: string[]): string[] {
-  if (affiliations.length === 0) return ["other"];
-  const cats = new Set(affiliations.map(classifyAffiliation));
-  return [...cats];
-}
-
-function formatAffiliationLabel(affiliation: string): string {
-  return affiliation
-    .split(/[_-]/g)
-    .filter(Boolean)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
+function getTopCategoryForSignup(affiliations: string[]): string {
+  if (affiliations.length === 0) return "other";
+  const categories = new Set(affiliations.map(classifyAffiliation));
+  for (const category of AFFILIATION_CATEGORIES) {
+    if (categories.has(category.key)) {
+      return category.key;
+    }
+  }
+  return "other";
 }
 
 // ── Main Component ───────────────────────────────────────────────────────
@@ -722,10 +718,11 @@ export default function NotifyAnalyticsClient() {
               Cross-Pollination
             </p>
             <p className="mt-2 text-2xl font-bold text-rose-400">
-              {data.crossPollination.length}
+              {data.crossPollinatedPeople}
             </p>
             <p className="text-xs text-zinc-500 mt-1">
-              other events share subscribers
+              people overlap with {data.crossPollination.length} past
+              {data.crossPollination.length === 1 ? " event audience" : " event audiences"}
             </p>
           </div>
         </div>
@@ -754,7 +751,7 @@ export default function NotifyAnalyticsClient() {
             Affiliation Breakdown Over Time
           </h3>
           <p className="text-[10px] text-zinc-600 mb-3">
-            Cumulative signups by affiliation type
+            Cumulative signups by primary affiliation type
           </p>
           <ReactECharts
             option={affiliationChartOption}
@@ -770,11 +767,11 @@ export default function NotifyAnalyticsClient() {
             Cross-Pollination
           </h3>
           <p className="text-[10px] text-zinc-600 mb-4">
-            Events that share notify subscribers with this event
+            Past event audiences whose notify lists or ticket holders overlap with this event&apos;s audience
           </p>
           {data.crossPollination.length === 0 ? (
             <p className="text-zinc-500 text-sm py-4 text-center">
-              No shared subscribers with other events
+              No overlap with past event audiences
             </p>
           ) : (
             <div className="space-y-2">

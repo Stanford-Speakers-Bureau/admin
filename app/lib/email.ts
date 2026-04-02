@@ -948,8 +948,7 @@ async function generateTicketEmailHTML(
   const isVIP = ticketType?.toUpperCase() === "VIP";
   const isExternal = ticketType?.toUpperCase() === "EXTERNAL";
 
-  const formattedDate = formatFullDateTime(eventStartTime);
-  const formattedDoorsOpen = doorsOpenTime ? formatPillTime(doorsOpenTime) : null;
+  const formattedDate = formatFullDateTime(doorsOpenTime || eventStartTime);
 
   const qrImageSrc = options?.qrCid ? `cid:${options.qrCid}` : "";
 
@@ -985,7 +984,6 @@ async function generateTicketEmailHTML(
   if (data.name) detailRows.push({ label: "Name:", value: data.name });
   detailRows.push({ label: "Event:", value: eventName || "Event" });
   detailRows.push({ label: "Date & Time:", value: formattedDate });
-  if (formattedDoorsOpen) detailRows.push({ label: "Doors Open:", value: formattedDoorsOpen });
   if (eventVenue) {
     detailRows.push({
       label: "Location:",
@@ -1086,8 +1084,7 @@ async function generateTicketEmailHTML(
 function generateTicketEmailText(data: TicketEmailData): string {
   const { eventName, ticketType, eventStartTime, eventRoute, ticketId, doorsOpenTime } = data;
 
-  const formattedDate = formatFullDateTime(eventStartTime);
-  const formattedDoorsOpen = doorsOpenTime ? formatPillTime(doorsOpenTime) : null;
+  const formattedDate = formatFullDateTime(doorsOpenTime || eventStartTime);
   const baseUrl = getBaseUrl();
   const eventUrl = eventRoute ? `${baseUrl}/events/${eventRoute}` : null;
   const cancelTicketUrl = ticketId ? `${baseUrl}/cancel/${ticketId}` : null;
@@ -1100,7 +1097,7 @@ Your ticket is confirmed — we can't wait to see you!
 ${ticketType?.toUpperCase() === "VIP" ? "Use the VIP entrance when you arrive — we've saved you a front-row seat.\n\n" : ""}Event Details:
 ${data.name ? `- Name: ${data.name}\n` : ""}- Event: ${eventName || "Event"}
 - Date & Time: ${formattedDate}
-${formattedDoorsOpen ? `- Doors Open: ${formattedDoorsOpen}\n` : ""}- Ticket Type: ${ticketType || "STANDARD"}
+- Ticket Type: ${ticketType || "STANDARD"}
 - Ticket ID: ${ticketId}
 ${eventUrl ? `- Event URL: ${eventUrl}` : ""}
 
@@ -1246,7 +1243,7 @@ async function generateDayOfReminderEmailHTML(
   const isVIP = ticketType?.toUpperCase() === "VIP";
   const isExternal = ticketType?.toUpperCase() === "EXTERNAL";
 
-  const formattedDate = formatFullDateTime(eventStartTime);
+  const formattedDate = formatFullDateTime(doorsOpenTime || eventStartTime);
   const formattedDoorsOpen = doorsOpenTime ? formatPillTime(doorsOpenTime) : null;
 
   const qrImageSrc = options?.qrCid ? `cid:${options.qrCid}` : "";
@@ -1283,7 +1280,6 @@ async function generateDayOfReminderEmailHTML(
   if (data.name) detailRows.push({ label: "Name:", value: data.name });
   detailRows.push({ label: "Event:", value: eventName || "Event" });
   detailRows.push({ label: "Date & Time:", value: formattedDate });
-  if (formattedDoorsOpen) detailRows.push({ label: "Doors Open:", value: formattedDoorsOpen });
   if (eventVenue) {
     detailRows.push({
       label: "Location:",
@@ -1397,7 +1393,7 @@ function generateDayOfReminderEmailText(
     doorsOpenTime,
   } = data;
 
-  const formattedDate = formatFullDateTime(eventStartTime);
+  const formattedDate = formatFullDateTime(doorsOpenTime || eventStartTime);
   const formattedDoorsOpen = doorsOpenTime ? formatPillTime(doorsOpenTime) : null;
 
   const baseUrl = getBaseUrl();
@@ -1418,7 +1414,7 @@ ${cancelTicketUrl ? `Cancel Ticket: ${cancelTicketUrl}` : ""}
 Event Details:
 ${data.name ? `- Name: ${data.name}\n` : ""}- Event: ${eventName || "Event"}
 - Date & Time: ${formattedDate}
-${formattedDoorsOpen ? `- Doors Open: ${formattedDoorsOpen}\n` : ""}- Ticket Type: ${ticketType || "STANDARD"}
+- Ticket Type: ${ticketType || "STANDARD"}
 - Ticket ID: ${ticketId}
 ${eventUrl ? `- Event URL: ${eventUrl}` : ""}
 
@@ -1575,7 +1571,7 @@ async function generateEarlyReminderEmailHTML(
   const isVIP = ticketType?.toUpperCase() === "VIP";
   const isExternal = ticketType?.toUpperCase() === "EXTERNAL";
 
-  const formattedDate = formatFullDateTime(eventStartTime);
+  const formattedDate = formatFullDateTime(doorsOpenTime || eventStartTime);
   const formattedDoorsOpen = doorsOpenTime ? formatPillTime(doorsOpenTime) : "7:30 PM";
 
   const dayLabel = formattedDate.includes("Friday") ? "Friday" : formattedDate.split(",")[0];
@@ -1620,7 +1616,6 @@ async function generateEarlyReminderEmailHTML(
   if (data.name) detailRows.push({ label: "Name:", value: data.name });
   detailRows.push({ label: "Event:", value: eventName || "Event" });
   detailRows.push({ label: "Date & Time:", value: formattedDate });
-  if (formattedDoorsOpen) detailRows.push({ label: "Doors Open:", value: formattedDoorsOpen });
   if (eventVenue) {
     detailRows.push({
       label: "Location:",
@@ -1740,7 +1735,7 @@ function generateEarlyReminderEmailText(
     promo,
   } = data;
 
-  const formattedDate = formatFullDateTime(eventStartTime);
+  const formattedDate = formatFullDateTime(doorsOpenTime || eventStartTime);
   const formattedDoorsOpen = doorsOpenTime ? formatPillTime(doorsOpenTime) : "7:30 PM";
 
   const dayLabel = formattedDate.includes("Friday") ? "Friday" : formattedDate.split(",")[0];
@@ -1781,7 +1776,7 @@ ${buildImportantNoticeText()}
 Event Details:
 ${data.name ? `- Name: ${data.name}\n` : ""}- Event: ${eventName || "Event"}
 - Date & Time: ${formattedDate}
-${formattedDoorsOpen ? `- Doors Open: ${formattedDoorsOpen}\n` : ""}- Ticket Type: ${ticketType || "STANDARD"}
+- Ticket Type: ${ticketType || "STANDARD"}
 - Ticket ID: ${ticketId}
 ${eventUrl ? `- Event URL: ${eventUrl}` : ""}
 
@@ -1928,6 +1923,7 @@ export type NotifyTicketsAvailableNowData = {
   eventId?: string | null;
   imgVersion?: number | null;
   eventTagline?: string | null;
+  doorsOpenTime?: string | null;
 };
 
 function generateTicketsAvailableNowEmailText(
@@ -1935,7 +1931,7 @@ function generateTicketsAvailableNowEmailText(
 ): string {
   const baseUrl = getBaseUrl();
   const eventUrl = data.eventRoute ? `${baseUrl}/events/${data.eventRoute}` : baseUrl;
-  const formattedDate = formatFullDateTime(data.eventStartTime);
+  const formattedDate = formatFullDateTime(data.doorsOpenTime || data.eventStartTime);
   return `
 Tickets to ${data.eventName} just dropped!
 
@@ -1959,7 +1955,7 @@ async function generateTicketsAvailableNowEmailHTML(
 ): Promise<string> {
   const baseUrl = getBaseUrl();
   const eventUrl = data.eventRoute ? `${baseUrl}/events/${data.eventRoute}` : baseUrl;
-  const formattedDate = formatFullDateTime(data.eventStartTime);
+  const formattedDate = formatFullDateTime(data.doorsOpenTime || data.eventStartTime);
 
   const heroCard = buildHeroCard({
     eventName: data.eventName,
@@ -2060,6 +2056,7 @@ export type NotifyTicketsAvailableInData = {
   approxTimeUntilAvailable: string;
   eventId?: string | null;
   imgVersion?: number | null;
+  doorsOpenTime?: string | null;
   eventTagline?: string | null;
 };
 
@@ -2068,7 +2065,7 @@ function generateTicketsAvailableInEmailText(
 ): string {
   const baseUrl = getBaseUrl();
   const eventUrl = data.eventRoute ? `${baseUrl}/events/${data.eventRoute}` : baseUrl;
-  const formattedDate = formatFullDateTime(data.eventStartTime);
+  const formattedDate = formatFullDateTime(data.doorsOpenTime || data.eventStartTime);
   return `
 Tickets to ${data.eventName} drop in ${data.approxTimeUntilAvailable}!
 
@@ -2092,7 +2089,7 @@ async function generateTicketsAvailableInEmailHTML(
 ): Promise<string> {
   const baseUrl = getBaseUrl();
   const eventUrl = data.eventRoute ? `${baseUrl}/events/${data.eventRoute}` : baseUrl;
-  const formattedDate = formatFullDateTime(data.eventStartTime);
+  const formattedDate = formatFullDateTime(data.doorsOpenTime || data.eventStartTime);
 
   const heroCard = buildHeroCard({
     eventName: data.eventName,
@@ -2192,12 +2189,13 @@ export type ClaimTicketEmailData = {
   eventId?: string | null;
   imgVersion?: number | null;
   eventTagline?: string | null;
+  doorsOpenTime?: string | null;
 };
 
 function generateClaimTicketEmailText(data: ClaimTicketEmailData): string {
   const baseUrl = getBaseUrl();
   const eventUrl = data.eventRoute ? `${baseUrl}/events/${data.eventRoute}` : baseUrl;
-  const formattedDate = formatFullDateTime(data.eventStartTime);
+  const formattedDate = formatFullDateTime(data.doorsOpenTime || data.eventStartTime);
   return `
 Tickets to ${data.eventName} are live!
 
@@ -2221,7 +2219,7 @@ async function generateClaimTicketEmailHTML(
 ): Promise<string> {
   const baseUrl = getBaseUrl();
   const eventUrl = data.eventRoute ? `${baseUrl}/events/${data.eventRoute}` : baseUrl;
-  const formattedDate = formatFullDateTime(data.eventStartTime);
+  const formattedDate = formatFullDateTime(data.doorsOpenTime || data.eventStartTime);
 
   const heroCard = buildHeroCard({
     eventName: data.eventName,
@@ -2320,6 +2318,7 @@ type StandbyLineEmailData = {
   eventVenue?: string | null;
   eventVenueLink?: string | null;
   standbyOpenTime?: string; // e.g., "7:30 PM"
+  doorsOpenTime?: string | null;
   expectedCapacity?: string; // e.g., "100-200"
   ticketId?: string; // STANDBY ticket ID, if one was issued
   eventId?: string | null;
@@ -2343,7 +2342,7 @@ async function generateStandbyLineEmailHTML(
   } = data;
   const qrImageSrc = options?.qrCid ? `cid:${options.qrCid}` : "";
 
-  const formattedDate = formatFullDateTime(eventStartTime);
+  const formattedDate = formatFullDateTime(data.doorsOpenTime || eventStartTime);
 
   const heroCard = buildHeroCard({
     eventName,
@@ -2431,7 +2430,7 @@ function generateStandbyLineEmailText(data: StandbyLineEmailData): string {
     ticketId,
   } = data;
 
-  const formattedDate = formatFullDateTime(eventStartTime);
+  const formattedDate = formatFullDateTime(data.doorsOpenTime || eventStartTime);
 
   return `
 Please come in-person for your ticket!
@@ -2550,7 +2549,7 @@ function markdownToEmailHTML(md: string): string {
 function generateEventAnnouncedEmailText(data: EventAnnouncedEmailData): string {
   const baseUrl = getBaseUrl();
   const eventUrl = data.eventRoute ? `${baseUrl}/events/${data.eventRoute}` : baseUrl;
-  const formattedDate = formatFullDateTime(data.eventStartTime);
+  const formattedDate = formatFullDateTime(data.doorsOpenTime || data.eventStartTime);
   const doorsOpen = data.doorsOpenTime ? formatPillTime(data.doorsOpenTime) : null;
   return `
 ${data.eventName} is coming to Stanford!
@@ -2564,7 +2563,7 @@ View event: ${eventUrl}
 Event Details:
 - Event: ${data.eventName}
 - Date & Time: ${formattedDate}
-${doorsOpen ? `- Doors Open: ${doorsOpen}\n` : ""}${data.eventVenue ? `- Venue: ${data.eventVenue}${data.eventVenueLink ? ` (${data.eventVenueLink})` : ""}\n` : ""}
+${data.eventVenue ? `- Venue: ${data.eventVenue}${data.eventVenueLink ? ` (${data.eventVenueLink})` : ""}\n` : ""}
 Stanford Speakers Bureau
 For questions, please email ${FROM_EMAIL}
   `.trim();
@@ -2575,7 +2574,7 @@ async function generateEventAnnouncedEmailHTML(
 ): Promise<string> {
   const baseUrl = getBaseUrl();
   const eventUrl = data.eventRoute ? `${baseUrl}/events/${data.eventRoute}` : baseUrl;
-  const formattedDate = formatFullDateTime(data.eventStartTime);
+  const formattedDate = formatFullDateTime(data.doorsOpenTime || data.eventStartTime);
   const formattedDoorsOpen = data.doorsOpenTime ? formatPillTime(data.doorsOpenTime) : null;
 
   const heroCard = buildHeroCard({
@@ -2618,9 +2617,6 @@ async function generateEventAnnouncedEmailHTML(
     { label: "Event:", value: data.eventName },
     { label: "Date & Time:", value: formattedDate },
   ];
-  if (formattedDoorsOpen) {
-    detailRows.push({ label: "Doors Open:", value: formattedDoorsOpen });
-  }
   if (data.eventVenue) {
     detailRows.push({
       label: "Venue:",

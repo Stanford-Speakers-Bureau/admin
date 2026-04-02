@@ -56,7 +56,7 @@ export async function POST(req: Request) {
 
     const event = await db.query.events.findFirst({
       where: eq(events.id, eventId),
-      columns: { id: true, name: true, route: true, startTimeDate: true, tagline: true, imgVersion: true },
+      columns: { id: true, name: true, route: true, startTimeDate: true, tagline: true, imgVersion: true, doorsOpen: true },
     });
 
     if (!event) {
@@ -143,6 +143,7 @@ export async function POST(req: Request) {
               eventId: event.id,
               imgVersion: event.imgVersion,
               eventTagline: event.tagline || null,
+              doorsOpenTime: event.doorsOpen?.toISOString() || null,
             })
           : variant === "claim"
           ? sendClaimTicketEmail({
@@ -153,6 +154,7 @@ export async function POST(req: Request) {
               eventId: event.id,
               imgVersion: event.imgVersion,
               eventTagline: event.tagline || null,
+              doorsOpenTime: event.doorsOpen?.toISOString() || null,
             })
           : sendTicketsAvailableInEmail({
               email,
@@ -163,6 +165,7 @@ export async function POST(req: Request) {
               eventId: event.id,
               imgVersion: event.imgVersion,
               eventTagline: event.tagline || null,
+              doorsOpenTime: event.doorsOpen?.toISOString() || null,
             })
         ).then(
           () => ({ success: true, email }),

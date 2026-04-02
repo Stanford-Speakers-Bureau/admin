@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { verifyAdminRequest } from "@/app/lib/auth";
 import { isValidUUID } from "@/app/lib/validation";
-import { db, eq, ne, and, events, inArray, notify, tickets, userProfiles } from "@ssb/db";
+import { db, eq, ne, and, lt, events, inArray, notify, tickets, userProfiles } from "@ssb/db";
 
 export async function GET(req: Request) {
   try {
@@ -64,9 +64,14 @@ export async function GET(req: Request) {
     const ticketEmailSet = new Set(
       ticketResults.map((t) => t.email.trim().toLowerCase()),
     );
+    const currentAudienceEmails = [
+      ...new Set([...uniqueEmails, ...ticketEmailSet]),
+    ];
 
-    // Phase 2: Dependent queries for profiles and cross-pollination
-    const [profiles, crossPollinationRows] = await Promise.all([
+    const now = new Date();
+
+    // Phase 2: Dependent queries for profiles and past-event audience lookup
+    const [profiles, pastEvents] = await Promise.all([
       uniqueEmails.length > 0
         ? db.query.userProfiles.findMany({
             where: inArray(userProfiles.email, uniqueEmails),
@@ -76,18 +81,16 @@ export async function GET(req: Request) {
             },
           })
         : [],
-      uniqueEmails.length > 0
-        ? db.query.notify.findMany({
-            where: and(
-              inArray(notify.email, uniqueEmails),
-              ne(notify.speakerId, eventId),
-            ),
-            columns: {
-              email: true,
-              speakerId: true,
-            },
-          })
-        : [],
+      db.query.events.findMany({
+        where: and(
+          ne(events.id, eventId),
+          lt(events.startTimeDate, now),
+        ),
+        columns: {
+          id: true,
+          name: true,
+        },
+      }),
     ]);
 
     // Build profile lookup
@@ -106,28 +109,59 @@ export async function GET(req: Request) {
       ticketEmailSet.has(e),
     ).length;
 
-    // Cross-pollination: group by other event, count unique emails
+    const pastEventIds = pastEvents.map((pastEvent) => pastEvent.id);
+
+    const [pastNotifyRows, pastTicketRows] =
+      currentAudienceEmails.length > 0 && pastEventIds.length > 0
+        ? await Promise.all([
+            db.query.notify.findMany({
+              where: and(
+                inArray(notify.email, currentAudienceEmails),
+                inArray(notify.speakerId, pastEventIds),
+              ),
+              columns: {
+                email: true,
+                speakerId: true,
+              },
+            }),
+            db.query.tickets.findMany({
+              where: and(
+                inArray(tickets.email, currentAudienceEmails),
+                inArray(tickets.eventId, pastEventIds),
+              ),
+              columns: {
+                email: true,
+                eventId: true,
+              },
+            }),
+          ])
+        : [[], []];
+
+    // Cross-pollination: group by past event, count unique emails across notify + ticket holders
     const crossPollinationMap = new Map<string, Set<string>>();
-    for (const row of crossPollinationRows) {
+    const crossPollinatedPeopleSet = new Set<string>();
+
+    for (const row of pastNotifyRows) {
       const email = row.email.trim().toLowerCase();
       if (!crossPollinationMap.has(row.speakerId)) {
         crossPollinationMap.set(row.speakerId, new Set());
       }
       crossPollinationMap.get(row.speakerId)!.add(email);
+      crossPollinatedPeopleSet.add(email);
     }
 
-    // Fetch event names for cross-pollination
-    const otherEventIds = [...crossPollinationMap.keys()];
-    const otherEvents =
-      otherEventIds.length > 0
-        ? await db.query.events.findMany({
-            where: inArray(events.id, otherEventIds),
-            columns: { id: true, name: true },
-          })
-        : [];
-    const eventNameMap = new Map(otherEvents.map((e) => [e.id, e.name]));
+    for (const row of pastTicketRows) {
+      const email = row.email.trim().toLowerCase();
+      if (!row.eventId) continue;
+      if (!crossPollinationMap.has(row.eventId)) {
+        crossPollinationMap.set(row.eventId, new Set());
+      }
+      crossPollinationMap.get(row.eventId)!.add(email);
+      crossPollinatedPeopleSet.add(email);
+    }
 
-    const crossPollination = otherEventIds
+    const eventNameMap = new Map(pastEvents.map((pastEvent) => [pastEvent.id, pastEvent.name]));
+    const crossPollination = [...crossPollinationMap.keys()]
       .map((eid) => ({
         eventId: eid,
         eventName: eventNameMap.get(eid) ?? null,
@@ -148,6 +182,7 @@ export async function GET(req: Request) {
           : 0,
       timestamps: notifications.map((n) => n.createdAt.toISOString()),
       affiliations,
+      crossPollinatedPeople: crossPollinatedPeopleSet.size,
       crossPollination,
     });
   } catch (error) {
