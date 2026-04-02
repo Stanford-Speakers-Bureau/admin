@@ -538,7 +538,6 @@ function buildInfoPills(data: {
  */
 function buildImportantNotice(
   extraItems?: string[],
-  eventPageUrl?: string | null,
 ): string {
   const allItems = [
     ...IMPORTANT_NOTICE_ITEMS.map(
@@ -555,12 +554,6 @@ function buildImportantNotice(
     })
     .join("\n");
 
-  const termsLine = eventPageUrl
-    ? `<div style="margin: -8px 0 0 0; color: #f4f4f5; font-size: 14px; line-height: 1.6;">
-        <a href="${eventPageUrl}" style="color: #fbbf24; text-decoration: underline;">See full event details &rarr;</a>
-      </div>`
-    : "";
-
   return `
     <div class="important-box" style="background-color: #A80D0C; padding: 20px 24px; margin-bottom: 24px; border-radius: 8px; text-align: center;">
       ${gmailBlendStart}
@@ -569,16 +562,12 @@ function buildImportantNotice(
           ${itemsHTML}
         </div>
       ${gmailBlendEnd}
-    </div>${termsLine}`;
+    </div>`;
 }
 
 /** Generates plain text "Important" notice */
-function buildImportantNoticeText(eventPageUrl?: string | null): string {
-  const base = `BEFORE YOU ARRIVE:\n${IMPORTANT_NOTICE_ITEMS.map((item) => `- ${item.text}`).join("\n")}`;
-  if (eventPageUrl) {
-    return `${base}\n\nSee full event details: ${eventPageUrl}`;
-  }
-  return base;
+function buildImportantNoticeText(): string {
+  return `BEFORE YOU ARRIVE:\n${IMPORTANT_NOTICE_ITEMS.map((item) => `- ${item.text}`).join("\n")}`;
 }
 
 /** Builds the event details card with label/value rows */
@@ -1027,7 +1016,7 @@ async function generateTicketEmailHTML(
   const contentSections: string[] = [];
 
   // Important notice
-  contentSections.push(buildImportantNotice(undefined, eventUrl));
+  contentSections.push(buildImportantNotice(undefined));
 
   // VIP welcome
   if (isVIP) {
@@ -1115,7 +1104,7 @@ ${formattedDoorsOpen ? `- Doors Open: ${formattedDoorsOpen}\n` : ""}- Ticket Typ
 - Ticket ID: ${ticketId}
 ${eventUrl ? `- Event URL: ${eventUrl}` : ""}
 
-${buildImportantNoticeText(eventUrl)}
+${buildImportantNoticeText()}
 
 Can't make it? Please cancel so someone else can attend.
 
@@ -1327,7 +1316,6 @@ async function generateDayOfReminderEmailHTML(
   // Important notice (with standby line extra item)
   contentSections.push(buildImportantNotice(
     [`If you have friends without tickets, they should come and wait on the standby line`],
-    eventUrl,
   ));
 
   // VIP welcome
@@ -1421,7 +1409,7 @@ ${eventName || "Event"} is TODAY${formattedDoorsOpen ? ` - Doors at ${formattedD
 
 ${ticketType?.toUpperCase() === "VIP" ? "Use the VIP entrance when you arrive — we've saved you a front-row seat.\n\n" : ""}See you tonight! Doors open at ${formattedDoorsOpen || "7:30 PM"} — don't be late, no late entry allowed.
 
-${buildImportantNoticeText(eventUrl)}
+${buildImportantNoticeText()}
 
 Can't make it? Please cancel so someone else can attend.
 
@@ -1663,7 +1651,7 @@ async function generateEarlyReminderEmailHTML(
   const contentSections: string[] = [];
 
   // Important notice
-  contentSections.push(buildImportantNotice(undefined, eventUrl));
+  contentSections.push(buildImportantNotice(undefined));
 
   // Promo card (conditional)
   if (promo) {
@@ -1788,7 +1776,7 @@ Can't make it? Please cancel so someone else can attend.
 
 ${cancelTicketUrl ? `Cancel Ticket: ${cancelTicketUrl}` : ""}
 
-${buildImportantNoticeText(eventUrl)}
+${buildImportantNoticeText()}
 
 Event Details:
 ${data.name ? `- Name: ${data.name}\n` : ""}- Event: ${eventName || "Event"}

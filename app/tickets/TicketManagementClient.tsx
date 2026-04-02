@@ -1,7 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import BulkSendProgress from "@/app/components/BulkSendProgress";
 import { useEventContext } from "@/app/EventContext";
+import {
+  BulkSendProgressState,
+  runChunkedSend,
+} from "@/app/lib/bulkSend";
 import { formatDate } from "@/app/lib/formatting";
 
 export type Ticket = {
@@ -23,6 +28,8 @@ export type Ticket = {
 };
 
 type TicketRow = { name: string; email: string };
+
+type ReminderRecipient = Pick<Ticket, "id" | "email">;
 
 type TicketManagementClientProps = {
   initialTickets: Ticket[];
@@ -83,11 +90,16 @@ export default function TicketManagementClient({
   const [sendingEarlyReminderId, setSendingEarlyReminderId] = useState<
     string | null
   >(null);
+  const [bulkReminderState, setBulkReminderState] =
+    useState<BulkSendProgressState | null>(null);
   const [massEmailType, setMassEmailType] = useState<"early" | "day-of">(
     "early",
   );
   const [editingNameId, setEditingNameId] = useState<string | null>(null);
   const [editingNameValue, setEditingNameValue] = useState("");
+
+  const REMINDER_CHUNK_SIZE = 14;
+  const RECIPIENT_PAGE_SIZE = 500;
 
   useEffect(() => {
     if (error) {
@@ -102,6 +114,10 @@ export default function TicketManagementClient({
       return () => clearTimeout(timer);
     }
   }, [success]);
+
+  useEffect(() => {
+    setBulkReminderState(null);
+  }, [selectedEventId]);
 
   async function fetchTickets() {
     // Don't fetch if no event is selected
@@ -166,6 +182,89 @@ export default function TicketManagementClient({
     } finally {
       setIsLoading(false);
     }
+  }
+
+  async function fetchAllReminderRecipients(
+    eventId: string,
+  ): Promise<ReminderRecipient[]> {
+    const recipients: ReminderRecipient[] = [];
+
+    for (
+      let recipientOffset = 0;
+      recipientOffset < total;
+      recipientOffset += RECIPIENT_PAGE_SIZE
+    ) {
+      const params = new URLSearchParams({
+        eventId,
+        limit: Math.min(RECIPIENT_PAGE_SIZE, total - recipientOffset).toString(),
+        offset: recipientOffset.toString(),
+      });
+      const response = await fetch(`/api/tickets?${params.toString()}`);
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => null);
+        throw new Error(
+          errorData?.error || "Failed to load reminder recipients",
+        );
+      }
+
+      const data = await response.json() as { tickets?: ReminderRecipient[] };
+      const pageRecipients = data.tickets || [];
+      recipients.push(
+        ...pageRecipients.map((ticket) => ({
+          id: ticket.id,
+          email: ticket.email,
+        })),
+      );
+
+      if (pageRecipients.length < RECIPIENT_PAGE_SIZE) {
+        break;
+      }
+    }
+
+    return recipients;
+  }
+
+  async function sendBulkReminderEmails(options: {
+    action: "sendEarlyReminders" | "sendDayOfReminders";
+    eventId: string;
+    label: string;
+    successLabel: string;
+  }) {
+    const recipients = await fetchAllReminderRecipients(options.eventId);
+
+    if (recipients.length === 0) {
+      setSuccess("No tickets found for this event.");
+      return;
+    }
+
+    const finalState = await runChunkedSend({
+      items: recipients,
+      chunkSize: REMINDER_CHUNK_SIZE,
+      label: options.label,
+      onProgress: setBulkReminderState,
+      sendChunk: async (chunk) => {
+        const response = await fetch(`/api/tickets?eventId=${options.eventId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: options.action,
+            ticketIds: chunk.map((recipient) => recipient.id),
+          }),
+        });
+        const data = await response.json().catch(() => null);
+
+        if (!response.ok) {
+          throw new Error(data?.error || "Failed to send reminder emails");
+        }
+
+        return data;
+      },
+    });
+
+    setSuccess(
+      `${options.successLabel} ${finalState.sent} sent, ${finalState.failed} failed.`,
+    );
   }
 
   useEffect(() => {
@@ -435,21 +534,12 @@ export default function TicketManagementClient({
     setSuccess(null);
 
     try {
-      const response = await fetch(`/api/tickets?eventId=${selectedEventId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "sendDayOfReminders" }),
+      await sendBulkReminderEmails({
+        action: "sendDayOfReminders",
+        eventId: selectedEventId,
+        label: "Sending day-of reminders",
+        successLabel: "Day-of reminders sent!",
       });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || "Failed to send reminders");
-      }
-
-      setSuccess(
-        `Day-of reminders sent! ${data.sent} sent, ${data.failed} failed.`,
-      );
     } catch (err) {
       console.error("Error sending day-of reminders:", err);
       setError(
@@ -528,23 +618,12 @@ export default function TicketManagementClient({
     setSuccess(null);
 
     try {
-      const response = await fetch(`/api/tickets?eventId=${selectedEventId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "sendEarlyReminders",
-        }),
+      await sendBulkReminderEmails({
+        action: "sendEarlyReminders",
+        eventId: selectedEventId,
+        label: "Sending early reminders",
+        successLabel: "Early reminders sent!",
       });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || "Failed to send early reminders");
-      }
-
-      setSuccess(
-        `Early reminders sent! ${data.sent} sent, ${data.failed} failed.`,
-      );
     } catch (err) {
       console.error("Error sending early reminders:", err);
       setError(
@@ -942,6 +1021,15 @@ export default function TicketManagementClient({
               />
             </svg>
           </button>
+        </div>
+      )}
+
+      {bulkReminderState && (
+        <div className="mb-6">
+          <BulkSendProgress
+            state={bulkReminderState}
+            onDismiss={() => setBulkReminderState(null)}
+          />
         </div>
       )}
 

@@ -1,7 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import BulkSendProgress from "@/app/components/BulkSendProgress";
 import { useEventContext } from "@/app/EventContext";
+import {
+  BulkSendProgressState,
+  runChunkedSend,
+} from "@/app/lib/bulkSend";
 
 type Notification = {
   id: string;
@@ -70,6 +75,25 @@ const AFFILIATION_STAT_ORDER = [
   "employee",
 ] as const;
 
+const EMAIL_CHUNK_SIZE = 50;
+
+function getBulkEmailKind(
+  variant: "now" | "in" | "claim",
+): "ticketsAvailableNow" | "ticketsAvailableIn" | "claimTicket" {
+  if (variant === "claim") return "claimTicket";
+  if (variant === "in") return "ticketsAvailableIn";
+  return "ticketsAvailableNow";
+}
+
+function getVariantLabel(
+  variant: "now" | "in" | "claim",
+  approxTime: string,
+): string {
+  if (variant === "claim") return "Claim ticket emails";
+  if (variant === "in") return `Tickets available in ${approxTime}`;
+  return "Tickets available now emails";
+}
+
 async function fetchNotificationsForEvent(eventId: string): Promise<NotifyResponse> {
   const response = await fetch(`/api/notify?eventId=${eventId}`);
 
@@ -134,6 +158,7 @@ export default function AdminNotifyClient() {
   const [sendVariant, setSendVariant] = useState<"now" | "in" | "claim">("now");
   const [sendApproxTime, setSendApproxTime] = useState("");
   const [isSendingNotify, setIsSendingNotify] = useState(false);
+  const [sendState, setSendState] = useState<BulkSendProgressState | null>(null);
   const [notifySuccess, setNotifySuccess] = useState<string | null>(null);
   const [notifyError, setNotifyError] = useState<string | null>(null);
 
@@ -153,6 +178,10 @@ export default function AdminNotifyClient() {
       setIsLoading,
       setError,
     });
+  }, [selectedEventId]);
+
+  useEffect(() => {
+    setSendState(null);
   }, [selectedEventId]);
 
   function openSendEmailModal(singleEmail?: string) {
@@ -181,15 +210,19 @@ export default function AdminNotifyClient() {
     }
     const eventName = eventData?.name || "this event";
 
-    let recipientCount: number;
-    if (sendEmailSingleEmail) {
-      recipientCount = 1;
-    } else if (sendVariant === "claim") {
-      recipientCount = notifications.filter((n) => !n.hasTicket).length;
-    } else {
-      recipientCount = notifications.length;
-    }
-    if (recipientCount === 0) {
+    const recipientEmails = [...new Set(
+      (
+        sendEmailSingleEmail
+          ? [sendEmailSingleEmail]
+          : sendVariant === "claim"
+            ? notifications
+              .filter((notification) => !notification.hasTicket)
+              .map((notification) => notification.email)
+            : notifications.map((notification) => notification.email)
+      ).map((email) => email.toLowerCase()),
+    )];
+
+    if (recipientEmails.length === 0) {
       setNotifyError(
         sendVariant === "claim"
           ? "No recipients without tickets to send to."
@@ -198,15 +231,14 @@ export default function AdminNotifyClient() {
       return;
     }
 
-    const variantLabel =
-      sendVariant === "claim"
-        ? "Claim your ticket"
-        : sendVariant === "now"
-          ? "Tickets available now"
-          : `Tickets available in ${sendApproxTime.trim()}`;
+    const variantLabel = sendVariant === "claim"
+      ? "Claim your ticket"
+      : sendVariant === "now"
+        ? "Tickets available now"
+        : `Tickets available in ${sendApproxTime.trim()}`;
     const confirmMessage = sendEmailSingleEmail
       ? `Send "${variantLabel}" email to ${sendEmailSingleEmail} for ${eventName}?`
-      : `Send "${variantLabel}" email to ${recipientCount} ${sendVariant === "claim" ? "people without tickets" : "people on the list"} for ${eventName}?`;
+      : `Send "${variantLabel}" email to ${recipientEmails.length} ${sendVariant === "claim" ? "people without tickets" : "people on the list"} for ${eventName}?`;
     if (!confirm(confirmMessage)) return;
 
     setIsSendingNotify(true);
@@ -214,35 +246,80 @@ export default function AdminNotifyClient() {
     setNotifySuccess(null);
 
     try {
-      const res = await fetch("/api/notify/send", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          eventId: selectedEventId,
-          variant: sendVariant,
-          ...(sendVariant === "in" && { approxTimeUntilAvailable: sendApproxTime.trim() }),
-          ...(sendEmailSingleEmail && { singleEmail: sendEmailSingleEmail }),
-        }),
-      });
-      const data = (await res.json()) as { error?: string; sent?: number; failed?: number; skipped?: number };
-
-      if (!res.ok) {
-        throw new Error(data.error || "Failed to send emails");
-      }
-      const { sent = 0, failed = 0, skipped = 0 } = data;
-      const skippedMsg = skipped > 0 ? `, ${skipped} skipped (already have ticket)` : "";
       if (sendEmailSingleEmail) {
-        if (failed > 0) {
+        const res = await fetch("/api/email/bulk-send", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            eventId: selectedEventId,
+            emails: recipientEmails,
+            kind: getBulkEmailKind(sendVariant),
+            ...(sendVariant === "in" && {
+              approxTimeUntilAvailable: sendApproxTime.trim(),
+            }),
+          }),
+        });
+        const data = (await res.json()) as {
+          error?: string;
+          sent?: number;
+          failed?: number;
+          skipped?: number;
+        };
+
+        if (!res.ok) {
+          throw new Error(data.error || "Failed to send emails");
+        }
+
+        if ((data.failed ?? 0) > 0) {
           setNotifyError("Failed to send email.");
+        } else if ((data.skipped ?? 0) > 0) {
+          setNotifySuccess("Email skipped because this person already has a ticket.");
+          setTimeout(closeSendEmailModal, 1500);
         } else {
           setNotifySuccess("Email sent.");
           setTimeout(closeSendEmailModal, 1500);
         }
       } else {
-        setNotifySuccess(`Emails sent: ${sent} sent, ${failed} failed${skippedMsg}.`);
-        if (sent > 0 && failed === 0) {
-          setTimeout(closeSendEmailModal, 1500);
-        }
+        setShowSendModal(false);
+        const finalState = await runChunkedSend({
+          items: recipientEmails,
+          chunkSize: EMAIL_CHUNK_SIZE,
+          label: `Sending ${getVariantLabel(sendVariant, sendApproxTime.trim())}`,
+          onProgress: setSendState,
+          sendChunk: async (chunk) => {
+            const res = await fetch("/api/email/bulk-send", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                eventId: selectedEventId,
+                emails: chunk,
+                kind: getBulkEmailKind(sendVariant),
+                ...(sendVariant === "in" && {
+                  approxTimeUntilAvailable: sendApproxTime.trim(),
+                }),
+              }),
+            });
+            const data = (await res.json()) as {
+              error?: string;
+              sent?: number;
+              failed?: number;
+              skipped?: number;
+            };
+
+            if (!res.ok) {
+              throw new Error(data.error || "Failed to send emails");
+            }
+
+            return data;
+          },
+        });
+
+        const skippedMsg = finalState.skipped > 0
+          ? `, ${finalState.skipped} skipped (already have ticket)`
+          : "";
+        setNotifySuccess(
+          `Emails sent: ${finalState.sent} sent, ${finalState.failed} failed${skippedMsg}.`,
+        );
       }
     } catch (err) {
       setNotifyError(err instanceof Error ? err.message : "Failed to send emails");
@@ -362,7 +439,8 @@ export default function AdminNotifyClient() {
             <>
               <button
                 onClick={() => openSendEmailModal()}
-                className="flex items-center gap-2 px-5 py-2.5 bg-rose-500/20 text-rose-400 border border-rose-500/30 rounded-xl font-medium hover:bg-rose-500/30 transition-colors"
+                disabled={Boolean(sendState?.active)}
+                className="flex items-center gap-2 px-5 py-2.5 bg-rose-500/20 text-rose-400 border border-rose-500/30 rounded-xl font-medium hover:bg-rose-500/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
@@ -409,6 +487,15 @@ export default function AdminNotifyClient() {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
           <p className="text-rose-400 text-sm">{error}</p>
+        </div>
+      )}
+
+      {sendState && (
+        <div className="mb-6">
+          <BulkSendProgress
+            state={sendState}
+            onDismiss={() => setSendState(null)}
+          />
         </div>
       )}
 
@@ -619,7 +706,8 @@ export default function AdminNotifyClient() {
                         <button
                           type="button"
                           onClick={() => openSendEmailModal(notification.email)}
-                          className="text-blue-400 hover:text-blue-300 transition-colors"
+                          disabled={Boolean(sendState?.active)}
+                          className="text-blue-400 hover:text-blue-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                           title="Send email to this person"
                         >
                           <svg className="w-5 h-5 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">

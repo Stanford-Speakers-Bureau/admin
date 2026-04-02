@@ -12,7 +12,7 @@ import {
 } from "@/app/lib/email";
 import { PACIFIC_TIMEZONE } from "@/app/lib/constants";
 import { pullFromWaitlist } from "@/app/lib/waitlist";
-import { db, eq, and, or, ilike, isNotNull, count as dbCount, tickets, events, waitlist, referrals } from "@ssb/db";
+import { db, eq, and, or, ilike, inArray, isNotNull, count as dbCount, tickets, events, waitlist, referrals } from "@ssb/db";
 import { isValidUUID } from "@/app/lib/validation";
 
 /** Helper to serialize a ticket (with optional event relation) to snake_case for API response */
@@ -94,6 +94,88 @@ function formatDoorsOpenTime(doorsOpen: Date | null | undefined): string | undef
 const TICKET_WITH_DOORS_OPEN = {
   event: { columns: { id: true, name: true, route: true, startTimeDate: true, endTimeDate: true, venue: true, venueLink: true, desc: true, doorsOpen: true, tagline: true, imgVersion: true } },
 } as const;
+
+type ReminderRecipient = {
+  id: string;
+  email: string;
+  name: string | null;
+  type: string | null;
+};
+
+async function sendReminderBatch(options: {
+  recipients: ReminderRecipient[];
+  batchSize: number;
+  minBatchDurationMs: number;
+  sendEmail: (recipient: ReminderRecipient) => Promise<void>;
+  logPrefix: string;
+}) {
+  const {
+    recipients,
+    batchSize,
+    minBatchDurationMs,
+    sendEmail,
+    logPrefix,
+  } = options;
+
+  const results: PromiseSettledResult<{
+    success: boolean;
+    email: string;
+    error?: unknown;
+  }>[] = [];
+
+  for (let index = 0; index < recipients.length; index += batchSize) {
+    const batchStartTime = Date.now();
+    const batch = recipients.slice(index, index + batchSize);
+    const batchPromises = batch.map((recipient) =>
+      sendEmail(recipient).then(
+        () => ({ success: true, email: recipient.email }),
+        (error) => ({ success: false, email: recipient.email, error }),
+      ),
+    );
+    const batchResults = await Promise.allSettled(batchPromises);
+    results.push(...batchResults);
+
+    const batchDuration = Date.now() - batchStartTime;
+    if (
+      minBatchDurationMs > 0 &&
+      batchDuration < minBatchDurationMs &&
+      index + batchSize < recipients.length
+    ) {
+      await new Promise((resolve) =>
+        setTimeout(resolve, minBatchDurationMs - batchDuration),
+      );
+    }
+  }
+
+  let sent = 0;
+  let failed = 0;
+  const errors: string[] = [];
+
+  for (const result of results) {
+    if (result.status === "fulfilled") {
+      const emailResult = result.value;
+      if (emailResult.success) {
+        sent++;
+      } else {
+        failed++;
+        const errorMessage = emailResult.error instanceof Error
+          ? emailResult.error.message
+          : "Unknown error";
+        errors.push(`${emailResult.email}: ${errorMessage}`);
+        console.error(
+          `${logPrefix} ${emailResult.email}:`,
+          emailResult.error ?? "Unknown error",
+        );
+      }
+    } else {
+      failed++;
+      errors.push(`Promise rejected: ${result.reason}`);
+      console.error(`${logPrefix} promise rejected:`, result.reason);
+    }
+  }
+
+  return { sent, failed, errors };
+}
 
 export async function GET(req: Request) {
   try {
@@ -275,7 +357,7 @@ export async function PATCH(req: Request) {
     }
 
     const body = await req.json();
-    const { id, action, type, scanned, promo, name } = body;
+    const { id, action, type, scanned, promo, name, ticketIds } = body;
 
     // Batch reminder actions don't require a ticket ID - they use eventId from query params
     const batchActions = ["sendDayOfReminders", "sendEarlyReminders"];
@@ -616,9 +698,35 @@ export async function PATCH(req: Request) {
         return NextResponse.json({ error: "Event not found" }, { status: 404 });
       }
 
-      // Fetch all tickets for this event (both VIP and STANDARD)
+      const hasTicketIdFilter = Array.isArray(ticketIds);
+      const normalizedTicketIds = hasTicketIdFilter
+        ? [...new Set(
+          ticketIds.filter(
+            (ticketId): ticketId is string =>
+              typeof ticketId === "string" && ticketId.trim().length > 0,
+          ),
+        )]
+        : [];
+
+      if (hasTicketIdFilter && normalizedTicketIds.length === 0) {
+        return NextResponse.json(
+          { error: "ticketIds must be a non-empty array of strings" },
+          { status: 400 },
+        );
+      }
+
+      if (normalizedTicketIds.length > 14) {
+        return NextResponse.json(
+          { error: "Maximum 14 ticketIds per reminder request" },
+          { status: 400 },
+        );
+      }
+
+      // Fetch all tickets for this event (or the requested ticket chunk)
       const eventTickets = await db.query.tickets.findMany({
-        where: eq(tickets.eventId, eventId),
+        where: hasTicketIdFilter
+          ? and(eq(tickets.eventId, eventId), inArray(tickets.id, normalizedTicketIds))
+          : eq(tickets.eventId, eventId),
         columns: { id: true, email: true, name: true, type: true },
       });
 
@@ -631,19 +739,11 @@ export async function PATCH(req: Request) {
         });
       }
 
-      // Send reminder emails to all ticket holders in batches
-      const BATCH_SIZE = 14;
-      const MIN_BATCH_DURATION_MS = 1000;
-      const results: PromiseSettledResult<{
-        success: boolean;
-        email: string;
-        error?: unknown;
-      }>[] = [];
-
-      for (let i = 0; i < eventTickets.length; i += BATCH_SIZE) {
-        const batchStartTime = Date.now();
-        const batch = eventTickets.slice(i, i + BATCH_SIZE);
-        const batchPromises = batch.map((ticket) =>
+      const { sent, failed, errors } = await sendReminderBatch({
+        recipients: eventTickets,
+        batchSize: hasTicketIdFilter ? normalizedTicketIds.length : 14,
+        minBatchDurationMs: hasTicketIdFilter ? 0 : 1000,
+        sendEmail: (ticket) =>
           sendDayOfReminderEmail({
             email: ticket.email,
             name: ticket.name || null,
@@ -660,52 +760,9 @@ export async function PATCH(req: Request) {
             eventId: event.id,
             imgVersion: event.imgVersion,
             eventTagline: event.tagline || null,
-          }).then(
-            () => ({ success: true, email: ticket.email }),
-            (error) => ({
-              success: false,
-              email: ticket.email,
-              error,
-            }),
-          ),
-        );
-        const batchResults = await Promise.allSettled(batchPromises);
-        results.push(...batchResults);
-
-        const batchDuration = Date.now() - batchStartTime;
-        if (batchDuration < MIN_BATCH_DURATION_MS && i + BATCH_SIZE < eventTickets.length) {
-          await new Promise((resolve) =>
-            setTimeout(resolve, MIN_BATCH_DURATION_MS - batchDuration),
-          );
-        }
-      }
-      let sent = 0;
-      let failed = 0;
-      const errors: string[] = [];
-
-      for (const result of results) {
-        if (result.status === "fulfilled") {
-          const emailResult = result.value;
-          if (emailResult.success) {
-            sent++;
-          } else {
-            failed++;
-            const errorMessage =
-              "error" in emailResult && emailResult.error instanceof Error
-                ? emailResult.error.message
-                : "Unknown error";
-            errors.push(`${emailResult.email}: ${errorMessage}`);
-            console.error(
-              `Failed to send reminder to ${emailResult.email}:`,
-              "error" in emailResult ? emailResult.error : "Unknown error",
-            );
-          }
-        } else {
-          failed++;
-          errors.push(`Promise rejected: ${result.reason}`);
-          console.error("Email promise rejected:", result.reason);
-        }
-      }
+          }),
+        logPrefix: "Failed to send reminder to",
+      });
 
       return NextResponse.json({
         success: true,
@@ -807,8 +864,34 @@ export async function PATCH(req: Request) {
         return NextResponse.json({ error: "Event not found" }, { status: 404 });
       }
 
+      const hasTicketIdFilter = Array.isArray(ticketIds);
+      const normalizedTicketIds = hasTicketIdFilter
+        ? [...new Set(
+          ticketIds.filter(
+            (ticketId): ticketId is string =>
+              typeof ticketId === "string" && ticketId.trim().length > 0,
+          ),
+        )]
+        : [];
+
+      if (hasTicketIdFilter && normalizedTicketIds.length === 0) {
+        return NextResponse.json(
+          { error: "ticketIds must be a non-empty array of strings" },
+          { status: 400 },
+        );
+      }
+
+      if (normalizedTicketIds.length > 14) {
+        return NextResponse.json(
+          { error: "Maximum 14 ticketIds per reminder request" },
+          { status: 400 },
+        );
+      }
+
       const eventTickets = await db.query.tickets.findMany({
-        where: eq(tickets.eventId, eventId),
+        where: hasTicketIdFilter
+          ? and(eq(tickets.eventId, eventId), inArray(tickets.id, normalizedTicketIds))
+          : eq(tickets.eventId, eventId),
         columns: { id: true, email: true, name: true, type: true },
       });
 
@@ -821,18 +904,11 @@ export async function PATCH(req: Request) {
         });
       }
 
-      const BATCH_SIZE = 14;
-      const MIN_BATCH_DURATION_MS = 1000;
-      const results: PromiseSettledResult<{
-        success: boolean;
-        email: string;
-        error?: unknown;
-      }>[] = [];
-
-      for (let i = 0; i < eventTickets.length; i += BATCH_SIZE) {
-        const batchStartTime = Date.now();
-        const batch = eventTickets.slice(i, i + BATCH_SIZE);
-        const batchPromises = batch.map((ticket) =>
+      const { sent, failed, errors } = await sendReminderBatch({
+        recipients: eventTickets,
+        batchSize: hasTicketIdFilter ? normalizedTicketIds.length : 14,
+        minBatchDurationMs: hasTicketIdFilter ? 0 : 1000,
+        sendEmail: (ticket) =>
           sendEarlyReminderEmail({
             email: ticket.email,
             name: ticket.name || null,
@@ -850,52 +926,9 @@ export async function PATCH(req: Request) {
             eventId: event.id,
             imgVersion: event.imgVersion,
             eventTagline: event.tagline || null,
-          }).then(
-            () => ({ success: true, email: ticket.email }),
-            (error) => ({
-              success: false,
-              email: ticket.email,
-              error,
-            }),
-          ),
-        );
-        const batchResults = await Promise.allSettled(batchPromises);
-        results.push(...batchResults);
-
-        const batchDuration = Date.now() - batchStartTime;
-        if (batchDuration < MIN_BATCH_DURATION_MS && i + BATCH_SIZE < eventTickets.length) {
-          await new Promise((resolve) =>
-            setTimeout(resolve, MIN_BATCH_DURATION_MS - batchDuration),
-          );
-        }
-      }
-      let sent = 0;
-      let failed = 0;
-      const errors: string[] = [];
-
-      for (const result of results) {
-        if (result.status === "fulfilled") {
-          const emailResult = result.value;
-          if (emailResult.success) {
-            sent++;
-          } else {
-            failed++;
-            const errorMessage =
-              "error" in emailResult && emailResult.error instanceof Error
-                ? emailResult.error.message
-                : "Unknown error";
-            errors.push(`${emailResult.email}: ${errorMessage}`);
-            console.error(
-              `Failed to send early reminder to ${emailResult.email}:`,
-              "error" in emailResult ? emailResult.error : "Unknown error",
-            );
-          }
-        } else {
-          failed++;
-          errors.push(`Promise rejected: ${result.reason}`);
-          console.error("Email promise rejected:", result.reason);
-        }
-      }
+          }),
+        logPrefix: "Failed to send early reminder to",
+      });
 
       return NextResponse.json({
         success: true,

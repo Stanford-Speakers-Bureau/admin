@@ -1,7 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import BulkSendProgress from "@/app/components/BulkSendProgress";
 import { useEventContext } from "@/app/EventContext";
+import {
+  BulkSendProgressState,
+  runChunkedSend,
+} from "@/app/lib/bulkSend";
 import { formatDate, formatDateShort } from "@/app/lib/formatting";
 import { getAnalyticsCardGridStyle } from "@/app/lib/utils";
 
@@ -195,13 +200,7 @@ export default function AudienceClient() {
   const [expandedEmail, setExpandedEmail] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [showSendModal, setShowSendModal] = useState(false);
-  const [sendState, setSendState] = useState<{
-    active: boolean;
-    total: number;
-    sent: number;
-    failed: number;
-    done: boolean;
-  } | null>(null);
+  const [sendState, setSendState] = useState<BulkSendProgressState | null>(null);
   const [individualSending, setIndividualSending] = useState<string | null>(null);
 
   useEffect(() => {
@@ -333,9 +332,11 @@ export default function AudienceClient() {
 
   const nonNotifyEmails = useMemo(() => {
     if (!data) return [];
-    return data.users
-      .filter((u) => !u.currentEventStatus.onNotifyList)
-      .map((u) => u.email);
+    return [...new Set(
+      data.users
+        .filter((u) => !u.currentEventStatus.onNotifyList)
+        .map((u) => u.email.toLowerCase()),
+    )];
   }, [data]);
 
   const CHUNK_SIZE = 50;
@@ -343,42 +344,30 @@ export default function AudienceClient() {
   async function sendAnnouncementToAll() {
     if (!selectedEventId || nonNotifyEmails.length === 0) return;
     setShowSendModal(false);
-    setSendState({ active: true, total: nonNotifyEmails.length, sent: 0, failed: 0, done: false });
-
-    for (let i = 0; i < nonNotifyEmails.length; i += CHUNK_SIZE) {
-      const chunk = nonNotifyEmails.slice(i, i + CHUNK_SIZE);
-      try {
-        const res = await fetch("/api/audience/send", {
+    await runChunkedSend({
+      items: nonNotifyEmails,
+      chunkSize: CHUNK_SIZE,
+      label: "Sending announcements",
+      onProgress: setSendState,
+      sendChunk: async (chunk) => {
+        const res = await fetch("/api/email/bulk-send", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ eventId: selectedEventId, emails: chunk }),
+          body: JSON.stringify({
+            eventId: selectedEventId,
+            emails: chunk,
+            kind: "announcement",
+          }),
         });
         const result = await res.json().catch(() => null);
 
         if (!res.ok) {
-          setSendState((prev) =>
-            prev ? { ...prev, failed: prev.failed + chunk.length } : prev,
-          );
-          continue;
+          throw new Error(result?.error || "Failed to send announcement emails");
         }
 
-        setSendState((prev) =>
-          prev
-            ? {
-                ...prev,
-                sent: prev.sent + (result?.sent || 0),
-                failed: prev.failed + (result?.failed || 0),
-              }
-            : prev,
-        );
-      } catch {
-        setSendState((prev) =>
-          prev ? { ...prev, failed: prev.failed + chunk.length } : prev,
-        );
-      }
-    }
-
-    setSendState((prev) => (prev ? { ...prev, active: false, done: true } : prev));
+        return result;
+      },
+    });
   }
 
   async function sendAnnouncementToOne(email: string) {
@@ -386,10 +375,14 @@ export default function AudienceClient() {
     if (!confirm(`Send announcement email to ${email}?`)) return;
     setIndividualSending(email);
     try {
-      const res = await fetch("/api/audience/send", {
+      const res = await fetch("/api/email/bulk-send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ eventId: selectedEventId, emails: [email] }),
+        body: JSON.stringify({
+          eventId: selectedEventId,
+          emails: [email],
+          kind: "announcement",
+        }),
       });
       const result = await res.json();
       if (result.sent === 1) {
@@ -406,6 +399,10 @@ export default function AudienceClient() {
     setCurrentPage(1);
     setExpandedEmail(null);
   }, [activityFilter, affiliationFilter, search, selectedEventId, statusFilter]);
+
+  useEffect(() => {
+    setSendState(null);
+  }, [selectedEventId]);
 
   useEffect(() => {
     setExpandedEmail(null);
@@ -523,35 +520,10 @@ export default function AudienceClient() {
 
       {/* Progress bar */}
       {sendState && (
-        <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
-          <div className="flex items-center justify-between mb-2">
-            <p className="text-sm font-medium text-zinc-200">
-              {sendState.active
-                ? `Sending... ${sendState.sent + sendState.failed}/${sendState.total}`
-                : `Done! ${sendState.sent} sent${sendState.failed > 0 ? `, ${sendState.failed} failed` : ""}`}
-            </p>
-            {sendState.done && (
-              <button
-                onClick={() => setSendState(null)}
-                className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
-              >
-                Dismiss
-              </button>
-            )}
-          </div>
-          <div className="w-full h-2 bg-zinc-800 rounded-full overflow-hidden">
-            <div
-              className={`h-full rounded-full transition-all duration-300 ${sendState.done && sendState.failed === 0 ? "bg-emerald-500" : sendState.done ? "bg-amber-500" : "bg-red-500"}`}
-              style={{ width: `${sendState.total > 0 ? ((sendState.sent + sendState.failed) / sendState.total) * 100 : 0}%` }}
-            />
-          </div>
-          {sendState.active && (
-            <p className="text-xs text-zinc-500 mt-1.5">
-              {Math.round(((sendState.sent + sendState.failed) / sendState.total) * 100)}% complete
-              {sendState.failed > 0 && <span className="text-rose-400"> • {sendState.failed} failed</span>}
-            </p>
-          )}
-        </div>
+        <BulkSendProgress
+          state={sendState}
+          onDismiss={() => setSendState(null)}
+        />
       )}
 
       {/* Send Announcement Modal */}
