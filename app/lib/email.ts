@@ -189,6 +189,19 @@ function wrapToMimeLines(input: string, lineLength: number = 76): string {
   return chunks.join("\r\n");
 }
 
+function buildUtf8MimeBodyPart(
+  contentType: string,
+  content: string,
+): string[] {
+  return [
+    `Content-Type: ${contentType}; charset=UTF-8`,
+    `Content-Transfer-Encoding: base64`,
+    "",
+    wrapToMimeLines(Buffer.from(content, "utf-8").toString("base64")),
+    "",
+  ];
+}
+
 // ============================================================================
 // Date / time formatting helpers (matching the web InfoPills format)
 // ============================================================================
@@ -1173,11 +1186,7 @@ export async function sendTicketEmail(data: TicketEmailData): Promise<void> {
     `Content-Type: multipart/alternative; boundary="${altBoundary}"`,
     "",
     `--${altBoundary}`,
-    `Content-Type: text/plain; charset=UTF-8`,
-    `Content-Transfer-Encoding: 7bit`,
-    "",
-    textContent,
-    "",
+    ...buildUtf8MimeBodyPart("text/plain", textContent),
   );
 
   if (qrBuffer) {
@@ -1188,11 +1197,7 @@ export async function sendTicketEmail(data: TicketEmailData): Promise<void> {
       `Content-Type: multipart/related; boundary="${relBoundary}"`,
       "",
       `--${relBoundary}`,
-      `Content-Type: text/html; charset=UTF-8`,
-      `Content-Transfer-Encoding: 7bit`,
-      "",
-      htmlContent,
-      "",
+      ...buildUtf8MimeBodyPart("text/html", htmlContent),
       `--${relBoundary}`,
       `Content-Type: image/png; name="ticket-qr.png"`,
       `Content-Transfer-Encoding: base64`,
@@ -1208,11 +1213,7 @@ export async function sendTicketEmail(data: TicketEmailData): Promise<void> {
     // No QR image; include HTML directly
     lines.push(
       `--${altBoundary}`,
-      `Content-Type: text/html; charset=UTF-8`,
-      `Content-Transfer-Encoding: 7bit`,
-      "",
-      htmlContent,
-      "",
+      ...buildUtf8MimeBodyPart("text/html", htmlContent),
     );
   }
 
@@ -1506,11 +1507,7 @@ export async function sendDayOfReminderEmail(
     `Content-Type: multipart/alternative; boundary="${altBoundary}"`,
     "",
     `--${altBoundary}`,
-    `Content-Type: text/plain; charset=UTF-8`,
-    `Content-Transfer-Encoding: 7bit`,
-    "",
-    textContent,
-    "",
+    ...buildUtf8MimeBodyPart("text/plain", textContent),
   );
 
   if (qrBuffer) {
@@ -1521,11 +1518,7 @@ export async function sendDayOfReminderEmail(
       `Content-Type: multipart/related; boundary="${relBoundary}"`,
       "",
       `--${relBoundary}`,
-      `Content-Type: text/html; charset=UTF-8`,
-      `Content-Transfer-Encoding: 7bit`,
-      "",
-      htmlContent,
-      "",
+      ...buildUtf8MimeBodyPart("text/html", htmlContent),
       `--${relBoundary}`,
       `Content-Type: image/png; name="ticket-qr.png"`,
       `Content-Transfer-Encoding: base64`,
@@ -1541,11 +1534,7 @@ export async function sendDayOfReminderEmail(
     // No QR image; include HTML directly
     lines.push(
       `--${altBoundary}`,
-      `Content-Type: text/html; charset=UTF-8`,
-      `Content-Transfer-Encoding: 7bit`,
-      "",
-      htmlContent,
-      "",
+      ...buildUtf8MimeBodyPart("text/html", htmlContent),
     );
   }
 
@@ -1896,11 +1885,7 @@ export async function sendEarlyReminderEmail(
     `Content-Type: multipart/alternative; boundary="${altBoundary}"`,
     "",
     `--${altBoundary}`,
-    `Content-Type: text/plain; charset=UTF-8`,
-    `Content-Transfer-Encoding: 7bit`,
-    "",
-    textContent,
-    "",
+    ...buildUtf8MimeBodyPart("text/plain", textContent),
   );
 
   if (qrBuffer) {
@@ -1911,11 +1896,7 @@ export async function sendEarlyReminderEmail(
       `Content-Type: multipart/related; boundary="${relBoundary}"`,
       "",
       `--${relBoundary}`,
-      `Content-Type: text/html; charset=UTF-8`,
-      `Content-Transfer-Encoding: 7bit`,
-      "",
-      htmlContent,
-      "",
+      ...buildUtf8MimeBodyPart("text/html", htmlContent),
       `--${relBoundary}`,
       `Content-Type: image/png; name="ticket-qr.png"`,
       `Content-Transfer-Encoding: base64`,
@@ -1931,11 +1912,7 @@ export async function sendEarlyReminderEmail(
     // No QR image; include HTML directly
     lines.push(
       `--${altBoundary}`,
-      `Content-Type: text/html; charset=UTF-8`,
-      `Content-Transfer-Encoding: 7bit`,
-      "",
-      htmlContent,
-      "",
+      ...buildUtf8MimeBodyPart("text/html", htmlContent),
     );
   }
 
@@ -2085,17 +2062,9 @@ export async function sendTicketsAvailableNowEmail(
     `Content-Type: multipart/alternative; boundary="${altBoundary}"`,
     "",
     `--${altBoundary}`,
-    `Content-Type: text/plain; charset=UTF-8`,
-    `Content-Transfer-Encoding: 7bit`,
-    "",
-    textContent,
-    "",
+    ...buildUtf8MimeBodyPart("text/plain", textContent),
     `--${altBoundary}`,
-    `Content-Type: text/html; charset=UTF-8`,
-    `Content-Transfer-Encoding: 7bit`,
-    "",
-    htmlContent,
-    "",
+    ...buildUtf8MimeBodyPart("text/html", htmlContent),
     `--${altBoundary}--`,
     "",
   ];
@@ -2226,17 +2195,9 @@ export async function sendTicketsAvailableInEmail(
     `Content-Type: multipart/alternative; boundary="${altBoundary}"`,
     "",
     `--${altBoundary}`,
-    `Content-Type: text/plain; charset=UTF-8`,
-    `Content-Transfer-Encoding: 7bit`,
-    "",
-    textContent,
-    "",
+    ...buildUtf8MimeBodyPart("text/plain", textContent),
     `--${altBoundary}`,
-    `Content-Type: text/html; charset=UTF-8`,
-    `Content-Transfer-Encoding: 7bit`,
-    "",
-    htmlContent,
-    "",
+    ...buildUtf8MimeBodyPart("text/html", htmlContent),
     `--${altBoundary}--`,
     "",
   ];
@@ -2363,17 +2324,9 @@ export async function sendClaimTicketEmail(
     `Content-Type: multipart/alternative; boundary="${altBoundary}"`,
     "",
     `--${altBoundary}`,
-    `Content-Type: text/plain; charset=UTF-8`,
-    `Content-Transfer-Encoding: 7bit`,
-    "",
-    textContent,
-    "",
+    ...buildUtf8MimeBodyPart("text/plain", textContent),
     `--${altBoundary}`,
-    `Content-Type: text/html; charset=UTF-8`,
-    `Content-Transfer-Encoding: 7bit`,
-    "",
-    htmlContent,
-    "",
+    ...buildUtf8MimeBodyPart("text/html", htmlContent),
     `--${altBoundary}--`,
     "",
   ];
@@ -2558,11 +2511,7 @@ export async function sendStandbyLineEmail(
     `Content-Type: multipart/alternative; boundary="${altBoundary}"`,
     "",
     `--${altBoundary}`,
-    `Content-Type: text/plain; charset=UTF-8`,
-    `Content-Transfer-Encoding: 7bit`,
-    "",
-    textContent,
-    "",
+    ...buildUtf8MimeBodyPart("text/plain", textContent),
   );
 
   if (qrBuffer && qrCid) {
@@ -2572,11 +2521,7 @@ export async function sendStandbyLineEmail(
       `Content-Type: multipart/related; boundary="${relBoundary}"`,
       "",
       `--${relBoundary}`,
-      `Content-Type: text/html; charset=UTF-8`,
-      `Content-Transfer-Encoding: 7bit`,
-      "",
-      htmlContent,
-      "",
+      ...buildUtf8MimeBodyPart("text/html", htmlContent),
       `--${relBoundary}`,
       `Content-Type: image/png; name="standby-qr.png"`,
       `Content-Transfer-Encoding: base64`,
@@ -2591,11 +2536,7 @@ export async function sendStandbyLineEmail(
   } else {
     lines.push(
       `--${altBoundary}`,
-      `Content-Type: text/html; charset=UTF-8`,
-      `Content-Transfer-Encoding: 7bit`,
-      "",
-      htmlContent,
-      "",
+      ...buildUtf8MimeBodyPart("text/html", htmlContent),
     );
   }
 
@@ -2617,14 +2558,30 @@ export type EventAnnouncedEmailData = {
   eventId?: string | null;
   imgVersion?: number | null;
   eventTagline?: string | null;
+  eventDescription?: string | null;
+  eventVenue?: string | null;
+  eventVenueLink?: string | null;
+  doorsOpenTime?: string | null;
 };
+
+/** Strip basic markdown to plain-ish HTML (bold, italic, links, line breaks) */
+function markdownToEmailHTML(md: string): string {
+  return md
+    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+    .replace(/\*(.+?)\*/g, "<em>$1</em>")
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" style="color: #A80D0C; text-decoration: underline;">$1</a>')
+    .replace(/\n/g, "<br>");
+}
 
 function generateEventAnnouncedEmailText(data: EventAnnouncedEmailData): string {
   const baseUrl = getBaseUrl();
   const eventUrl = data.eventRoute ? `${baseUrl}/events/${data.eventRoute}` : baseUrl;
   const formattedDate = formatFullDateTime(data.eventStartTime);
+  const doorsOpen = data.doorsOpenTime ? formatPillTime(data.doorsOpenTime) : null;
   return `
 ${data.eventName} is coming to Stanford!
+
+${data.eventDescription || ""}
 
 Be the first to know when tickets drop — sign up for notifications on our event page.
 
@@ -2633,7 +2590,7 @@ View event: ${eventUrl}
 Event Details:
 - Event: ${data.eventName}
 - Date & Time: ${formattedDate}
-
+${doorsOpen ? `- Doors Open: ${doorsOpen}\n` : ""}${data.eventVenue ? `- Venue: ${data.eventVenue}${data.eventVenueLink ? ` (${data.eventVenueLink})` : ""}\n` : ""}
 Stanford Speakers Bureau
 For questions, please email ${FROM_EMAIL}
   `.trim();
@@ -2645,11 +2602,15 @@ async function generateEventAnnouncedEmailHTML(
   const baseUrl = getBaseUrl();
   const eventUrl = data.eventRoute ? `${baseUrl}/events/${data.eventRoute}` : baseUrl;
   const formattedDate = formatFullDateTime(data.eventStartTime);
+  const formattedDoorsOpen = data.doorsOpenTime ? formatPillTime(data.doorsOpenTime) : null;
 
   const heroCard = buildHeroCard({
     eventName: data.eventName,
     eventTagline: data.eventTagline,
     eventStartTime: data.eventStartTime,
+    doorsOpenTime: data.doorsOpenTime,
+    eventVenue: data.eventVenue,
+    eventVenueLink: data.eventVenueLink,
     eventId: data.eventId,
     imgVersion: data.imgVersion,
   });
@@ -2660,6 +2621,17 @@ async function generateEventAnnouncedEmailHTML(
     `${data.eventName} is coming to Stanford!`,
     { fontSize: "18px", fontWeight: "600" },
   ));
+
+  // Event bio / description
+  if (data.eventDescription) {
+    contentSections.push(`
+      <div style="background-color: #18181b; padding: 20px 24px; margin-bottom: 24px; border-radius: 8px;">
+        ${gmailBlendStart}
+          <div style="color: #d4d4d8; font-size: 15px; line-height: 1.7;">${markdownToEmailHTML(data.eventDescription)}</div>
+        ${gmailBlendEnd}
+      </div>`);
+  }
+
   contentSections.push(buildParagraph(
     "Be the first to know when tickets drop &mdash; sign up for notifications on our event page.",
     { color: "#a1a1aa" },
@@ -2667,12 +2639,23 @@ async function generateEventAnnouncedEmailHTML(
 
   contentSections.push(buildButton(eventUrl, "Get Notified", { style: " padding: 16px 40px; font-weight: 700; font-size: 18px; letter-spacing: 0.5px;" }));
 
-  contentSections.push(buildDetailsCard({
-    rows: [
-      { label: "Event:", value: data.eventName },
-      { label: "Date & Time:", value: formattedDate },
-    ],
-  }));
+  // Details card with venue
+  const detailRows: { label: string; value: string; isLink?: boolean; href?: string }[] = [
+    { label: "Event:", value: data.eventName },
+    { label: "Date & Time:", value: formattedDate },
+  ];
+  if (formattedDoorsOpen) {
+    detailRows.push({ label: "Doors Open:", value: formattedDoorsOpen });
+  }
+  if (data.eventVenue) {
+    detailRows.push({
+      label: "Venue:",
+      value: data.eventVenue,
+      isLink: !!data.eventVenueLink,
+      href: data.eventVenueLink || undefined,
+    });
+  }
+  contentSections.push(buildDetailsCard({ rows: detailRows }));
 
   const bodyContent = `
     ${heroCard}
@@ -2711,17 +2694,9 @@ export async function sendEventAnnouncedEmail(
     `Content-Type: multipart/alternative; boundary="${altBoundary}"`,
     "",
     `--${altBoundary}`,
-    `Content-Type: text/plain; charset=UTF-8`,
-    `Content-Transfer-Encoding: 7bit`,
-    "",
-    textContent,
-    "",
+    ...buildUtf8MimeBodyPart("text/plain", textContent),
     `--${altBoundary}`,
-    `Content-Type: text/html; charset=UTF-8`,
-    `Content-Transfer-Encoding: 7bit`,
-    "",
-    htmlContent,
-    "",
+    ...buildUtf8MimeBodyPart("text/html", htmlContent),
     `--${altBoundary}--`,
     "",
   ];

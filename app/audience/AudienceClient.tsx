@@ -353,10 +353,22 @@ export default function AudienceClient() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ eventId: selectedEventId, emails: chunk }),
         });
-        const result = await res.json();
+        const result = await res.json().catch(() => null);
+
+        if (!res.ok) {
+          setSendState((prev) =>
+            prev ? { ...prev, failed: prev.failed + chunk.length } : prev,
+          );
+          continue;
+        }
+
         setSendState((prev) =>
           prev
-            ? { ...prev, sent: prev.sent + (result.sent || 0), failed: prev.failed + (result.failed || 0) }
+            ? {
+                ...prev,
+                sent: prev.sent + (result?.sent || 0),
+                failed: prev.failed + (result?.failed || 0),
+              }
             : prev,
         );
       } catch {

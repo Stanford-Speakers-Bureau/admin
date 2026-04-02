@@ -50,6 +50,10 @@ export async function POST(req: Request) {
         startTimeDate: true,
         tagline: true,
         imgVersion: true,
+        desc: true,
+        venue: true,
+        venueLink: true,
+        doorsOpen: true,
       },
     });
 
@@ -74,6 +78,10 @@ export async function POST(req: Request) {
           eventId: event.id,
           imgVersion: event.imgVersion,
           eventTagline: event.tagline || null,
+          eventDescription: event.desc || null,
+          eventVenue: event.venue || null,
+          eventVenueLink: event.venueLink || null,
+          doorsOpenTime: event.doorsOpen?.toISOString() || null,
         }).then(
           () => ({ success: true, email }),
           (error) => ({ success: false, email, error }),
