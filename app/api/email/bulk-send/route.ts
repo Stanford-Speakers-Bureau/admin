@@ -200,6 +200,7 @@ export async function POST(req: Request) {
             eventId: event.id,
             imgVersion: event.imgVersion,
             eventTagline: event.tagline || null,
+            doorsOpenTime: event.doorsOpen?.toISOString() || null,
           });
         }
 
@@ -212,6 +213,7 @@ export async function POST(req: Request) {
             eventId: event.id,
             imgVersion: event.imgVersion,
             eventTagline: event.tagline || null,
+            doorsOpenTime: event.doorsOpen?.toISOString() || null,
           });
         }
 
@@ -224,6 +226,7 @@ export async function POST(req: Request) {
           eventId: event.id,
           imgVersion: event.imgVersion,
           eventTagline: event.tagline || null,
+          doorsOpenTime: event.doorsOpen?.toISOString() || null,
         });
       }),
     );
