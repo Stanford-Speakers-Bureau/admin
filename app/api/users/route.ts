@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { verifyAdminRequest } from "@/app/lib/auth";
 import { isValidEmail, isValidUUID } from "@/app/lib/validation";
 import { db, eq, roles } from "@ssb/db";
+import { logAuditEvent } from "@/app/lib/audit";
 
 export async function POST(req: Request) {
   try {
@@ -64,6 +65,13 @@ export async function POST(req: Request) {
           .where(eq(roles.id, existing.id))
           .returning();
 
+        await logAuditEvent({
+          action: "user.add_role",
+          actor: auth.email!,
+          targetEmail: email,
+          metadata: { role: roleName },
+        });
+
         return NextResponse.json({
           success: true,
           user: {
@@ -78,6 +86,13 @@ export async function POST(req: Request) {
         const [created] = await db.insert(roles)
           .values({ email, roles: roleName })
           .returning();
+
+        await logAuditEvent({
+          action: "user.add_role",
+          actor: auth.email!,
+          targetEmail: email,
+          metadata: { role: roleName },
+        });
 
         return NextResponse.json({
           success: true,
@@ -119,6 +134,13 @@ export async function POST(req: Request) {
       await db.update(roles)
         .set({ roles: newRolesString })
         .where(eq(roles.id, id));
+
+      await logAuditEvent({
+        action: "user.remove_role",
+        actor: auth.email!,
+        targetEmail: existing.email ?? undefined,
+        metadata: { role: roleName },
+      });
 
       return NextResponse.json({ success: true });
     }

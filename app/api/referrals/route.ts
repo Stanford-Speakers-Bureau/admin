@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { verifyAdminRequest } from "@/app/lib/auth";
 import { isValidUUID } from "@/app/lib/validation";
 import { db, eq, and, isNotNull, count as dbCount, referrals, tickets, events } from "@ssb/db";
+import { logAuditEvent } from "@/app/lib/audit";
 
 export async function GET(req: Request) {
   try {
@@ -161,10 +162,23 @@ export async function PATCH(req: Request) {
       );
     }
 
+    const event = await db.query.events.findFirst({
+      where: eq(events.id, eventId),
+      columns: { name: true },
+    });
+
     await db
       .update(events)
       .set({ referralsEnabled: referrals_enabled })
       .where(eq(events.id, eventId));
+
+    await logAuditEvent({
+      action: "referral.toggle",
+      actor: auth.email!,
+      eventId: eventId,
+      eventName: event?.name ?? null,
+      metadata: { referralsEnabled: referrals_enabled },
+    });
 
     return NextResponse.json({ success: true, referrals_enabled });
   } catch (error) {

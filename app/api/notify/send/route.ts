@@ -7,6 +7,7 @@ import {
   sendClaimTicketEmail,
 } from "@/app/lib/email";
 import { db, eq, notify, events, tickets } from "@ssb/db";
+import { logAuditEvent } from "@/app/lib/audit";
 
 export async function POST(req: Request) {
   try {
@@ -198,6 +199,14 @@ export async function POST(req: Request) {
         failed++;
       }
     }
+
+    await logAuditEvent({
+      action: "email.send_mass",
+      actor: auth.email!,
+      eventId: eventId,
+      eventName: event.name ?? null,
+      metadata: { type: "notifySend", variant, sent, failed, skipped },
+    });
 
     return NextResponse.json({ sent, failed, skipped });
   } catch (err) {

@@ -4,6 +4,7 @@ import { isValidUUID } from "@/app/lib/validation";
 import { sendStandbyLineEmail } from "@/app/lib/email";
 import { PACIFIC_TIMEZONE } from "@/app/lib/constants";
 import { db, eq, and, inArray, waitlist, events, tickets } from "@ssb/db";
+import { logAuditEvent } from "@/app/lib/audit";
 
 async function sendWithRetry(
   fn: () => Promise<void>,
@@ -319,6 +320,14 @@ export async function POST(req: Request) {
     if (issuedStandbyIds.length > 0) {
       await db.delete(waitlist).where(inArray(waitlist.id, issuedStandbyIds));
     }
+
+    await logAuditEvent({
+      action: "waitlist.issue_standby",
+      actor: auth.email!,
+      eventId: eventId,
+      eventName: event.name ?? null,
+      metadata: { totalEntries: waitlistEntries.length, emailsSent: successCount, errors: errorCount, skipped: skippedExistingCount },
+    });
 
     return NextResponse.json(
       {
