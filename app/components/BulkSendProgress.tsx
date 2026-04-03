@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import {
   BulkSendProgressState,
   getProcessedCount,
@@ -12,6 +13,14 @@ export default function BulkSendProgress({
   state,
   onDismiss,
 }: BulkSendProgressProps) {
+  useEffect(() => {
+    if (!state.active) return;
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [state.active]);
   const processed = getProcessedCount(state);
   const percentComplete = state.total > 0
     ? Math.round((processed / state.total) * 100)
@@ -54,6 +63,11 @@ export default function BulkSendProgress({
           <span className="text-amber-400"> • {state.skipped} skipped</span>
         ) : null}
       </p>
+      {state.active && (
+        <p className="mt-2 text-xs text-amber-400">
+          Please don't close or navigate away from this tab while emails are sending.
+        </p>
+      )}
     </div>
   );
 }

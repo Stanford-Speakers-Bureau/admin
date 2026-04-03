@@ -98,7 +98,7 @@ export default function TicketManagementClient({
   const [editingNameId, setEditingNameId] = useState<string | null>(null);
   const [editingNameValue, setEditingNameValue] = useState("");
 
-  const REMINDER_CHUNK_SIZE = 14;
+  const REMINDER_CHUNK_SIZE = 50;
   const RECIPIENT_PAGE_SIZE = 500;
 
   useEffect(() => {
