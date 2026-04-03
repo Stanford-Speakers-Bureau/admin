@@ -2,6 +2,21 @@ import { NextResponse } from "next/server";
 import { verifyAdminRequest } from "@/app/lib/auth";
 import { db, auditLogs, desc, and, eq, gte, lte, ilike, count as dbCount } from "@ssb/db";
 
+function parsePaginationParam(
+  value: string | null,
+  fallback: number,
+  min: number,
+  max: number,
+): number {
+  const parsed = Number.parseInt(value ?? "", 10);
+
+  if (!Number.isFinite(parsed)) {
+    return fallback;
+  }
+
+  return Math.min(Math.max(parsed, min), max);
+}
+
 function parseAuditMetadata(metadata: string | null): Record<string, unknown> | null {
   if (!metadata) {
     return null;
@@ -35,8 +50,8 @@ export async function GET(req: Request) {
     const eventName = searchParams.get("eventName");
     const startDate = searchParams.get("startDate");
     const endDate = searchParams.get("endDate");
-    const limit = Math.min(parseInt(searchParams.get("limit") || "50"), 200);
-    const offset = parseInt(searchParams.get("offset") || "0");
+    const limit = parsePaginationParam(searchParams.get("limit"), 50, 0, 200);
+    const offset = parsePaginationParam(searchParams.get("offset"), 0, 0, Number.MAX_SAFE_INTEGER);
 
     const conditions: ReturnType<typeof eq>[] = [];
 

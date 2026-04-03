@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 
 type AuditLog = {
   id: string;
@@ -124,9 +124,6 @@ export default function AuditLogClient() {
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
 
-  // Debounce refs
-  const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
-
   const fetchLogs = useCallback(async () => {
     setLoading(true);
     try {
@@ -158,11 +155,8 @@ export default function AuditLogClient() {
   }, [fetchLogs]);
 
   function handleTextFilter(setter: (v: string) => void, value: string) {
-    clearTimeout(debounceRef.current);
+    setPage(0);
     setter(value);
-    debounceRef.current = setTimeout(() => {
-      setPage(0);
-    }, 300);
   }
 
   function handleSelectFilter(setter: (v: string) => void, value: string) {
