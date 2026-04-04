@@ -416,6 +416,7 @@ function buildEmailStyles(opts?: { isVIP?: boolean; isExternal?: boolean }): str
 
 /** Wraps the full HTML document shell around body content */
 function buildEmailShell(title: string, styles: string, bodyContent: string): string {
+  const baseUrl = getBaseUrl();
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -429,6 +430,15 @@ function buildEmailShell(title: string, styles: string, bodyContent: string): st
 </head>
 <body class="body" style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #18181b; color: #f4f4f5;">
   <table role="presentation" style="width: 100%; border-collapse: collapse; background-color: #27272a;">
+    <tr>
+      <td align="center" style="padding: 24px 20px 12px; background-color: #27272a;">
+        <div style="max-width: 600px; margin: 0 auto;">
+          <a href="${baseUrl}" target="_blank" rel="noopener noreferrer" style="display: inline-block; text-decoration: none;">
+            <img src="${baseUrl}/logo.png" alt="Stanford Speakers Bureau" width="46" height="46" style="display: block; margin: 0 auto;" />
+          </a>
+        </div>
+      </td>
+    </tr>
     ${bodyContent}
   </table>
 </body>
@@ -470,11 +480,10 @@ function buildHeroCard(data: {
           <!-- Event Image -->
           <img src="${imageUrl}" alt="${data.eventName}" width="600" style="width: 100%; height: auto; display: block;" />
           ` : `
-          <!-- No image fallback: SSB logo header -->
-          <div style="background: linear-gradient(135deg, #A80D0C 0%, #C11211 100%); padding: 40px 24px; text-align: center;">
-            <img src="${baseUrl}/logo.png" alt="Stanford Speakers Bureau" width="50" height="50" style="display: block; margin: 0 auto 12px;" />
+          <!-- No image fallback: SSB branded header -->
+          <div style="background: linear-gradient(135deg, #A80D0C 0%, #C11211 100%); padding: 24px; text-align: center;">
             ${gmailBlendStart}
-              <p style="margin: 0; color: #ffffff; font-size: 16px; font-weight: 600; letter-spacing: 0.5px;">Stanford Speakers Bureau</p>
+              <p style="margin: 0; color: #ffffff; font-size: 14px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase;">Stanford Speakers Bureau</p>
             ${gmailBlendEnd}
           </div>
           `}
@@ -1956,6 +1965,8 @@ export type NotifyTicketsAvailableNowData = {
   imgVersion?: number | null;
   eventTagline?: string | null;
   doorsOpenTime?: string | null;
+  eventVenue?: string | null;
+  eventVenueLink?: string | null;
 };
 
 function generateTicketsAvailableNowEmailText(
@@ -1993,6 +2004,9 @@ async function generateTicketsAvailableNowEmailHTML(
     eventName: data.eventName,
     eventTagline: data.eventTagline,
     eventStartTime: data.eventStartTime,
+    doorsOpenTime: data.doorsOpenTime,
+    eventVenue: data.eventVenue,
+    eventVenueLink: data.eventVenueLink,
     eventId: data.eventId,
     imgVersion: data.imgVersion,
   });

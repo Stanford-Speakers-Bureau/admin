@@ -155,6 +155,8 @@ export async function POST(req: Request) {
               eventId: event.id,
               imgVersion: event.imgVersion,
               eventTagline: event.tagline || null,
+              eventVenue: event.venue || null,
+              eventVenueLink: event.venueLink || null,
               doorsOpenTime: event.doorsOpen?.toISOString() || null,
             })
           : variant === "claim"
