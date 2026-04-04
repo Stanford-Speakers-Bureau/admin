@@ -118,6 +118,8 @@ export async function POST(req: Request) {
         name: true,
         route: true,
         startTimeDate: true,
+        ticketingDate: true,
+        releaseDate: true,
         tagline: true,
         imgVersion: true,
         desc: true,
@@ -226,7 +228,10 @@ export async function POST(req: Request) {
           eventId: event.id,
           imgVersion: event.imgVersion,
           eventTagline: event.tagline || null,
+          eventVenue: event.venue || null,
+          eventVenueLink: event.venueLink || null,
           doorsOpenTime: event.doorsOpen?.toISOString() || null,
+          ticketDropTime: event.ticketingDate?.toISOString() || event.releaseDate?.toISOString() || null,
         });
       }),
     );

@@ -56,7 +56,19 @@ export async function POST(req: Request) {
 
     const event = await db.query.events.findFirst({
       where: eq(events.id, eventId),
-      columns: { id: true, name: true, route: true, startTimeDate: true, tagline: true, imgVersion: true, doorsOpen: true },
+      columns: {
+        id: true,
+        name: true,
+        route: true,
+        startTimeDate: true,
+        ticketingDate: true,
+        releaseDate: true,
+        tagline: true,
+        imgVersion: true,
+        venue: true,
+        venueLink: true,
+        doorsOpen: true,
+      },
     });
 
     if (!event) {
@@ -165,7 +177,10 @@ export async function POST(req: Request) {
               eventId: event.id,
               imgVersion: event.imgVersion,
               eventTagline: event.tagline || null,
+              eventVenue: event.venue || null,
+              eventVenueLink: event.venueLink || null,
               doorsOpenTime: event.doorsOpen?.toISOString() || null,
+              ticketDropTime: event.ticketingDate?.toISOString() || event.releaseDate?.toISOString() || null,
             })
         ).then(
           () => ({ success: true, email }),

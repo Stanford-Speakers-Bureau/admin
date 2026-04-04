@@ -257,6 +257,22 @@ function formatFullDateTime(dateString: string | null): string {
   }).format(new Date(dateString));
 }
 
+/** Format exact date+time with timezone as "Thursday, January 23, 2026 at 8:00 PM PST" */
+function formatFullDateTimeWithTimezone(dateString: string | null): string {
+  if (!dateString) return "TBA";
+  return new Intl.DateTimeFormat("en-US", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+    timeZoneName: "short",
+    timeZone: PACIFIC_TIMEZONE,
+  }).format(new Date(dateString));
+}
+
 // ============================================================================
 // Gmail dark mode blend helpers
 // ============================================================================
@@ -568,6 +584,22 @@ function buildImportantNotice(
 /** Generates plain text "Important" notice */
 function buildImportantNoticeText(): string {
   return `BEFORE YOU ARRIVE:\n${IMPORTANT_NOTICE_ITEMS.map((item) => `- ${item.text}`).join("\n")}`;
+}
+
+/** Builds a prominent date/time callout card */
+function buildDateTimeCallout(opts: {
+  eyebrow: string;
+  value: string;
+  subtitle?: string;
+}): string {
+  return `
+    <div style="background-color: #18181b; border: 1px solid #A80D0C; border-radius: 12px; padding: 24px; margin-bottom: 24px; text-align: center; box-shadow: inset 0 0 0 1px rgba(193, 18, 17, 0.15);">
+      ${gmailBlendStart}
+        <p style="margin: 0 0 10px 0; color: #f87171; font-size: 12px; font-weight: 700; letter-spacing: 1.3px; text-transform: uppercase;">${opts.eyebrow}</p>
+        <h2 style="margin: 0; color: #ffffff; font-size: 28px; font-weight: 700; line-height: 1.3; font-family: Georgia, 'Times New Roman', Times, serif;">${opts.value}</h2>
+        ${opts.subtitle ? `<p style="margin: 12px 0 0 0; color: #a1a1aa; font-size: 14px; line-height: 1.6;">${opts.subtitle}</p>` : ""}
+      ${gmailBlendEnd}
+    </div>`;
 }
 
 /** Builds the event details card with label/value rows */
@@ -2058,6 +2090,9 @@ export type NotifyTicketsAvailableInData = {
   imgVersion?: number | null;
   doorsOpenTime?: string | null;
   eventTagline?: string | null;
+  eventVenue?: string | null;
+  eventVenueLink?: string | null;
+  ticketDropTime?: string | null;
 };
 
 function generateTicketsAvailableInEmailText(
@@ -2066,10 +2101,14 @@ function generateTicketsAvailableInEmailText(
   const baseUrl = getBaseUrl();
   const eventUrl = data.eventRoute ? `${baseUrl}/events/${data.eventRoute}` : baseUrl;
   const formattedDate = formatFullDateTime(data.doorsOpenTime || data.eventStartTime);
+  const ticketDropSection = data.ticketDropTime
+    ? `\nExact ticket drop:\n${formatFullDateTimeWithTimezone(data.ticketDropTime)}\n`
+    : "";
   return `
 Tickets to ${data.eventName} drop in ${data.approxTimeUntilAvailable}!
 
 You asked to be notified — mark your calendar and be ready!
+${ticketDropSection}
 
 Event page: ${eventUrl}
 
@@ -2090,11 +2129,15 @@ async function generateTicketsAvailableInEmailHTML(
   const baseUrl = getBaseUrl();
   const eventUrl = data.eventRoute ? `${baseUrl}/events/${data.eventRoute}` : baseUrl;
   const formattedDate = formatFullDateTime(data.doorsOpenTime || data.eventStartTime);
+  const formattedTicketDrop = formatFullDateTimeWithTimezone(data.ticketDropTime || null);
 
   const heroCard = buildHeroCard({
     eventName: data.eventName,
     eventTagline: data.eventTagline,
     eventStartTime: data.eventStartTime,
+    doorsOpenTime: data.doorsOpenTime,
+    eventVenue: data.eventVenue,
+    eventVenueLink: data.eventVenueLink,
     eventId: data.eventId,
     imgVersion: data.imgVersion,
   });
@@ -2110,6 +2153,13 @@ async function generateTicketsAvailableInEmailHTML(
     "You asked to be notified &mdash; mark your calendar and be ready!",
     { color: "#a1a1aa" },
   ));
+  if (data.ticketDropTime) {
+    contentSections.push(buildDateTimeCallout({
+      eyebrow: "Tickets Drop Exactly At",
+      value: formattedTicketDrop,
+      subtitle: "Free tickets are first come, first served. We recommend setting a reminder a few minutes early.",
+    }));
+  }
 
   // CTA Button
   contentSections.push(buildButton(eventUrl, "View Event Page", { style: " padding: 16px 40px; font-weight: 700; font-size: 18px; letter-spacing: 0.5px;" }));
@@ -2550,7 +2600,6 @@ function generateEventAnnouncedEmailText(data: EventAnnouncedEmailData): string 
   const baseUrl = getBaseUrl();
   const eventUrl = data.eventRoute ? `${baseUrl}/events/${data.eventRoute}` : baseUrl;
   const formattedDate = formatFullDateTime(data.doorsOpenTime || data.eventStartTime);
-  const doorsOpen = data.doorsOpenTime ? formatPillTime(data.doorsOpenTime) : null;
   return `
 ${data.eventName} is coming to Stanford!
 
@@ -2575,7 +2624,6 @@ async function generateEventAnnouncedEmailHTML(
   const baseUrl = getBaseUrl();
   const eventUrl = data.eventRoute ? `${baseUrl}/events/${data.eventRoute}` : baseUrl;
   const formattedDate = formatFullDateTime(data.doorsOpenTime || data.eventStartTime);
-  const formattedDoorsOpen = data.doorsOpenTime ? formatPillTime(data.doorsOpenTime) : null;
 
   const heroCard = buildHeroCard({
     eventName: data.eventName,
