@@ -273,6 +273,25 @@ function formatFullDateTimeWithTimezone(dateString: string | null): string {
   }).format(new Date(dateString));
 }
 
+function formatTicketDropTime(dateString: string | null): string {
+  if (!dateString) return "TBA";
+  const d = new Date(dateString);
+  const day = new Intl.DateTimeFormat("en-US", {
+    weekday: "long",
+    month: "short",
+    day: "numeric",
+    timeZone: PACIFIC_TIMEZONE,
+  }).format(d);
+  const time = new Intl.DateTimeFormat("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+    timeZoneName: "short",
+    timeZone: PACIFIC_TIMEZONE,
+  }).format(d);
+  return `${day} &middot; ${time}`;
+}
+
 // ============================================================================
 // Gmail dark mode blend helpers
 // ============================================================================
@@ -2116,7 +2135,7 @@ function generateTicketsAvailableInEmailText(
   const eventUrl = data.eventRoute ? `${baseUrl}/events/${data.eventRoute}` : baseUrl;
   const formattedDate = formatFullDateTime(data.doorsOpenTime || data.eventStartTime);
   const ticketDropSection = data.ticketDropTime
-    ? `\nExact ticket drop:\n${formatFullDateTimeWithTimezone(data.ticketDropTime)}\n`
+    ? `\nTicket Drop: ${formatFullDateTimeWithTimezone(data.ticketDropTime)}\n`
     : "";
   return `
 Tickets to ${data.eventName} drop in ${data.approxTimeUntilAvailable}!
@@ -2169,9 +2188,9 @@ async function generateTicketsAvailableInEmailHTML(
   ));
   if (data.ticketDropTime) {
     contentSections.push(buildDateTimeCallout({
-      eyebrow: "Tickets Drop Exactly At",
-      value: formattedTicketDrop,
-      subtitle: "Free tickets are first come, first served. We recommend setting a reminder a few minutes early.",
+      eyebrow: "Ticket Drop",
+      value: formatTicketDropTime(data.ticketDropTime),
+      subtitle: "First come, first served. Set a reminder a few minutes early.",
     }));
   }
 
