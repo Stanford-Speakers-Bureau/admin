@@ -10,6 +10,7 @@ import { verifyAdminRequest } from "@/app/lib/auth";
 import { PACIFIC_TIMEZONE } from "@/app/lib/constants";
 import { pullFromWaitlist } from "@/app/lib/waitlist";
 import { db, eq, ne, events } from "@ssb/db";
+import { logAuditEvent } from "@/app/lib/audit";
 import type { InferInsertModel, InferSelectModel } from "@ssb/db";
 import {
   isValidUUID,
@@ -390,6 +391,13 @@ export async function POST(req: Request) {
       }
     }
 
+    await logAuditEvent({
+      action: id ? "event.edit" : "event.create",
+      actor: auth.email!,
+      eventId: savedEvent.id,
+      eventName: savedEvent.name ?? null,
+    });
+
     const eventWithImage = await serializeEventWithImages(savedEvent);
 
     return NextResponse.json({ success: true, event: eventWithImage });
@@ -425,6 +433,14 @@ export async function PATCH(req: Request) {
         .where(eq(events.id, id))
         .returning();
 
+      await logAuditEvent({
+        action: "event.toggle_standby",
+        actor: auth.email!,
+        eventId: id,
+        eventName: updatedEvent.name ?? null,
+        metadata: { standbyEnabled },
+      });
+
       const eventWithImage = await serializeEventWithImages(updatedEvent);
 
       return NextResponse.json({ success: true, event: eventWithImage });
@@ -449,6 +465,14 @@ export async function PATCH(req: Request) {
         .where(eq(events.id, id))
         .returning();
 
+      await logAuditEvent({
+        action: "event.toggle_live",
+        actor: auth.email!,
+        eventId: id,
+        eventName: updatedEvent.name ?? null,
+        metadata: { live: true },
+      });
+
       const eventWithImage = await serializeEventWithImages(updatedEvent);
 
       return NextResponse.json({ success: true, event: eventWithImage });
@@ -458,6 +482,14 @@ export async function PATCH(req: Request) {
         .set({ live: false })
         .where(eq(events.id, id))
         .returning();
+
+      await logAuditEvent({
+        action: "event.toggle_live",
+        actor: auth.email!,
+        eventId: id,
+        eventName: updatedEvent.name ?? null,
+        metadata: { live: false },
+      });
 
       const eventWithImage = await serializeEventWithImages(updatedEvent);
 
@@ -500,7 +532,7 @@ export async function DELETE(req: Request) {
     // Get the event first to delete its image
     const event = await db.query.events.findFirst({
       where: eq(events.id, id),
-      columns: { img: true, mobileImg: true },
+      columns: { name: true, img: true, mobileImg: true },
     });
 
     // Delete the image from storage if it exists (Supabase Storage)
@@ -512,6 +544,13 @@ export async function DELETE(req: Request) {
 
     // Delete the event
     await db.delete(events).where(eq(events.id, id));
+
+    await logAuditEvent({
+      action: "event.delete",
+      actor: auth.email!,
+      eventId: id,
+      eventName: event?.name ?? null,
+    });
 
     return NextResponse.json({ success: true });
   } catch (error) {

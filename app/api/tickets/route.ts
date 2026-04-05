@@ -14,6 +14,7 @@ import { PACIFIC_TIMEZONE } from "@/app/lib/constants";
 import { pullFromWaitlist } from "@/app/lib/waitlist";
 import { db, eq, and, or, ilike, inArray, isNotNull, count as dbCount, tickets, events, waitlist, referrals } from "@ssb/db";
 import { isValidUUID } from "@/app/lib/validation";
+import { logAuditEvent } from "@/app/lib/audit";
 
 /** Helper to serialize a ticket (with optional event relation) to snake_case for API response */
 function serializeTicket(ticket: {
@@ -270,7 +271,8 @@ export async function DELETE(req: Request) {
     // Fetch the ticket before deleting to get event_id and type
     const ticketToDelete = await db.query.tickets.findFirst({
       where: eq(tickets.id, id),
-      columns: { eventId: true, type: true },
+      columns: { email: true, eventId: true, type: true },
+      with: { event: { columns: { name: true } } },
     });
 
     if (!ticketToDelete) {
@@ -279,6 +281,15 @@ export async function DELETE(req: Request) {
 
     // Delete the ticket
     await db.delete(tickets).where(eq(tickets.id, id));
+
+    await logAuditEvent({
+      action: "ticket.delete",
+      actor: auth.email!,
+      eventId: ticketToDelete.eventId,
+      eventName: ticketToDelete.event?.name ?? null,
+      targetEmail: ticketToDelete.email,
+      metadata: { ticketId: id, type: ticketToDelete.type },
+    });
 
     // Sync referral counts
     try {
@@ -387,6 +398,15 @@ export async function PATCH(req: Request) {
         with: TICKET_WITH_EVENT,
       });
 
+      await logAuditEvent({
+        action: "ticket.update_name",
+        actor: auth.email!,
+        eventId: ticket!.eventId,
+        eventName: ticket!.event?.name ?? null,
+        targetEmail: ticket!.email,
+        metadata: { ticketId: id, newName },
+      });
+
       return NextResponse.json({ success: true, ticket: serializeTicket(ticket!) });
     } else if (action === "unscan") {
       // Unscan the ticket: set scanned to false and clear scan-related fields
@@ -411,6 +431,15 @@ export async function PATCH(req: Request) {
           { status: 500 },
         );
       }
+
+      await logAuditEvent({
+        action: "ticket.unscan",
+        actor: auth.email!,
+        eventId: ticket!.eventId,
+        eventName: ticket!.event?.name ?? null,
+        targetEmail: ticket!.email,
+        metadata: { ticketId: id },
+      });
 
       return NextResponse.json({ success: true, ticket: serializeTicket(ticket!) });
     } else if (action === "updateType" || type) {
@@ -572,6 +601,15 @@ export async function PATCH(req: Request) {
         }
       }
 
+      await logAuditEvent({
+        action: "ticket.update_type",
+        actor: auth.email!,
+        eventId: ticket!.eventId,
+        eventName: ticket!.event?.name ?? null,
+        targetEmail: ticket!.email,
+        metadata: { ticketId: id, oldType: currentTicket.type, newType: type },
+      });
+
       return NextResponse.json({ success: true, ticket: serializeTicket(ticket!) });
     } else if (action === "updateScanned" || typeof scanned === "boolean") {
       // Update scanned status
@@ -652,6 +690,15 @@ export async function PATCH(req: Request) {
           { status: 500 },
         );
       }
+
+      await logAuditEvent({
+        action: "email.send",
+        actor: auth.email!,
+        eventId: ticket.eventId,
+        eventName: ticket.event?.name ?? null,
+        targetEmail: ticket.email,
+        metadata: { type: "resendEmail", ticketId: id },
+      });
 
       return NextResponse.json({
         success: true,
@@ -764,6 +811,14 @@ export async function PATCH(req: Request) {
         logPrefix: "Failed to send reminder to",
       });
 
+      await logAuditEvent({
+        action: "email.send_mass",
+        actor: auth.email!,
+        eventId: eventId,
+        eventName: event.name ?? null,
+        metadata: { type: "dayOfReminders", sent, failed, total: eventTickets.length },
+      });
+
       return NextResponse.json({
         success: true,
         sent,
@@ -819,6 +874,15 @@ export async function PATCH(req: Request) {
           { status: 500 },
         );
       }
+
+      await logAuditEvent({
+        action: "email.send",
+        actor: auth.email!,
+        eventId: ticket.eventId,
+        eventName: ticket.event?.name ?? null,
+        targetEmail: ticket.email,
+        metadata: { type: "dayOfReminder", ticketId: id },
+      });
 
       return NextResponse.json({
         success: true,
@@ -930,6 +994,14 @@ export async function PATCH(req: Request) {
         logPrefix: "Failed to send early reminder to",
       });
 
+      await logAuditEvent({
+        action: "email.send_mass",
+        actor: auth.email!,
+        eventId: eventId,
+        eventName: event.name ?? null,
+        metadata: { type: "earlyReminders", sent, failed, total: eventTickets.length },
+      });
+
       return NextResponse.json({
         success: true,
         sent,
@@ -986,6 +1058,15 @@ export async function PATCH(req: Request) {
           { status: 500 },
         );
       }
+
+      await logAuditEvent({
+        action: "email.send",
+        actor: auth.email!,
+        eventId: ticket.eventId,
+        eventName: ticket.event?.name ?? null,
+        targetEmail: ticket.email,
+        metadata: { type: "earlyReminder", ticketId: id },
+      });
 
       return NextResponse.json({
         success: true,
@@ -1154,6 +1235,15 @@ export async function POST(req: Request) {
         }
       }
 
+      await logAuditEvent({
+        action: "ticket.create",
+        actor: auth.email!,
+        eventId: eventId,
+        eventName: updatedTicket!.event?.name ?? null,
+        targetEmail: email,
+        metadata: { ticketId: updatedTicket!.id, type: updatedTicket!.type, updated: true },
+      });
+
       return NextResponse.json({
         success: true,
         ticket: serializeTicket(updatedTicket!),
@@ -1226,6 +1316,15 @@ export async function POST(req: Request) {
         { status: 500 },
       );
     }
+
+    await logAuditEvent({
+      action: "ticket.create",
+      actor: auth.email!,
+      eventId: eventId,
+      eventName: ticket!.event?.name ?? null,
+      targetEmail: email,
+      metadata: { ticketId: ticket!.id, type: ticket!.type },
+    });
 
     return NextResponse.json({ success: true, ticket: serializeTicket(ticket!) });
   } catch (error) {

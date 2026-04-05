@@ -3,6 +3,7 @@ import { verifyAdminRequest } from "@/app/lib/auth";
 import { getAdminSuggestions } from "@/app/suggest/data";
 import { isValidUUID } from "@/app/lib/validation";
 import { db, eq, suggest, votes } from "@ssb/db";
+import { logAuditEvent } from "@/app/lib/audit";
 
 export async function POST(req: Request) {
   try {
@@ -26,9 +27,21 @@ export async function POST(req: Request) {
       );
     }
 
+    const existing = await db.query.suggest.findFirst({
+      where: eq(suggest.id, id),
+      columns: { speaker: true, email: true },
+    });
+
     await db.update(suggest)
       .set({ reviewed: true, approved: action === "approve" })
       .where(eq(suggest.id, id));
+
+    await logAuditEvent({
+      action: action === "approve" ? "suggestion.approve" : "suggestion.reject",
+      actor: auth.email!,
+      targetEmail: existing?.email ?? undefined,
+      metadata: { suggestionId: id, speaker: existing?.speaker },
+    });
 
     // Return fresh suggestions using the same logic as the initial page load
     const { suggestions } = await getAdminSuggestions();
@@ -66,9 +79,20 @@ export async function PATCH(req: Request) {
 
     // Handle marking as duplicate
     if (typeof duplicate === "boolean") {
+      const existing = await db.query.suggest.findFirst({
+        where: eq(suggest.id, id),
+        columns: { speaker: true },
+      });
+
       await db.update(suggest)
         .set({ duplicate })
         .where(eq(suggest.id, id));
+
+      await logAuditEvent({
+        action: "suggestion.mark_duplicate",
+        actor: auth.email!,
+        metadata: { suggestionId: id, speaker: existing?.speaker, duplicate },
+      });
 
       // Return fresh suggestions using the same logic as the initial page load
       const { suggestions } = await getAdminSuggestions();
@@ -80,9 +104,20 @@ export async function PATCH(req: Request) {
       return NextResponse.json({ error: "Invalid request" }, { status: 400 });
     }
 
+    const existing = await db.query.suggest.findFirst({
+      where: eq(suggest.id, id),
+      columns: { speaker: true },
+    });
+
     await db.update(suggest)
       .set({ speaker: speaker.trim() })
       .where(eq(suggest.id, id));
+
+    await logAuditEvent({
+      action: "suggestion.edit",
+      actor: auth.email!,
+      metadata: { suggestionId: id, oldSpeaker: existing?.speaker, newSpeaker: speaker.trim() },
+    });
 
     // Return fresh suggestions using the same logic as the initial page load
     const { suggestions } = await getAdminSuggestions();
@@ -184,6 +219,12 @@ export async function PUT(req: Request) {
     await db.update(suggest)
       .set({ reviewed: true, approved: false, duplicate: true })
       .where(eq(suggest.id, sourceId));
+
+    await logAuditEvent({
+      action: "suggestion.merge",
+      actor: auth.email!,
+      metadata: { sourceId, targetId, votesTransferred: votesToTransfer.length },
+    });
 
     // Return fresh suggestions using the same logic as the initial page load
     const { suggestions } = await getAdminSuggestions();

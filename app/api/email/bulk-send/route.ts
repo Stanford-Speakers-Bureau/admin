@@ -8,6 +8,7 @@ import {
 } from "@/app/lib/email";
 import { isValidUUID } from "@/app/lib/validation";
 import { db, eq, events, notify, tickets } from "@ssb/db";
+import { logAuditEvent } from "@/app/lib/audit";
 
 const MAX_EMAILS_PER_REQUEST = 50;
 
@@ -249,6 +250,14 @@ export async function POST(req: Request) {
         console.error("Bulk email send failed:", result.reason);
       }
     }
+
+    await logAuditEvent({
+      action: "email.send_mass",
+      actor: auth.email!,
+      eventId: eventId,
+      eventName: event.name ?? null,
+      metadata: { type: "bulkSend", kind, sent, failed, skipped },
+    });
 
     return NextResponse.json({ sent, failed, skipped });
   } catch (err) {
