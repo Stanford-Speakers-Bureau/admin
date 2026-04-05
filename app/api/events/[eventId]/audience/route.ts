@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getHighestAffiliation } from "@/app/lib/affiliation";
 import { verifyAdminRequest } from "@/app/lib/auth";
 import { getSupabaseClient } from "@/app/lib/supabase";
 import { isValidUUID } from "@/app/lib/validation";
@@ -43,10 +44,6 @@ function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
 }
 
-function normalizeAffiliation(value: string): string {
-  return value.trim().toLowerCase().split("@")[0];
-}
-
 function getStringValue(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
@@ -84,18 +81,6 @@ function createUserAccumulator(email: string): AudienceUserAccumulator {
     ticketedEventIds: new Set(),
     attendedEventIds: new Set(),
   };
-}
-
-function resolveAffiliation(values: string[]): Affiliation {
-  const normalized = new Set(values.map(normalizeAffiliation).filter(Boolean));
-
-  for (const affiliation of AFFILIATION_PRIORITY) {
-    if (normalized.has(affiliation)) {
-      return affiliation;
-    }
-  }
-
-  return "missing";
 }
 
 function chunkArray<T>(values: T[], chunkSize: number): T[][] {
@@ -202,10 +187,13 @@ export async function GET(
       user.displayName = user.displayName || profile.displayName || null;
       user.affiliation =
         user.affiliation === "missing"
-          ? resolveAffiliation([
-              ...profile.eduPersonAffiliation,
-              ...profile.eduPersonScopedAffiliation,
-            ])
+          ? (getHighestAffiliation(
+              [
+                ...profile.eduPersonAffiliation,
+                ...profile.eduPersonScopedAffiliation,
+              ],
+              AFFILIATION_PRIORITY,
+            ) ?? "missing")
           : user.affiliation;
       user.lastLoginAt = getLaterIsoDate(
         user.lastLoginAt,

@@ -12,8 +12,9 @@ import ReactECharts from "echarts-for-react";
 // ── Types ────────────────────────────────────────────────────────────────
 
 type TypeKey = "STANDARD" | "VIP" | "EXTERNAL" | "STANDBY";
+type AffiliationKey = "student" | "staff" | "faculty" | "member" | "unknown";
 
-type TypeBreakdown = { total: number; scanned: number };
+type Breakdown = { total: number; scanned: number };
 
 type ScanEvent = {
   name: string | null;
@@ -36,7 +37,8 @@ type CheckInResponse = {
   startTime: string | null;
   standbyEnabled: boolean;
   waitlistCount: number;
-  byType: Record<TypeKey, TypeBreakdown>;
+  byType: Record<TypeKey, Breakdown>;
+  byAffiliation: Record<AffiliationKey, Breakdown>;
   standbyTimestamps: string[];
   scannerLeaderboard: ScannerEntry[];
   peakScansPerMin: number;
@@ -170,6 +172,44 @@ const TYPE_CONFIG = [
   { key: "VIP" as const, label: "VIP", color: "#8b5cf6", ring: "ring-violet-500/30", bg: "bg-violet-500/10", text: "text-violet-400" },
   { key: "EXTERNAL" as const, label: "External", color: "#10b981", ring: "ring-emerald-500/30", bg: "bg-emerald-500/10", text: "text-emerald-400" },
   { key: "STANDBY" as const, label: "Standby", color: "#f59e0b", ring: "ring-amber-500/30", bg: "bg-amber-500/10", text: "text-amber-400" },
+];
+
+const AFFILIATION_CONFIG = [
+  {
+    key: "student" as const,
+    label: "Student",
+    color: "#3b82f6",
+    bg: "bg-blue-500/10",
+    text: "text-blue-400",
+  },
+  {
+    key: "staff" as const,
+    label: "Staff",
+    color: "#10b981",
+    bg: "bg-emerald-500/10",
+    text: "text-emerald-400",
+  },
+  {
+    key: "faculty" as const,
+    label: "Faculty",
+    color: "#8b5cf6",
+    bg: "bg-violet-500/10",
+    text: "text-violet-400",
+  },
+  {
+    key: "member" as const,
+    label: "Member",
+    color: "#f59e0b",
+    bg: "bg-amber-500/10",
+    text: "text-amber-400",
+  },
+  {
+    key: "unknown" as const,
+    label: "Unknown",
+    color: "#71717a",
+    bg: "bg-zinc-800/80",
+    text: "text-zinc-300",
+  },
 ];
 
 const TYPE_BADGE: Record<string, string> = {
@@ -987,6 +1027,7 @@ function CheckInContent({ eventId }: { eventId: string }) {
     : 0;
   const visibleTypeCards = TYPE_CONFIG.filter(({ key }) => byType[key].total > 0);
   const typeCardCount = visibleTypeCards.length + (waitlistCount > 0 ? 1 : 0);
+  const affiliationCardCount = AFFILIATION_CONFIG.length;
 
   return (
     <div className="space-y-5">
@@ -1160,6 +1201,57 @@ function CheckInContent({ eventId }: { eventId: string }) {
             <p className="text-xs text-zinc-500 mt-1">people waiting</p>
           </div>
         )}
+      </div>
+
+      {/* ── Affiliation breakdown ── */}
+      <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
+        <div className="mb-4">
+          <h3 className="text-sm font-semibold text-zinc-300">
+            Attendance by Affiliation
+          </h3>
+          <p className="mt-1 text-[11px] text-zinc-500">
+            Uses each ticket holder&apos;s highest profile affiliation. Unmatched
+            profiles are grouped as Unknown.
+          </p>
+        </div>
+        <div
+          className="grid grid-cols-2 gap-3 analytics-card-grid"
+          style={getAnalyticsCardGridStyle(affiliationCardCount)}
+        >
+          {AFFILIATION_CONFIG.map(({ key, label, color, bg, text }) => {
+            const affiliation = data.byAffiliation[key];
+            const pct =
+              affiliation.total > 0
+                ? (affiliation.scanned / affiliation.total) * 100
+                : 0;
+
+            return (
+              <div
+                key={key}
+                className={`rounded-xl border border-zinc-800 p-4 ${bg}`}
+              >
+                <div className="mb-1 flex items-center justify-between">
+                  <span
+                    className={`text-xs font-semibold uppercase tracking-wider ${text}`}
+                  >
+                    {label}
+                  </span>
+                  <span className={`text-lg font-bold ${text}`}>
+                    {pct.toFixed(0)}%
+                  </span>
+                </div>
+                <p className="mb-2 text-sm font-medium text-zinc-300">
+                  {affiliation.scanned} / {affiliation.total}
+                </p>
+                <ProgressBar
+                  value={affiliation.scanned}
+                  max={affiliation.total}
+                  color={color}
+                />
+              </div>
+            );
+          })}
+        </div>
       </div>
 
       {/* ── Scanner Overview ── */}

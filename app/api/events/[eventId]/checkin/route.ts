@@ -1,10 +1,34 @@
 import { NextResponse } from "next/server";
+import { getHighestAffiliation } from "@/app/lib/affiliation";
 import { verifyAdminRequest } from "@/app/lib/auth";
 import { isValidUUID } from "@/app/lib/validation";
-import { db, eq, events, tickets, waitlist, count } from "@ssb/db";
+import {
+  count,
+  db,
+  eq,
+  events,
+  inArray,
+  tickets,
+  userProfiles,
+  waitlist,
+} from "@ssb/db";
+
+type TypeKey = "STANDARD" | "VIP" | "EXTERNAL" | "STANDBY";
+type AffiliationKey = "student" | "staff" | "faculty" | "member" | "unknown";
+
+const AFFILIATION_PRIORITY: Exclude<AffiliationKey, "unknown">[] = [
+  "student",
+  "faculty",
+  "staff",
+  "member",
+];
+
+function normalizeEmail(email: string): string {
+  return email.trim().toLowerCase();
+}
 
 export async function GET(
-  req: Request,
+  _req: Request,
   { params }: { params: Promise<{ eventId: string }> },
 ) {
   try {
@@ -37,6 +61,7 @@ export async function GET(
       db.query.tickets.findMany({
         where: eq(tickets.eventId, eventId),
         columns: {
+          email: true,
           scanned: true,
           scanTime: true,
           type: true,
@@ -59,6 +84,48 @@ export async function GET(
     const totalTickets = ticketResults.length;
     const scannedTickets = ticketResults.filter((t) => t.scanned);
     const scannedCount = scannedTickets.length;
+    const profileLookupEmails = Array.from(
+      new Set(
+        ticketResults.flatMap((ticket) => {
+          const normalized = normalizeEmail(ticket.email);
+          return normalized && normalized !== ticket.email
+            ? [ticket.email, normalized]
+            : [ticket.email];
+        }),
+      ),
+    );
+    const profileRows =
+      profileLookupEmails.length > 0
+        ? await db.query.userProfiles.findMany({
+            where: inArray(userProfiles.email, profileLookupEmails),
+            columns: {
+              email: true,
+              eduPersonAffiliation: true,
+              eduPersonScopedAffiliation: true,
+            },
+          })
+        : [];
+    const affiliationByEmail = new Map<string, AffiliationKey>();
+
+    for (const profile of profileRows) {
+      const email = normalizeEmail(profile.email);
+      const currentAffiliation = affiliationByEmail.get(email);
+
+      if (currentAffiliation && currentAffiliation !== "unknown") {
+        continue;
+      }
+
+      affiliationByEmail.set(
+        email,
+        getHighestAffiliation(
+          [
+            ...profile.eduPersonAffiliation,
+            ...profile.eduPersonScopedAffiliation,
+          ],
+          AFFILIATION_PRIORITY,
+        ) ?? "unknown",
+      );
+    }
 
     const scanEvents = scannedTickets
       .filter((t) => t.scanTime)
@@ -72,20 +139,34 @@ export async function GET(
       .sort((a, b) => a.scanTime.localeCompare(b.scanTime));
 
     const scanTimestamps = scanEvents.map((scan) => scan.scanTime);
-
-    type TypeKey = "STANDARD" | "VIP" | "EXTERNAL" | "STANDBY";
     const byType: Record<TypeKey, { total: number; scanned: number }> = {
       STANDARD: { total: 0, scanned: 0 },
       VIP: { total: 0, scanned: 0 },
       EXTERNAL: { total: 0, scanned: 0 },
       STANDBY: { total: 0, scanned: 0 },
     };
+    const byAffiliation: Record<AffiliationKey, { total: number; scanned: number }> = {
+      student: { total: 0, scanned: 0 },
+      staff: { total: 0, scanned: 0 },
+      faculty: { total: 0, scanned: 0 },
+      member: { total: 0, scanned: 0 },
+      unknown: { total: 0, scanned: 0 },
+    };
 
     for (const t of ticketResults) {
       const key = (t.type?.toUpperCase() ?? "STANDARD") as TypeKey;
-      const bucket = byType[key] ?? byType.STANDARD;
-      bucket.total++;
-      if (t.scanned) bucket.scanned++;
+      const typeBucket = byType[key] ?? byType.STANDARD;
+      const affiliationKey =
+        affiliationByEmail.get(normalizeEmail(t.email)) ?? "unknown";
+      const affiliationBucket = byAffiliation[affiliationKey];
+
+      typeBucket.total++;
+      affiliationBucket.total++;
+
+      if (t.scanned) {
+        typeBucket.scanned++;
+        affiliationBucket.scanned++;
+      }
     }
 
     // Scanner leaderboard
@@ -135,6 +216,7 @@ export async function GET(
       standbyEnabled: event.standbyEnabled ?? false,
       waitlistCount: waitlistResult[0]?.value ?? 0,
       byType,
+      byAffiliation,
       standbyTimestamps,
       scannerLeaderboard,
       peakScansPerMin,
