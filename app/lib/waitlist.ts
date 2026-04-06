@@ -100,6 +100,7 @@ export async function pullFromWaitlist(
           eventVenue: newTicket.event?.venue || null,
           eventVenueLink: newTicket.event?.venueLink || null,
           eventDescription: newTicket.event?.desc || null,
+          doorsOpenTime: newTicket.event?.doorsOpen?.toISOString() || null,
           eventId: newTicket.event?.id || null,
           imgVersion: newTicket.event?.imgVersion ?? null,
           eventTagline: newTicket.event?.tagline || null,

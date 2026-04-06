@@ -1008,7 +1008,8 @@ async function generateTicketEmailHTML(
   const isVIP = ticketType?.toUpperCase() === "VIP";
   const isExternal = ticketType?.toUpperCase() === "EXTERNAL";
 
-  const formattedDate = formatFullDateTime(doorsOpenTime || eventStartTime);
+  const formattedDate = formatFullDateTime(eventStartTime);
+  const formattedDoorsOpen = doorsOpenTime ? formatPillTime(doorsOpenTime) : null;
 
   const qrImageSrc = options?.qrCid ? `cid:${options.qrCid}` : "";
 
@@ -1044,6 +1045,7 @@ async function generateTicketEmailHTML(
   if (data.name) detailRows.push({ label: "Name:", value: data.name });
   detailRows.push({ label: "Event:", value: eventName || "Event" });
   detailRows.push({ label: "Date & Time:", value: formattedDate });
+  if (formattedDoorsOpen) detailRows.push({ label: "Doors Open:", value: formattedDoorsOpen });
   if (eventVenue) {
     detailRows.push({
       label: "Location:",
@@ -1082,9 +1084,10 @@ async function generateTicketEmailHTML(
       "Use the VIP entrance when you arrive &mdash; we've saved you a front-row seat.",
     ));
   }
-
-  // Welcome message
-  contentSections.push(buildParagraph("Your ticket is confirmed &mdash; we can't wait to see you!"));
+  else {
+    // Non VIP Welcome message
+    contentSections.push(buildParagraph("Your ticket is confirmed &mdash; we can't wait to see you!"));
+  }
 
   // Cancel ticket message + button
   contentSections.push(buildParagraph(
@@ -1144,7 +1147,8 @@ async function generateTicketEmailHTML(
 function generateTicketEmailText(data: TicketEmailData): string {
   const { eventName, ticketType, eventStartTime, eventRoute, ticketId, doorsOpenTime } = data;
 
-  const formattedDate = formatFullDateTime(doorsOpenTime || eventStartTime);
+  const formattedDate = formatFullDateTime(eventStartTime);
+  const formattedDoorsOpen = doorsOpenTime ? formatPillTime(doorsOpenTime) : null;
   const baseUrl = getBaseUrl();
   const eventUrl = eventRoute ? `${baseUrl}/events/${eventRoute}` : null;
   const cancelTicketUrl = ticketId ? `${baseUrl}/cancel/${ticketId}` : null;
@@ -1157,7 +1161,7 @@ Your ticket is confirmed — we can't wait to see you!
 ${ticketType?.toUpperCase() === "VIP" ? "Use the VIP entrance when you arrive — we've saved you a front-row seat.\n\n" : ""}Event Details:
 ${data.name ? `- Name: ${data.name}\n` : ""}- Event: ${eventName || "Event"}
 - Date & Time: ${formattedDate}
-- Ticket Type: ${ticketType || "STANDARD"}
+${formattedDoorsOpen ? `- Doors Open: ${formattedDoorsOpen}\n` : ""}- Ticket Type: ${ticketType || "STANDARD"}
 - Ticket ID: ${ticketId}
 ${eventUrl ? `- Event URL: ${eventUrl}` : ""}
 
@@ -1309,18 +1313,18 @@ async function generateDayOfReminderEmailHTML(
   const qrImageSrc = options?.qrCid ? `cid:${options.qrCid}` : "";
   const ticketValidTime = eventStartTime
     ? new Date(eventStartTime).toLocaleString("en-US", {
-        hour: "numeric",
-        minute: "2-digit",
-        hour12: true,
-        timeZone: PACIFIC_TIMEZONE,
-      })
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+      timeZone: PACIFIC_TIMEZONE,
+    })
     : "";
   const ticketValidDate = eventStartTime
     ? new Date(eventStartTime).toLocaleString("en-US", {
-        month: "long",
-        day: "numeric",
-        timeZone: PACIFIC_TIMEZONE,
-      })
+      month: "long",
+      day: "numeric",
+      timeZone: PACIFIC_TIMEZONE,
+    })
     : "";
   const attendeeName = data.name?.trim() || "you";
 
@@ -1639,24 +1643,24 @@ async function generateEarlyReminderEmailHTML(
   _tomorrowDate.setDate(_tomorrowDate.getDate() + 1);
   const isTomorrow = eventStartTime
     ? new Date(eventStartTime).toLocaleDateString("en-US", { timeZone: PACIFIC_TIMEZONE }) ===
-      _tomorrowDate.toLocaleDateString("en-US", { timeZone: PACIFIC_TIMEZONE })
+    _tomorrowDate.toLocaleDateString("en-US", { timeZone: PACIFIC_TIMEZONE })
     : false;
 
   const qrImageSrc = options?.qrCid ? `cid:${options.qrCid}` : "";
   const ticketValidTime = eventStartTime
     ? new Date(eventStartTime).toLocaleString("en-US", {
-        hour: "numeric",
-        minute: "2-digit",
-        hour12: true,
-        timeZone: PACIFIC_TIMEZONE,
-      })
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+      timeZone: PACIFIC_TIMEZONE,
+    })
     : "";
   const ticketValidDate = eventStartTime
     ? new Date(eventStartTime).toLocaleString("en-US", {
-        month: "long",
-        day: "numeric",
-        timeZone: PACIFIC_TIMEZONE,
-      })
+      month: "long",
+      day: "numeric",
+      timeZone: PACIFIC_TIMEZONE,
+    })
     : "";
   const attendeeName = data.name?.trim() || "you";
 
@@ -1803,7 +1807,7 @@ function generateEarlyReminderEmailText(
   _tomorrowDate.setDate(_tomorrowDate.getDate() + 1);
   const isTomorrow = eventStartTime
     ? new Date(eventStartTime).toLocaleDateString("en-US", { timeZone: PACIFIC_TIMEZONE }) ===
-      _tomorrowDate.toLocaleDateString("en-US", { timeZone: PACIFIC_TIMEZONE })
+    _tomorrowDate.toLocaleDateString("en-US", { timeZone: PACIFIC_TIMEZONE })
     : false;
   const dayPhrase = isTomorrow ? "TOMORROW" : `this ${dayLabel}`;
 
@@ -1878,7 +1882,7 @@ export async function sendEarlyReminderEmail(
   _tomorrowForSubject.setDate(_tomorrowForSubject.getDate() + 1);
   const isEventTomorrow = data.eventStartTime
     ? new Date(data.eventStartTime).toLocaleDateString("en-US", { timeZone: PACIFIC_TIMEZONE }) ===
-      _tomorrowForSubject.toLocaleDateString("en-US", { timeZone: PACIFIC_TIMEZONE })
+    _tomorrowForSubject.toLocaleDateString("en-US", { timeZone: PACIFIC_TIMEZONE })
     : false;
 
   const subject = data.eventName
