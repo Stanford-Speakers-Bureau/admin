@@ -286,13 +286,14 @@ export default function AdminNotifyClient() {
           chunkSize: EMAIL_CHUNK_SIZE,
           label: `Sending ${getVariantLabel(sendVariant, sendApproxTime.trim())}`,
           onProgress: setSendState,
-          sendChunk: async (chunk) => {
+          sendChunk: async (chunk, context) => {
             const res = await fetch("/api/email/bulk-send", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
                 eventId: selectedEventId,
                 emails: chunk,
+                auditBatchId: context.batchId,
                 kind: getBulkEmailKind(sendVariant),
                 ...(sendVariant === "in" && {
                   approxTimeUntilAvailable: sendApproxTime.trim(),

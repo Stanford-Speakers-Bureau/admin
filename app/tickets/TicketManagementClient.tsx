@@ -243,12 +243,13 @@ export default function TicketManagementClient({
       chunkSize: REMINDER_CHUNK_SIZE,
       label: options.label,
       onProgress: setBulkReminderState,
-      sendChunk: async (chunk) => {
+      sendChunk: async (chunk, context) => {
         const response = await fetch(`/api/tickets?eventId=${options.eventId}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             action: options.action,
+            auditBatchId: context.batchId,
             ticketIds: chunk.map((recipient) => recipient.id),
           }),
         });

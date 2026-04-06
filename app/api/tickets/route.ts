@@ -368,7 +368,11 @@ export async function PATCH(req: Request) {
     }
 
     const body = await req.json();
-    const { id, action, type, scanned, promo, name, ticketIds } = body;
+    const { id, action, type, scanned, promo, name, ticketIds, auditBatchId } = body;
+    const normalizedAuditBatchId =
+      typeof auditBatchId === "string" && auditBatchId.trim().length > 0
+        ? auditBatchId.trim()
+        : null;
 
     // Batch reminder actions don't require a ticket ID - they use eventId from query params
     const batchActions = ["sendDayOfReminders", "sendEarlyReminders"];
@@ -819,7 +823,13 @@ export async function PATCH(req: Request) {
         actor: auth.email!,
         eventId: eventId,
         eventName: event.name ?? null,
-        metadata: { type: "dayOfReminders", sent, failed, total: eventTickets.length },
+        metadata: {
+          type: "dayOfReminders",
+          sent,
+          failed,
+          total: eventTickets.length,
+          ...(normalizedAuditBatchId ? { batchId: normalizedAuditBatchId } : {}),
+        },
       });
 
       return NextResponse.json({
@@ -1002,7 +1012,13 @@ export async function PATCH(req: Request) {
         actor: auth.email!,
         eventId: eventId,
         eventName: event.name ?? null,
-        metadata: { type: "earlyReminders", sent, failed, total: eventTickets.length },
+        metadata: {
+          type: "earlyReminders",
+          sent,
+          failed,
+          total: eventTickets.length,
+          ...(normalizedAuditBatchId ? { batchId: normalizedAuditBatchId } : {}),
+        },
       });
 
       return NextResponse.json({

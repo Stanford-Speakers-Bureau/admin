@@ -10,8 +10,48 @@ import {
   lte,
   ilike,
   inArray,
-  count as dbCount,
 } from "@ssb/db";
+
+type AuditLogEntry = {
+  kind: "log";
+  id: string;
+  created_at: string;
+  action: string;
+  actor: string;
+  source: string;
+  event_id: string | null;
+  event_name: string | null;
+  target_email: string | null;
+  metadata: Record<string, unknown> | null;
+};
+
+type AuditLogGroup = {
+  kind: "group";
+  id: string;
+  created_at: string;
+  action: string;
+  actor: string;
+  source: string;
+  event_id: string | null;
+  event_name: string | null;
+  target_email: null;
+  metadata: Record<string, unknown> | null;
+  entries: AuditLogEntry[];
+  group_count: number;
+};
+
+type AuditLogItem = AuditLogEntry | AuditLogGroup;
+type AuditLogRow = {
+  id: string;
+  createdAt: Date;
+  action: string;
+  actor: string;
+  source: string;
+  eventId: string | null;
+  eventName: string | null;
+  targetEmail: string | null;
+  metadata: string | null;
+};
 
 function parsePaginationParam(
   value: string | null,
@@ -44,6 +84,152 @@ function parseAuditMetadata(metadata: string | null): Record<string, unknown> | 
     console.error("[audit] Failed to parse metadata:", error);
     return { raw: metadata };
   }
+}
+
+function toAuditLogEntry(log: AuditLogRow): AuditLogEntry {
+  return {
+    kind: "log",
+    id: log.id,
+    created_at: log.createdAt.toISOString(),
+    action: log.action,
+    actor: log.actor,
+    source: log.source,
+    event_id: log.eventId,
+    event_name: log.eventName,
+    target_email: log.targetEmail,
+    metadata: parseAuditMetadata(log.metadata),
+  };
+}
+
+function getMassEmailBatchId(
+  action: string,
+  metadata: Record<string, unknown> | null,
+): string | null {
+  if (action !== "email.send_mass") {
+    return null;
+  }
+
+  const batchId = metadata?.batchId;
+  return typeof batchId === "string" && batchId.trim().length > 0
+    ? batchId.trim()
+    : null;
+}
+
+function getMetadataNumber(
+  metadata: Record<string, unknown> | null,
+  key: string,
+): number {
+  const value = metadata?.[key];
+
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value === "string") {
+    const parsed = Number.parseFloat(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+
+  return 0;
+}
+
+function summarizeMassEmailMetadata(
+  batchId: string,
+  entries: AuditLogEntry[],
+): Record<string, unknown> | null {
+  const primaryMetadata = entries.find((entry) => entry.metadata)?.metadata ?? null;
+  if (!primaryMetadata) {
+    return {
+      batchId,
+      chunkCount: entries.length,
+    };
+  }
+
+  const sent = entries.reduce(
+    (sum, entry) => sum + getMetadataNumber(entry.metadata, "sent"),
+    0,
+  );
+  const failed = entries.reduce(
+    (sum, entry) => sum + getMetadataNumber(entry.metadata, "failed"),
+    0,
+  );
+  const skipped = entries.reduce(
+    (sum, entry) => sum + getMetadataNumber(entry.metadata, "skipped"),
+    0,
+  );
+  const explicitTotal = entries.reduce(
+    (sum, entry) => sum + getMetadataNumber(entry.metadata, "total"),
+    0,
+  );
+
+  return {
+    ...primaryMetadata,
+    batchId,
+    sent,
+    failed,
+    skipped,
+    total: explicitTotal > 0 ? explicitTotal : sent + failed + skipped,
+    chunkCount: entries.length,
+  };
+}
+
+function buildMassEmailGroup(
+  batchId: string,
+  entries: AuditLogEntry[],
+): AuditLogItem {
+  if (entries.length === 1) {
+    return entries[0];
+  }
+
+  const firstEntry = entries[0];
+
+  return {
+    kind: "group",
+    id: `mass-email:${batchId}`,
+    created_at: firstEntry.created_at,
+    action: firstEntry.action,
+    actor: firstEntry.actor,
+    source: firstEntry.source,
+    event_id: firstEntry.event_id,
+    event_name: firstEntry.event_name,
+    target_email: null,
+    metadata: summarizeMassEmailMetadata(batchId, entries),
+    entries,
+    group_count: entries.length,
+  };
+}
+
+function groupAuditLogs(logs: AuditLogRow[]): AuditLogItem[] {
+  const groupedEntries = new Map<string, AuditLogEntry[]>();
+  const orderedItems: Array<
+    | { kind: "log"; entry: AuditLogEntry }
+    | { kind: "batch"; batchId: string }
+  > = [];
+
+  for (const log of logs) {
+    const entry = toAuditLogEntry(log);
+    const batchId = getMassEmailBatchId(entry.action, entry.metadata);
+
+    if (!batchId) {
+      orderedItems.push({ kind: "log", entry });
+      continue;
+    }
+
+    const existingEntries = groupedEntries.get(batchId);
+    if (existingEntries) {
+      existingEntries.push(entry);
+      continue;
+    }
+
+    groupedEntries.set(batchId, [entry]);
+    orderedItems.push({ kind: "batch", batchId });
+  }
+
+  return orderedItems.map((item) =>
+    item.kind === "log"
+      ? item.entry
+      : buildMassEmailGroup(item.batchId, groupedEntries.get(item.batchId) ?? [])
+  );
 }
 
 export async function GET(req: Request) {
@@ -87,29 +273,15 @@ export async function GET(req: Request) {
     }
 
     const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
-
-    const [logs, [totalResult]] = await Promise.all([
-      db.select().from(auditLogs)
-        .where(whereClause)
-        .orderBy(desc(auditLogs.createdAt))
-        .limit(limit)
-        .offset(offset),
-      db.select({ count: dbCount() }).from(auditLogs).where(whereClause),
-    ]);
+    const logs = await db.select().from(auditLogs)
+      .where(whereClause)
+      .orderBy(desc(auditLogs.createdAt));
+    const groupedLogs = groupAuditLogs(logs);
+    const paginatedLogs = groupedLogs.slice(offset, offset + limit);
 
     return NextResponse.json({
-      logs: logs.map((log) => ({
-        id: log.id,
-        created_at: log.createdAt.toISOString(),
-        action: log.action,
-        actor: log.actor,
-        source: log.source,
-        event_id: log.eventId,
-        event_name: log.eventName,
-        target_email: log.targetEmail,
-        metadata: parseAuditMetadata(log.metadata),
-      })),
-      total: totalResult?.count ?? 0,
+      logs: paginatedLogs,
+      total: groupedLogs.length,
       limit,
       offset,
     });

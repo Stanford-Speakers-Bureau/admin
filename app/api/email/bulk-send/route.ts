@@ -23,6 +23,7 @@ type BulkSendRequest = {
   emails?: string[];
   kind?: BulkEmailKind;
   approxTimeUntilAvailable?: string;
+  auditBatchId?: string;
 };
 
 function normalizeEmails(emails: string[]): string[] {
@@ -53,6 +54,7 @@ export async function POST(req: Request) {
       emails: rawEmails,
       kind,
       approxTimeUntilAvailable,
+      auditBatchId,
     } = body;
 
     if (!eventId || typeof eventId !== "string" || !isValidUUID(eventId)) {
@@ -102,6 +104,10 @@ export async function POST(req: Request) {
     const approxTime = typeof approxTimeUntilAvailable === "string"
       ? approxTimeUntilAvailable.trim()
       : "";
+    const normalizedAuditBatchId =
+      typeof auditBatchId === "string" && auditBatchId.trim().length > 0
+        ? auditBatchId.trim()
+        : null;
     if (kind === "ticketsAvailableIn" && !approxTime) {
       return NextResponse.json(
         {
@@ -256,7 +262,15 @@ export async function POST(req: Request) {
       actor: auth.email!,
       eventId: eventId,
       eventName: event.name ?? null,
-      metadata: { type: "bulkSend", kind, sent, failed, skipped },
+      metadata: {
+        type: "bulkSend",
+        kind,
+        sent,
+        failed,
+        skipped,
+        total: sent + failed + skipped,
+        ...(normalizedAuditBatchId ? { batchId: normalizedAuditBatchId } : {}),
+      },
     });
 
     return NextResponse.json({ sent, failed, skipped });

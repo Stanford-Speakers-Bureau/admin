@@ -679,13 +679,14 @@ export default function AudienceClient() {
       chunkSize: CHUNK_SIZE,
       label: "Sending announcements",
       onProgress: setSendState,
-      sendChunk: async (chunk) => {
+      sendChunk: async (chunk, context) => {
         const res = await fetch("/api/email/bulk-send", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             eventId: selectedEventId,
             emails: chunk,
+            auditBatchId: context.batchId,
             kind: "announcement",
           }),
         });

@@ -14,12 +14,21 @@ export type BulkSendChunkResult = {
   skipped?: number;
 };
 
+export type BulkSendChunkContext = {
+  batchId: string;
+  chunkIndex: number;
+  chunkCount: number;
+};
+
 type RunChunkedSendOptions<T> = {
   items: T[];
   chunkSize: number;
   label: string;
   onProgress: (state: BulkSendProgressState) => void;
-  sendChunk: (chunk: T[]) => Promise<BulkSendChunkResult>;
+  sendChunk: (
+    chunk: T[],
+    context: BulkSendChunkContext,
+  ) => Promise<BulkSendChunkResult>;
 };
 
 export function getProcessedCount(state: BulkSendProgressState): number {
@@ -33,6 +42,9 @@ export async function runChunkedSend<T>({
   onProgress,
   sendChunk,
 }: RunChunkedSendOptions<T>): Promise<BulkSendProgressState> {
+  const batchId = globalThis.crypto?.randomUUID?.() ??
+    `audit-batch-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const chunkCount = Math.ceil(items.length / chunkSize);
   let state: BulkSendProgressState = {
     active: true,
     total: items.length,
@@ -47,9 +59,14 @@ export async function runChunkedSend<T>({
 
   for (let index = 0; index < items.length; index += chunkSize) {
     const chunk = items.slice(index, index + chunkSize);
+    const chunkIndex = index / chunkSize;
 
     try {
-      const result = await sendChunk(chunk);
+      const result = await sendChunk(chunk, {
+        batchId,
+        chunkIndex,
+        chunkCount,
+      });
       state = {
         ...state,
         sent: state.sent + (result.sent ?? 0),

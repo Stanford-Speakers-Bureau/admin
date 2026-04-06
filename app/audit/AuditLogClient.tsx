@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { Fragment, useState, useEffect, useCallback, useRef } from "react";
 
-type AuditLog = {
+type AuditLogEntry = {
+  kind: "log";
   id: string;
   created_at: string;
   action: string;
@@ -13,6 +14,23 @@ type AuditLog = {
   target_email: string | null;
   metadata: Record<string, unknown> | null;
 };
+
+type AuditLogGroup = {
+  kind: "group";
+  id: string;
+  created_at: string;
+  action: string;
+  actor: string;
+  source: string;
+  event_id: string | null;
+  event_name: string | null;
+  target_email: null;
+  metadata: Record<string, unknown> | null;
+  entries: AuditLogEntry[];
+  group_count: number;
+};
+
+type AuditLogItem = AuditLogEntry | AuditLogGroup;
 
 const ACTION_LABELS: Record<string, string> = {
   "notify.signup": "Signed up for Notify",
@@ -121,18 +139,162 @@ function formatTimestamp(dateStr: string): string {
   });
 }
 
-function renderMetadata(metadata: Record<string, unknown> | null): string {
-  if (!metadata) return "";
-  const parts: string[] = [];
-  for (const [key, value] of Object.entries(metadata)) {
-    if (key === "ticketId") continue;
-    if (value === null || value === undefined) continue;
-    parts.push(`${key}: ${value}`);
+function isAuditLogGroup(log: AuditLogItem): log is AuditLogGroup {
+  return log.kind === "group";
+}
+
+function getMetadataNumber(
+  metadata: Record<string, unknown> | null,
+  key: string,
+): number {
+  const value = metadata?.[key];
+
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
   }
-  return parts.join(", ");
+
+  if (typeof value === "string") {
+    const parsed = Number.parseFloat(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+
+  return 0;
+}
+
+function formatMetadataKey(key: string): string {
+  return key
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/[_-]+/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function formatMetadataValue(value: unknown): string {
+  if (value === null || value === undefined) {
+    return "—";
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((item) => formatMetadataValue(item)).join(", ");
+  }
+
+  if (typeof value === "object") {
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return String(value);
+    }
+  }
+
+  if (typeof value === "boolean") {
+    return value ? "Yes" : "No";
+  }
+
+  return String(value);
+}
+
+function getMetadataEntries(
+  metadata: Record<string, unknown> | null,
+): Array<[string, unknown]> {
+  if (!metadata) {
+    return [];
+  }
+
+  return Object.entries(metadata).filter(([key, value]) => {
+    if (key === "batchId") return false;
+    return value !== null && value !== undefined && value !== "";
+  });
+}
+
+function getMassEmailLabel(metadata: Record<string, unknown> | null): string {
+  const type = metadata?.type;
+  const kind = metadata?.kind;
+  const variant = metadata?.variant;
+
+  if (type === "bulkSend") {
+    if (kind === "announcement") return "Announcements";
+    if (kind === "ticketsAvailableNow") return "Tickets available now";
+    if (kind === "ticketsAvailableIn") return "Tickets available in";
+    if (kind === "claimTicket") return "Claim ticket";
+    return "Bulk send";
+  }
+
+  if (type === "notifySend") {
+    if (variant === "claim") return "Claim ticket notify";
+    if (variant === "in") return "Tickets available in notify";
+    if (variant === "now") return "Tickets available now notify";
+    return "Notify send";
+  }
+
+  if (type === "dayOfReminders") return "Day-of reminders";
+  if (type === "earlyReminders") return "Early reminders";
+
+  return "Mass email";
+}
+
+function getDetailsSummary(log: AuditLogItem): string {
+  if (log.action === "email.send_mass") {
+    const label = getMassEmailLabel(log.metadata);
+    const sent = getMetadataNumber(log.metadata, "sent");
+    const failed = getMetadataNumber(log.metadata, "failed");
+    const skipped = getMetadataNumber(log.metadata, "skipped");
+    const chunkCount = isAuditLogGroup(log) ? log.group_count : 1;
+    const segments = [`${label}`, `${sent.toLocaleString()} sent`];
+
+    if (failed > 0) {
+      segments.push(`${failed.toLocaleString()} failed`);
+    }
+    if (skipped > 0) {
+      segments.push(`${skipped.toLocaleString()} skipped`);
+    }
+    if (isAuditLogGroup(log)) {
+      segments.push(`${chunkCount.toLocaleString()} chunks`);
+    }
+
+    return segments.join(" • ");
+  }
+
+  const metadataEntries = getMetadataEntries(log.metadata);
+  if (metadataEntries.length === 0) {
+    return "No additional details";
+  }
+
+  return metadataEntries
+    .slice(0, 2)
+    .map(([key, value]) => `${formatMetadataKey(key)}: ${formatMetadataValue(value)}`)
+    .join(" • ");
 }
 
 const PAGE_SIZE = 50;
+
+function MetadataDetails({
+  metadata,
+}: {
+  metadata: Record<string, unknown> | null;
+}) {
+  const metadataEntries = getMetadataEntries(metadata);
+
+  if (metadataEntries.length === 0) {
+    return <p className="text-sm text-zinc-500">No additional details.</p>;
+  }
+
+  return (
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+      {metadataEntries.map(([key, value]) => (
+        <div
+          key={key}
+          className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-3"
+        >
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
+            {formatMetadataKey(key)}
+          </p>
+          <p className="mt-1 text-sm text-zinc-200 break-words">
+            {formatMetadataValue(value)}
+          </p>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 function toggleSelection<T extends string>(
   selected: readonly T[],
@@ -306,10 +468,11 @@ function FilterDropdown({
 
 export default function AuditLogClient() {
   const filterDropdownRef = useRef<HTMLDivElement | null>(null);
-  const [logs, setLogs] = useState<AuditLog[]>([]);
+  const [logs, setLogs] = useState<AuditLogItem[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(0);
+  const [expandedItems, setExpandedItems] = useState<string[]>([]);
 
   // Filters
   const [selectedActions, setSelectedActions] = useState(DEFAULT_ACTION_VALUES);
@@ -354,6 +517,7 @@ export default function AuditLogClient() {
       const data = await res.json();
       setLogs(data.logs);
       setTotal(data.total);
+      setExpandedItems([]);
     } catch (err) {
       console.error("Failed to fetch audit logs:", err);
     } finally {
@@ -377,6 +541,14 @@ export default function AuditLogClient() {
   function handleTextFilter(setter: (v: string) => void, value: string) {
     setPage(0);
     setter(value);
+  }
+
+  function toggleExpandedItem(id: string) {
+    setExpandedItems((current) =>
+      current.includes(id)
+        ? current.filter((entryId) => entryId !== id)
+        : [...current, id],
+    );
   }
 
   function resetFilters() {
@@ -673,35 +845,187 @@ export default function AuditLogClient() {
                   </td>
                 </tr>
               ) : (
-                logs.map((log) => (
-                  <tr key={log.id} className="border-t border-zinc-800/50 hover:bg-zinc-800/20 transition-colors">
-                    <td className="px-4 py-3 text-sm text-zinc-400 whitespace-nowrap" title={formatTimestamp(log.created_at)}>
-                      {timeAgo(log.created_at)}
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className={`inline-block border rounded-full px-2.5 py-0.5 text-xs font-medium ${getActionColor(log.action)}`}>
-                        {ACTION_LABELS[log.action] || log.action}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-sm text-zinc-300 max-w-[200px] truncate" title={log.actor}>
-                      {log.actor}
-                    </td>
-                    <td className="px-4 py-3 text-sm text-zinc-400 max-w-[180px] truncate" title={log.event_name ?? undefined}>
-                      {log.event_name || "\u2014"}
-                    </td>
-                    <td className="px-4 py-3 text-sm text-zinc-400 max-w-[200px] truncate" title={log.target_email ?? undefined}>
-                      {log.target_email || "\u2014"}
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className={`inline-block border rounded-full px-2 py-0.5 text-xs font-medium ${getSourceColor(log.source)}`}>
-                        {log.source === "admin" ? "Admin" : "Web"}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-sm text-zinc-500 max-w-[250px] truncate" title={renderMetadata(log.metadata)}>
-                      {renderMetadata(log.metadata) || "\u2014"}
-                    </td>
-                  </tr>
-                ))
+                logs.map((log) => {
+                  const isExpanded = expandedItems.includes(log.id);
+                  const summary = getDetailsSummary(log);
+                  const sent = getMetadataNumber(log.metadata, "sent");
+                  const failed = getMetadataNumber(log.metadata, "failed");
+                  const skipped = getMetadataNumber(log.metadata, "skipped");
+                  const totalRecipients = getMetadataNumber(log.metadata, "total");
+
+                  return (
+                    <Fragment key={log.id}>
+                      <tr
+                        className="border-t border-zinc-800/50 hover:bg-zinc-800/20 transition-colors"
+                      >
+                        <td
+                          className="px-4 py-3 text-sm text-zinc-400 whitespace-nowrap"
+                          title={formatTimestamp(log.created_at)}
+                        >
+                          {timeAgo(log.created_at)}
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="space-y-1">
+                            <span className={`inline-block border rounded-full px-2.5 py-0.5 text-xs font-medium ${getActionColor(log.action)}`}>
+                              {ACTION_LABELS[log.action] || log.action}
+                            </span>
+                            {isAuditLogGroup(log) ? (
+                              <p className="text-[11px] text-zinc-500">
+                                Grouped from {log.group_count.toLocaleString()} chunks
+                              </p>
+                            ) : null}
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 text-sm text-zinc-300 max-w-[200px] truncate" title={log.actor}>
+                          {log.actor}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-zinc-400 max-w-[180px] truncate" title={log.event_name ?? undefined}>
+                          {log.event_name || "\u2014"}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-zinc-400 max-w-[200px] truncate" title={log.target_email ?? undefined}>
+                          {log.target_email || "\u2014"}
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className={`inline-block border rounded-full px-2 py-0.5 text-xs font-medium ${getSourceColor(log.source)}`}>
+                            {log.source === "admin" ? "Admin" : "Web"}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <button
+                            type="button"
+                            onClick={() => toggleExpandedItem(log.id)}
+                            className="flex w-full items-center justify-between gap-3 rounded-lg border border-zinc-800 bg-zinc-950/40 px-3 py-2 text-left transition-colors hover:border-zinc-700 hover:bg-zinc-900/70"
+                            title={summary}
+                          >
+                            <span className="min-w-0 flex-1 truncate text-sm text-zinc-400">
+                              {summary}
+                            </span>
+                            <svg
+                              className={`h-4 w-4 shrink-0 text-zinc-500 transition-transform ${
+                                isExpanded ? "rotate-180" : ""
+                              }`}
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M19 9l-7 7-7-7"
+                              />
+                            </svg>
+                          </button>
+                        </td>
+                      </tr>
+                      {isExpanded ? (
+                        <tr className="border-t border-zinc-800/50 bg-zinc-950/40">
+                          <td colSpan={7} className="px-4 py-4">
+                            {isAuditLogGroup(log) ? (
+                              <div className="space-y-4">
+                                <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+                                  <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-3">
+                                    <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
+                                      Sent
+                                    </p>
+                                    <p className="mt-1 text-lg font-semibold text-white">
+                                      {sent.toLocaleString()}
+                                    </p>
+                                  </div>
+                                  <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-3">
+                                    <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
+                                      Failed
+                                    </p>
+                                    <p className="mt-1 text-lg font-semibold text-white">
+                                      {failed.toLocaleString()}
+                                    </p>
+                                  </div>
+                                  <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-3">
+                                    <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
+                                      Skipped
+                                    </p>
+                                    <p className="mt-1 text-lg font-semibold text-white">
+                                      {skipped.toLocaleString()}
+                                    </p>
+                                  </div>
+                                  <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-3">
+                                    <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
+                                      Recipients
+                                    </p>
+                                    <p className="mt-1 text-lg font-semibold text-white">
+                                      {totalRecipients.toLocaleString()}
+                                    </p>
+                                  </div>
+                                  <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-3">
+                                    <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
+                                      Chunks
+                                    </p>
+                                    <p className="mt-1 text-lg font-semibold text-white">
+                                      {log.group_count.toLocaleString()}
+                                    </p>
+                                  </div>
+                                </div>
+
+                                <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
+                                  <div className="mb-3">
+                                    <p className="text-sm font-semibold text-white">
+                                      {getMassEmailLabel(log.metadata)}
+                                    </p>
+                                    <p className="text-xs text-zinc-500">
+                                      Grouped mass-email run
+                                    </p>
+                                  </div>
+                                  <MetadataDetails metadata={log.metadata} />
+                                </div>
+
+                                <div className="space-y-3">
+                                  {log.entries.map((entry, index) => (
+                                    <div
+                                      key={entry.id}
+                                      className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4"
+                                    >
+                                      <div className="mb-3 flex items-start justify-between gap-3">
+                                        <div>
+                                          <p className="text-sm font-medium text-white">
+                                            Chunk {index + 1} of {log.entries.length}
+                                          </p>
+                                          <p className="text-xs text-zinc-500">
+                                            {formatTimestamp(entry.created_at)}
+                                          </p>
+                                        </div>
+                                        <p className="text-xs text-zinc-500">
+                                          {getDetailsSummary(entry)}
+                                        </p>
+                                      </div>
+                                      <MetadataDetails metadata={entry.metadata} />
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
+                                <div className="mb-3 flex items-start justify-between gap-3">
+                                  <div>
+                                    <p className="text-sm font-semibold text-white">
+                                      {ACTION_LABELS[log.action] || log.action}
+                                    </p>
+                                    <p className="text-xs text-zinc-500">
+                                      {formatTimestamp(log.created_at)}
+                                    </p>
+                                  </div>
+                                  <span className={`inline-block border rounded-full px-2 py-0.5 text-xs font-medium ${getSourceColor(log.source)}`}>
+                                    {log.source === "admin" ? "Admin" : "Web"}
+                                  </span>
+                                </div>
+                                <MetadataDetails metadata={log.metadata} />
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      ) : null}
+                    </Fragment>
+                  );
+                })
               )}
             </tbody>
           </table>
