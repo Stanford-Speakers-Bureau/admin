@@ -65,7 +65,7 @@ export async function pullFromWaitlist(
         columns: { id: true, email: true, name: true, type: true, eventId: true },
         with: {
           event: {
-            columns: { id: true, name: true, route: true, startTimeDate: true, endTimeDate: true, venue: true, venueLink: true, desc: true, tagline: true, imgVersion: true },
+            columns: { id: true, name: true, route: true, startTimeDate: true, endTimeDate: true, venue: true, venueLink: true, desc: true, doorsOpen: true, tagline: true, imgVersion: true },
           },
         },
       })
