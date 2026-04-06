@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 
 type AuditLog = {
   id: string;
@@ -51,6 +51,31 @@ const ACTION_OPTIONS = [
   { group: "Referrals", actions: ["referral.toggle"] },
   { group: "Notify", actions: ["notify.signup"] },
 ];
+
+const ACTION_FILTER_OPTIONS = ACTION_OPTIONS.flatMap((group) =>
+  group.actions.map((action) => ({
+    value: action,
+    label: ACTION_LABELS[action] || action,
+    group: group.group,
+  })),
+);
+const ACTION_VALUES = ACTION_FILTER_OPTIONS.map((option) => option.value);
+const DEFAULT_ACTION_VALUES = ACTION_VALUES.filter(
+  (action) => action !== "notify.signup",
+);
+
+const SOURCE_FILTER_OPTIONS = [
+  { value: "admin", label: "Admin" },
+  { value: "web", label: "Web" },
+] as const;
+const SOURCE_VALUES = SOURCE_FILTER_OPTIONS.map((option) => option.value);
+
+type FilterDropdownKey = "action" | "source";
+type FilterOption = {
+  value: string;
+  label: string;
+  group?: string;
+};
 
 function getActionColor(action: string) {
   if (action.startsWith("ticket.")) return "bg-emerald-500/15 text-emerald-400 border-emerald-500/30";
@@ -109,30 +134,216 @@ function renderMetadata(metadata: Record<string, unknown> | null): string {
 
 const PAGE_SIZE = 50;
 
+function toggleSelection<T extends string>(
+  selected: readonly T[],
+  value: T,
+  orderedOptions: readonly T[],
+): T[] {
+  const next = new Set(selected);
+
+  if (next.has(value)) {
+    next.delete(value);
+  } else {
+    next.add(value);
+  }
+
+  return orderedOptions.filter((option) => next.has(option));
+}
+
+function selectionsMatch<T extends string>(
+  selected: readonly T[],
+  expected: readonly T[],
+): boolean {
+  return (
+    selected.length === expected.length &&
+    selected.every((value, index) => value === expected[index])
+  );
+}
+
+function summarizeSelection(
+  options: readonly FilterOption[],
+  selectedValues: readonly string[],
+  allLabel: string,
+  noneLabel: string,
+): string {
+  if (selectedValues.length === options.length) return allLabel;
+  if (selectedValues.length === 0) return noneLabel;
+
+  const selectedLabels = options
+    .filter((option) => selectedValues.includes(option.value))
+    .map((option) => option.label);
+
+  if (selectedLabels.length <= 2) {
+    return selectedLabels.join(", ");
+  }
+
+  return `${selectedLabels.length} selected`;
+}
+
+function FilterDropdown({
+  title,
+  summary,
+  isOpen,
+  options,
+  selectedValues,
+  onToggle,
+  onToggleValue,
+  onSelectAll,
+  onClear,
+}: {
+  title: string;
+  summary: string;
+  isOpen: boolean;
+  options: readonly FilterOption[];
+  selectedValues: readonly string[];
+  onToggle: () => void;
+  onToggleValue: (value: string) => void;
+  onSelectAll: () => void;
+  onClear: () => void;
+}) {
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={onToggle}
+        className="inline-flex w-full items-center gap-2 rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-2 text-sm font-medium text-zinc-200 transition-colors hover:border-zinc-500 hover:bg-zinc-800/80"
+        aria-expanded={isOpen}
+        aria-haspopup="menu"
+      >
+        <svg
+          className="h-4 w-4 text-zinc-400"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M3 4a1 1 0 011-1h16a1 1 0 01.8 1.6L14 13.333V19a1 1 0 01-1.447.894l-2-1A1 1 0 0110 18v-4.667L3.2 4.6A1 1 0 013 4z"
+          />
+        </svg>
+        <span>{title}</span>
+        <span className="max-w-48 truncate text-zinc-400">{summary}</span>
+        <svg
+          className={`ml-auto h-4 w-4 text-zinc-500 transition-transform ${
+            isOpen ? "rotate-180" : ""
+          }`}
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M19 9l-7 7-7-7"
+          />
+        </svg>
+      </button>
+
+      {isOpen && (
+        <div className="absolute left-0 top-full z-20 mt-2 w-full min-w-[20rem] rounded-2xl border border-zinc-800 bg-zinc-950/95 p-3 shadow-2xl backdrop-blur">
+          <div className="mb-3 px-1">
+            <p className="text-sm font-semibold text-white">{title}</p>
+            <p className="text-xs text-zinc-500">
+              Choose one or more options to include
+            </p>
+          </div>
+          <div className="mb-3 flex items-center gap-2 px-1">
+            <button
+              type="button"
+              onClick={onSelectAll}
+              className="rounded-lg border border-zinc-700 px-2.5 py-1.5 text-xs font-medium text-zinc-300 transition-colors hover:border-zinc-500 hover:text-white"
+            >
+              Select all
+            </button>
+            <button
+              type="button"
+              onClick={onClear}
+              className="rounded-lg border border-zinc-700 px-2.5 py-1.5 text-xs font-medium text-zinc-300 transition-colors hover:border-zinc-500 hover:text-white"
+            >
+              Clear
+            </button>
+          </div>
+          <div className="max-h-80 space-y-1 overflow-y-auto pr-1">
+            {options.map((option, index) => {
+              const checked = selectedValues.includes(option.value);
+              const previousGroup = index > 0 ? options[index - 1]?.group : undefined;
+              const showGroupLabel = option.group && option.group !== previousGroup;
+
+              return (
+                <div key={option.value}>
+                  {showGroupLabel ? (
+                    <p className="px-2 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
+                      {option.group}
+                    </p>
+                  ) : null}
+                  <label
+                    className={`flex cursor-pointer items-center gap-3 rounded-xl border px-3 py-2 text-sm transition-colors ${
+                      checked
+                        ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-100"
+                        : "border-zinc-800 bg-zinc-900/60 text-zinc-300 hover:border-zinc-700"
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => onToggleValue(option.value)}
+                      className="h-4 w-4 rounded border-zinc-600 bg-zinc-900 text-emerald-500 focus:ring-emerald-500/40"
+                    />
+                    <span>{option.label}</span>
+                  </label>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function AuditLogClient() {
+  const filterDropdownRef = useRef<HTMLDivElement | null>(null);
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(0);
 
   // Filters
-  const [actionFilter, setActionFilter] = useState("");
+  const [selectedActions, setSelectedActions] = useState(DEFAULT_ACTION_VALUES);
   const [actorFilter, setActorFilter] = useState("");
   const [targetFilter, setTargetFilter] = useState("");
   const [eventFilter, setEventFilter] = useState("");
-  const [sourceFilter, setSourceFilter] = useState("");
+  const [selectedSources, setSelectedSources] = useState<string[]>([
+    ...SOURCE_VALUES,
+  ]);
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
+  const [openFilterDropdown, setOpenFilterDropdown] =
+    useState<FilterDropdownKey | null>(null);
 
   const fetchLogs = useCallback(async () => {
+    if (selectedActions.length === 0 || selectedSources.length === 0) {
+      setLogs([]);
+      setTotal(0);
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     try {
       const params = new URLSearchParams();
-      if (actionFilter) params.set("action", actionFilter);
+      if (selectedActions.length !== ACTION_VALUES.length) {
+        selectedActions.forEach((action) => params.append("action", action));
+      }
       if (actorFilter) params.set("actor", actorFilter);
       if (targetFilter) params.set("targetEmail", targetFilter);
       if (eventFilter) params.set("eventName", eventFilter);
-      if (sourceFilter) params.set("source", sourceFilter);
+      if (selectedSources.length !== SOURCE_VALUES.length) {
+        selectedSources.forEach((source) => params.append("source", source));
+      }
       if (startDate) params.set("startDate", startDate);
       if (endDate) params.set("endDate", endDate);
       params.set("limit", String(PAGE_SIZE));
@@ -148,7 +359,16 @@ export default function AuditLogClient() {
     } finally {
       setLoading(false);
     }
-  }, [actionFilter, actorFilter, targetFilter, eventFilter, sourceFilter, startDate, endDate, page]);
+  }, [
+    actorFilter,
+    endDate,
+    eventFilter,
+    page,
+    selectedActions,
+    selectedSources,
+    startDate,
+    targetFilter,
+  ]);
 
   useEffect(() => {
     fetchLogs();
@@ -159,26 +379,76 @@ export default function AuditLogClient() {
     setter(value);
   }
 
-  function handleSelectFilter(setter: (v: string) => void, value: string) {
-    setter(value);
-    setPage(0);
-  }
-
-  function clearFilters() {
-    setActionFilter("");
+  function resetFilters() {
+    setSelectedActions(DEFAULT_ACTION_VALUES);
     setActorFilter("");
     setTargetFilter("");
     setEventFilter("");
-    setSourceFilter("");
+    setSelectedSources([...SOURCE_VALUES]);
     setStartDate("");
     setEndDate("");
     setPage(0);
   }
 
-  const hasFilters = actionFilter || actorFilter || targetFilter || eventFilter || sourceFilter || startDate || endDate;
+  const actionFilterSummary = selectionsMatch(
+    selectedActions,
+    DEFAULT_ACTION_VALUES,
+  )
+    ? "All except Signed up for Notify"
+    : summarizeSelection(
+        ACTION_FILTER_OPTIONS,
+        selectedActions,
+        "All actions",
+        "No actions",
+      );
+  const sourceFilterSummary = summarizeSelection(
+    SOURCE_FILTER_OPTIONS,
+    selectedSources,
+    "All sources",
+    "No sources",
+  );
+
+  const hasCustomFilters =
+    !selectionsMatch(selectedActions, DEFAULT_ACTION_VALUES) ||
+    actorFilter ||
+    targetFilter ||
+    eventFilter ||
+    !selectionsMatch(selectedSources, SOURCE_VALUES) ||
+    startDate ||
+    endDate;
+  const isFiltered =
+    selectedActions.length !== ACTION_VALUES.length ||
+    actorFilter ||
+    targetFilter ||
+    eventFilter ||
+    selectedSources.length !== SOURCE_VALUES.length ||
+    startDate ||
+    endDate;
   const totalPages = Math.ceil(total / PAGE_SIZE);
   const showingFrom = total === 0 ? 0 : page * PAGE_SIZE + 1;
   const showingTo = Math.min((page + 1) * PAGE_SIZE, total);
+
+  useEffect(() => {
+    function handlePointerDown(event: MouseEvent) {
+      if (!filterDropdownRef.current?.contains(event.target as Node)) {
+        setOpenFilterDropdown(null);
+      }
+    }
+
+    function handleEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setOpenFilterDropdown(null);
+      }
+    }
+
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleEscape);
+
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, []);
 
   return (
     <div className="px-4 sm:px-6 py-8">
@@ -193,125 +463,151 @@ export default function AuditLogClient() {
       </div>
 
       {/* Filters */}
-      <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 mb-6">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-          {/* Action */}
+      <div
+        ref={filterDropdownRef}
+        className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 mb-6"
+      >
+        <div className="flex items-center justify-between gap-3 mb-4">
           <div>
-            <label className="block text-xs font-medium text-zinc-500 uppercase tracking-wider mb-1">
-              Action
-            </label>
-            <select
-              value={actionFilter}
-              onChange={(e) => handleSelectFilter(setActionFilter, e.target.value)}
-              className="w-full bg-zinc-800 border border-zinc-700 text-zinc-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-rose-500/50 focus:ring-1 focus:ring-rose-500/50"
+            <h3 className="text-sm font-semibold text-zinc-300">Filters</h3>
+            <p className="text-xs text-zinc-500">
+              Use dropdowns with checkboxes to narrow the audit log
+            </p>
+          </div>
+          {hasCustomFilters ? (
+            <button
+              onClick={resetFilters}
+              className="text-xs text-zinc-400 hover:text-white transition-colors"
             >
-              <option value="">All actions</option>
-              {ACTION_OPTIONS.map((group) => (
-                <optgroup key={group.group} label={group.group}>
-                  {group.actions.map((a) => (
-                    <option key={a} value={a}>
-                      {ACTION_LABELS[a] || a}
-                    </option>
-                  ))}
-                </optgroup>
-              ))}
-            </select>
-          </div>
+              Reset filters
+            </button>
+          ) : null}
+        </div>
 
-          {/* Actor */}
-          <div>
-            <label className="block text-xs font-medium text-zinc-500 uppercase tracking-wider mb-1">
-              Actor
-            </label>
-            <input
-              type="text"
-              value={actorFilter}
-              onChange={(e) => handleTextFilter(setActorFilter, e.target.value)}
-              placeholder="Who did it..."
-              className="w-full bg-zinc-800 border border-zinc-700 text-zinc-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-rose-500/50 focus:ring-1 focus:ring-rose-500/50 placeholder:text-zinc-600"
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <FilterDropdown
+              title="Action"
+              summary={actionFilterSummary}
+              isOpen={openFilterDropdown === "action"}
+              options={ACTION_FILTER_OPTIONS}
+              selectedValues={selectedActions}
+              onToggle={() =>
+                setOpenFilterDropdown((current) =>
+                  current === "action" ? null : "action",
+                )
+              }
+              onToggleValue={(value) => {
+                setSelectedActions((current) =>
+                  toggleSelection(current, value, ACTION_VALUES),
+                );
+                setPage(0);
+              }}
+              onSelectAll={() => {
+                setSelectedActions(ACTION_VALUES);
+                setPage(0);
+              }}
+              onClear={() => {
+                setSelectedActions([]);
+                setPage(0);
+              }}
+            />
+            <FilterDropdown
+              title="Source"
+              summary={sourceFilterSummary}
+              isOpen={openFilterDropdown === "source"}
+              options={SOURCE_FILTER_OPTIONS}
+              selectedValues={selectedSources}
+              onToggle={() =>
+                setOpenFilterDropdown((current) =>
+                  current === "source" ? null : "source",
+                )
+              }
+              onToggleValue={(value) => {
+                setSelectedSources((current) =>
+                  toggleSelection(current, value, SOURCE_VALUES),
+                );
+                setPage(0);
+              }}
+              onSelectAll={() => {
+                setSelectedSources([...SOURCE_VALUES]);
+                setPage(0);
+              }}
+              onClear={() => {
+                setSelectedSources([]);
+                setPage(0);
+              }}
             />
           </div>
 
-          {/* Target */}
-          <div>
-            <label className="block text-xs font-medium text-zinc-500 uppercase tracking-wider mb-1">
-              Target
-            </label>
-            <input
-              type="text"
-              value={targetFilter}
-              onChange={(e) => handleTextFilter(setTargetFilter, e.target.value)}
-              placeholder="Done to whom..."
-              className="w-full bg-zinc-800 border border-zinc-700 text-zinc-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-rose-500/50 focus:ring-1 focus:ring-rose-500/50 placeholder:text-zinc-600"
-            />
-          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            {/* Actor */}
+            <div>
+              <label className="block text-xs font-medium text-zinc-500 uppercase tracking-wider mb-1">
+                Actor
+              </label>
+              <input
+                type="text"
+                value={actorFilter}
+                onChange={(e) => handleTextFilter(setActorFilter, e.target.value)}
+                placeholder="Who did it..."
+                className="w-full bg-zinc-800 border border-zinc-700 text-zinc-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-rose-500/50 focus:ring-1 focus:ring-rose-500/50 placeholder:text-zinc-600"
+              />
+            </div>
 
-          {/* Event */}
-          <div>
-            <label className="block text-xs font-medium text-zinc-500 uppercase tracking-wider mb-1">
-              Event
-            </label>
-            <input
-              type="text"
-              value={eventFilter}
-              onChange={(e) => handleTextFilter(setEventFilter, e.target.value)}
-              placeholder="Which event..."
-              className="w-full bg-zinc-800 border border-zinc-700 text-zinc-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-rose-500/50 focus:ring-1 focus:ring-rose-500/50 placeholder:text-zinc-600"
-            />
-          </div>
+            {/* Target */}
+            <div>
+              <label className="block text-xs font-medium text-zinc-500 uppercase tracking-wider mb-1">
+                Target
+              </label>
+              <input
+                type="text"
+                value={targetFilter}
+                onChange={(e) => handleTextFilter(setTargetFilter, e.target.value)}
+                placeholder="Done to whom..."
+                className="w-full bg-zinc-800 border border-zinc-700 text-zinc-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-rose-500/50 focus:ring-1 focus:ring-rose-500/50 placeholder:text-zinc-600"
+              />
+            </div>
 
-          {/* Source */}
-          <div>
-            <label className="block text-xs font-medium text-zinc-500 uppercase tracking-wider mb-1">
-              Source
-            </label>
-            <select
-              value={sourceFilter}
-              onChange={(e) => handleSelectFilter(setSourceFilter, e.target.value)}
-              className="w-full bg-zinc-800 border border-zinc-700 text-zinc-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-rose-500/50 focus:ring-1 focus:ring-rose-500/50"
-            >
-              <option value="">All sources</option>
-              <option value="admin">Admin</option>
-              <option value="web">Web</option>
-            </select>
-          </div>
+            {/* Event */}
+            <div>
+              <label className="block text-xs font-medium text-zinc-500 uppercase tracking-wider mb-1">
+                Event
+              </label>
+              <input
+                type="text"
+                value={eventFilter}
+                onChange={(e) => handleTextFilter(setEventFilter, e.target.value)}
+                placeholder="Which event..."
+                className="w-full bg-zinc-800 border border-zinc-700 text-zinc-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-rose-500/50 focus:ring-1 focus:ring-rose-500/50 placeholder:text-zinc-600"
+              />
+            </div>
 
-          {/* Start date */}
-          <div>
-            <label className="block text-xs font-medium text-zinc-500 uppercase tracking-wider mb-1">
-              From
-            </label>
-            <input
-              type="date"
-              value={startDate}
-              onChange={(e) => handleSelectFilter(setStartDate, e.target.value)}
-              className="w-full bg-zinc-800 border border-zinc-700 text-zinc-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-rose-500/50 focus:ring-1 focus:ring-rose-500/50 [color-scheme:dark]"
-            />
-          </div>
+            {/* Start date */}
+            <div>
+              <label className="block text-xs font-medium text-zinc-500 uppercase tracking-wider mb-1">
+                From
+              </label>
+              <input
+                type="date"
+                value={startDate}
+                onChange={(e) => handleTextFilter(setStartDate, e.target.value)}
+                className="w-full bg-zinc-800 border border-zinc-700 text-zinc-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-rose-500/50 focus:ring-1 focus:ring-rose-500/50 [color-scheme:dark]"
+              />
+            </div>
 
-          {/* End date */}
-          <div>
-            <label className="block text-xs font-medium text-zinc-500 uppercase tracking-wider mb-1">
-              To
-            </label>
-            <input
-              type="date"
-              value={endDate}
-              onChange={(e) => handleSelectFilter(setEndDate, e.target.value)}
-              className="w-full bg-zinc-800 border border-zinc-700 text-zinc-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-rose-500/50 focus:ring-1 focus:ring-rose-500/50 [color-scheme:dark]"
-            />
-          </div>
-
-          {/* Clear */}
-          <div className="flex items-end">
-            {hasFilters && (
-              <button
-                onClick={clearFilters}
-                className="w-full bg-zinc-800 border border-zinc-700 text-zinc-400 hover:text-white hover:bg-zinc-700 rounded-lg px-3 py-2 text-sm transition-colors"
-              >
-                Clear filters
-              </button>
-            )}
+            {/* End date */}
+            <div>
+              <label className="block text-xs font-medium text-zinc-500 uppercase tracking-wider mb-1">
+                To
+              </label>
+              <input
+                type="date"
+                value={endDate}
+                onChange={(e) => handleTextFilter(setEndDate, e.target.value)}
+                className="w-full bg-zinc-800 border border-zinc-700 text-zinc-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-rose-500/50 focus:ring-1 focus:ring-rose-500/50 [color-scheme:dark]"
+              />
+            </div>
           </div>
         </div>
       </div>
@@ -373,7 +669,7 @@ export default function AuditLogClient() {
               ) : logs.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="px-4 py-12 text-center text-zinc-500">
-                    {hasFilters ? "No entries match your filters." : "No audit log entries yet."}
+                    {isFiltered ? "No entries match your filters." : "No audit log entries yet."}
                   </td>
                 </tr>
               ) : (

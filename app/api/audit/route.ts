@@ -1,6 +1,17 @@
 import { NextResponse } from "next/server";
 import { verifyAdminRequest } from "@/app/lib/auth";
-import { db, auditLogs, desc, and, eq, gte, lte, ilike, count as dbCount } from "@ssb/db";
+import {
+  db,
+  auditLogs,
+  desc,
+  and,
+  eq,
+  gte,
+  lte,
+  ilike,
+  inArray,
+  count as dbCount,
+} from "@ssb/db";
 
 function parsePaginationParam(
   value: string | null,
@@ -43,9 +54,9 @@ export async function GET(req: Request) {
     }
 
     const { searchParams } = new URL(req.url);
-    const action = searchParams.get("action");
+    const actions = [...new Set(searchParams.getAll("action").filter(Boolean))];
     const actor = searchParams.get("actor");
-    const source = searchParams.get("source");
+    const sources = [...new Set(searchParams.getAll("source").filter(Boolean))];
     const targetEmail = searchParams.get("targetEmail");
     const eventName = searchParams.get("eventName");
     const startDate = searchParams.get("startDate");
@@ -55,9 +66,17 @@ export async function GET(req: Request) {
 
     const conditions: ReturnType<typeof eq>[] = [];
 
-    if (action) conditions.push(eq(auditLogs.action, action));
+    if (actions.length === 1) {
+      conditions.push(eq(auditLogs.action, actions[0]));
+    } else if (actions.length > 1) {
+      conditions.push(inArray(auditLogs.action, actions));
+    }
     if (actor) conditions.push(ilike(auditLogs.actor, `%${actor}%`));
-    if (source) conditions.push(eq(auditLogs.source, source));
+    if (sources.length === 1) {
+      conditions.push(eq(auditLogs.source, sources[0]));
+    } else if (sources.length > 1) {
+      conditions.push(inArray(auditLogs.source, sources));
+    }
     if (targetEmail) conditions.push(ilike(auditLogs.targetEmail, `%${targetEmail}%`));
     if (eventName) conditions.push(ilike(auditLogs.eventName, `%${eventName}%`));
     if (startDate) conditions.push(gte(auditLogs.createdAt, new Date(startDate)));

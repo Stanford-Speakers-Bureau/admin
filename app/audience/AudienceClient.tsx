@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import BulkSendProgress from "@/app/components/BulkSendProgress";
 import { useEventContext } from "@/app/EventContext";
 import {
@@ -84,6 +84,13 @@ type AudienceUserDetails = {
   attendedEvents: AudienceEventSummary[];
 };
 
+type FilterDropdownKey = "status" | "affiliation" | "history";
+type FilterOption = {
+  value: string;
+  label: string;
+  count?: number;
+};
+
 const USER_PAGE_SIZE = 50;
 const AFFILIATION_ORDER: Affiliation[] = [
   "student",
@@ -156,31 +163,144 @@ function AffiliationPill({
   );
 }
 
-function FilterCheckbox({
-  checked,
-  label,
-  onChange,
+function summarizeSelection(
+  options: readonly FilterOption[],
+  selectedValues: readonly string[],
+  allLabel: string,
+  noneLabel: string,
+): string {
+  if (selectedValues.length === options.length) return allLabel;
+  if (selectedValues.length === 0) return noneLabel;
+
+  const selectedLabels = options
+    .filter((option) => selectedValues.includes(option.value))
+    .map((option) => option.label);
+
+  if (selectedLabels.length <= 2) {
+    return selectedLabels.join(", ");
+  }
+
+  return `${selectedLabels.length} selected`;
+}
+
+function FilterDropdown({
+  title,
+  summary,
+  isOpen,
+  options,
+  selectedValues,
+  onToggle,
+  onToggleValue,
+  onSelectAll,
+  onClear,
 }: {
-  checked: boolean;
-  label: string;
-  onChange: () => void;
+  title: string;
+  summary: string;
+  isOpen: boolean;
+  options: readonly FilterOption[];
+  selectedValues: readonly string[];
+  onToggle: () => void;
+  onToggleValue: (value: string) => void;
+  onSelectAll: () => void;
+  onClear: () => void;
 }) {
   return (
-    <label
-      className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors ${
-        checked
-          ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-200"
-          : "border-zinc-700 bg-zinc-900/40 text-zinc-300 hover:border-zinc-600"
-      }`}
-    >
-      <input
-        type="checkbox"
-        checked={checked}
-        onChange={onChange}
-        className="h-4 w-4 rounded border-zinc-600 bg-zinc-900 text-emerald-500 focus:ring-emerald-500/40"
-      />
-      <span>{label}</span>
-    </label>
+    <div className="relative">
+      <button
+        type="button"
+        onClick={onToggle}
+        className="inline-flex w-full items-center gap-2 rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-2 text-sm font-medium text-zinc-200 transition-colors hover:border-zinc-500 hover:bg-zinc-800/80"
+        aria-expanded={isOpen}
+        aria-haspopup="menu"
+      >
+        <svg
+          className="h-4 w-4 text-zinc-400"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M3 4a1 1 0 011-1h16a1 1 0 01.8 1.6L14 13.333V19a1 1 0 01-1.447.894l-2-1A1 1 0 0110 18v-4.667L3.2 4.6A1 1 0 013 4z"
+          />
+        </svg>
+        <span>{title}</span>
+        <span className="max-w-40 truncate text-zinc-400">{summary}</span>
+        <svg
+          className={`ml-auto h-4 w-4 text-zinc-500 transition-transform ${
+            isOpen ? "rotate-180" : ""
+          }`}
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M19 9l-7 7-7-7"
+          />
+        </svg>
+      </button>
+
+      {isOpen && (
+        <div className="absolute left-0 top-full z-20 mt-2 w-80 rounded-2xl border border-zinc-800 bg-zinc-950/95 p-3 shadow-2xl backdrop-blur">
+          <div className="mb-3 px-1">
+            <p className="text-sm font-semibold text-white">{title}</p>
+            <p className="text-xs text-zinc-500">
+              Choose one or more options to include
+            </p>
+          </div>
+          <div className="mb-3 flex items-center gap-2 px-1">
+            <button
+              type="button"
+              onClick={onSelectAll}
+              className="rounded-lg border border-zinc-700 px-2.5 py-1.5 text-xs font-medium text-zinc-300 transition-colors hover:border-zinc-500 hover:text-white"
+            >
+              Select all
+            </button>
+            <button
+              type="button"
+              onClick={onClear}
+              className="rounded-lg border border-zinc-700 px-2.5 py-1.5 text-xs font-medium text-zinc-300 transition-colors hover:border-zinc-500 hover:text-white"
+            >
+              Clear
+            </button>
+          </div>
+          <div className="max-h-72 space-y-1 overflow-y-auto pr-1">
+            {options.map((option) => {
+              const checked = selectedValues.includes(option.value);
+
+              return (
+                <label
+                  key={option.value}
+                  className={`flex cursor-pointer items-center justify-between gap-3 rounded-xl border px-3 py-2 text-sm transition-colors ${
+                    checked
+                      ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-100"
+                      : "border-zinc-800 bg-zinc-900/60 text-zinc-300 hover:border-zinc-700"
+                  }`}
+                >
+                  <span className="flex items-center gap-3">
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => onToggleValue(option.value)}
+                      className="h-4 w-4 rounded border-zinc-600 bg-zinc-900 text-emerald-500 focus:ring-emerald-500/40"
+                    />
+                    <span>{option.label}</span>
+                  </span>
+                  {option.count != null && (
+                    <span className="text-xs text-zinc-500">{option.count}</span>
+                  )}
+                </label>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -253,6 +373,7 @@ function hasNoCurrentEventStatus(user: AudienceUser): boolean {
 
 export default function AudienceClient() {
   const { selectedEventId } = useEventContext();
+  const filterDropdownRef = useRef<HTMLDivElement | null>(null);
   const [data, setData] = useState<AudienceResponse | null>(null);
   const [detailsByEmail, setDetailsByEmail] = useState<
     Record<string, AudienceUserDetails>
@@ -278,6 +399,8 @@ export default function AudienceClient() {
   const [showSendModal, setShowSendModal] = useState(false);
   const [sendState, setSendState] = useState<BulkSendProgressState | null>(null);
   const [individualSending, setIndividualSending] = useState<string | null>(null);
+  const [openFilterDropdown, setOpenFilterDropdown] =
+    useState<FilterDropdownKey | null>(null);
 
   function resetFilters() {
     setSearch("");
@@ -431,6 +554,112 @@ export default function AudienceClient() {
     selectedAffiliations.length !== AFFILIATION_ORDER.length ||
     selectedActivity.length !== ACTIVITY_VALUES.length;
 
+  const statusFilterOptions = useMemo<FilterOption[]>(() => {
+    if (!data) {
+      return EVENT_STATUS_OPTIONS.map((option) => ({
+        value: option.value,
+        label: option.label,
+      }));
+    }
+
+    const noneCount = data.users.filter(hasNoCurrentEventStatus).length;
+
+    return EVENT_STATUS_OPTIONS.map((option) => {
+      switch (option.value) {
+        case "notify":
+          return {
+            value: option.value,
+            label: option.label,
+            count: data.users.filter((user) => user.currentEventStatus.onNotifyList).length,
+          };
+        case "waitlisted":
+          return {
+            value: option.value,
+            label: option.label,
+            count: data.users.filter((user) => user.currentEventStatus.waitlisted).length,
+          };
+        case "ticketed":
+          return {
+            value: option.value,
+            label: option.label,
+            count: data.users.filter((user) => user.currentEventStatus.ticketed).length,
+          };
+        case "attended":
+          return {
+            value: option.value,
+            label: option.label,
+            count: data.users.filter((user) => user.currentEventStatus.attended).length,
+          };
+        default:
+          return {
+            value: option.value,
+            label: option.label,
+            count: noneCount,
+          };
+      }
+    });
+  }, [data]);
+
+  const affiliationFilterOptions = useMemo<FilterOption[]>(() => {
+    if (!data) {
+      return AFFILIATION_ORDER.map((affiliation) => ({
+        value: affiliation,
+        label: formatAffiliationLabel(affiliation),
+      }));
+    }
+
+    return AFFILIATION_ORDER.map((affiliation) => ({
+      value: affiliation,
+      label: formatAffiliationLabel(affiliation),
+      count: data.stats.affiliationCounts[affiliation],
+    }));
+  }, [data]);
+
+  const historyFilterOptions = useMemo<FilterOption[]>(() => {
+    if (!data) {
+      return ACTIVITY_OPTIONS.map((option) => ({
+        value: option.value,
+        label: option.label,
+      }));
+    }
+
+    const withHistoryCount = data.users.filter(
+      (user) => user.counts.totalHistoryEvents > 0,
+    ).length;
+
+    return [
+      {
+        value: "with_history",
+        label: "With event history",
+        count: withHistoryCount,
+      },
+      {
+        value: "without_history",
+        label: "No event history",
+        count: data.users.length - withHistoryCount,
+      },
+    ];
+  }, [data]);
+
+  const statusFilterSummary = summarizeSelection(
+    statusFilterOptions,
+    selectedStatuses,
+    "All statuses",
+    "No statuses",
+  );
+  const affiliationFilterSummary = summarizeSelection(
+    affiliationFilterOptions,
+    selectedAffiliations,
+    "All affiliations",
+    "No affiliations",
+  );
+  const historyFilterSummary = summarizeSelection(
+    historyFilterOptions,
+    selectedActivity,
+    "All history",
+    "No history",
+  );
+
   const nonNotifyEmails = useMemo(() => {
     if (!data) return [];
     return [...new Set(
@@ -510,6 +739,32 @@ export default function AudienceClient() {
   useEffect(() => {
     setSendState(null);
   }, [selectedEventId]);
+
+  useEffect(() => {
+    setOpenFilterDropdown(null);
+  }, [selectedEventId]);
+
+  useEffect(() => {
+    function handlePointerDown(event: MouseEvent) {
+      if (!filterDropdownRef.current?.contains(event.target as Node)) {
+        setOpenFilterDropdown(null);
+      }
+    }
+
+    function handleEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setOpenFilterDropdown(null);
+      }
+    }
+
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleEscape);
+
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, []);
 
   useEffect(() => {
     setExpandedEmail(null);
@@ -717,34 +972,16 @@ export default function AudienceClient() {
               Affiliation Breakdown
             </h3>
             <p className="text-xs text-zinc-500">
-              Click categories to include or exclude them
+              Breakdown across the current audience
             </p>
           </div>
-          {selectedAffiliations.length !== AFFILIATION_ORDER.length && (
-            <button
-              onClick={() => setSelectedAffiliations(AFFILIATION_ORDER)}
-              className="text-xs text-zinc-400 hover:text-white transition-colors"
-            >
-              Reset affiliations
-            </button>
-          )}
         </div>
         <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
           {AFFILIATION_ORDER.map((affiliation) => {
-            const isActive = selectedAffiliations.includes(affiliation);
             return (
-              <button
+              <div
                 key={affiliation}
-                onClick={() =>
-                  setSelectedAffiliations((current) =>
-                    toggleSelection(current, affiliation, AFFILIATION_ORDER),
-                  )
-                }
-                className={`rounded-xl border p-4 text-left transition-colors ${
-                  isActive
-                    ? "border-zinc-500 bg-zinc-800/80"
-                    : "border-zinc-800 bg-zinc-950/30 hover:border-zinc-700"
-                }`}
+                className="rounded-xl border border-zinc-800 bg-zinc-950/30 p-4 text-left"
               >
                 <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-1">
                   {formatAffiliationLabel(affiliation)}
@@ -752,18 +989,21 @@ export default function AudienceClient() {
                 <p className="text-2xl font-bold text-white">
                   {data.stats.affiliationCounts[affiliation]}
                 </p>
-              </button>
+              </div>
             );
           })}
         </div>
       </div>
 
-      <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
+      <div
+        ref={filterDropdownRef}
+        className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4"
+      >
         <div className="flex items-center justify-between gap-3 mb-4">
           <div>
             <h3 className="text-sm font-semibold text-zinc-300">Filters</h3>
             <p className="text-xs text-zinc-500">
-              Uncheck options to narrow the audience
+              Use dropdowns with checkboxes to narrow the audience
             </p>
           </div>
           {hasActiveFilters && (
@@ -788,64 +1028,76 @@ export default function AudienceClient() {
               className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-sm placeholder-zinc-500 focus:outline-none focus:border-zinc-600"
             />
           </div>
-          <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
-            <div className="rounded-xl border border-zinc-800 bg-zinc-950/30 p-4">
-              <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-3">
-                Current Event
-              </p>
-              <div className="flex flex-wrap gap-2">
-                {EVENT_STATUS_OPTIONS.map((option) => (
-                  <FilterCheckbox
-                    key={option.value}
-                    checked={selectedStatuses.includes(option.value)}
-                    label={option.label}
-                    onChange={() =>
-                      setSelectedStatuses((current) =>
-                        toggleSelection(current, option.value, EVENT_STATUS_VALUES),
-                      )
-                    }
-                  />
-                ))}
-              </div>
-            </div>
-            <div className="rounded-xl border border-zinc-800 bg-zinc-950/30 p-4">
-              <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-3">
-                Affiliation
-              </p>
-              <div className="flex flex-wrap gap-2">
-                {AFFILIATION_ORDER.map((affiliation) => (
-                  <FilterCheckbox
-                    key={affiliation}
-                    checked={selectedAffiliations.includes(affiliation)}
-                    label={formatAffiliationLabel(affiliation)}
-                    onChange={() =>
-                      setSelectedAffiliations((current) =>
-                        toggleSelection(current, affiliation, AFFILIATION_ORDER),
-                      )
-                    }
-                  />
-                ))}
-              </div>
-            </div>
-            <div className="rounded-xl border border-zinc-800 bg-zinc-950/30 p-4">
-              <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-3">
-                History
-              </p>
-              <div className="flex flex-wrap gap-2">
-                {ACTIVITY_OPTIONS.map((option) => (
-                  <FilterCheckbox
-                    key={option.value}
-                    checked={selectedActivity.includes(option.value)}
-                    label={option.label}
-                    onChange={() =>
-                      setSelectedActivity((current) =>
-                        toggleSelection(current, option.value, ACTIVITY_VALUES),
-                      )
-                    }
-                  />
-                ))}
-              </div>
-            </div>
+          <div className="grid grid-cols-1 xl:grid-cols-[repeat(3,minmax(0,240px))] gap-4">
+            <FilterDropdown
+              title="Current Event"
+              summary={statusFilterSummary}
+              isOpen={openFilterDropdown === "status"}
+              options={statusFilterOptions}
+              selectedValues={selectedStatuses}
+              onToggle={() =>
+                setOpenFilterDropdown((current) =>
+                  current === "status" ? null : "status",
+                )
+              }
+              onToggleValue={(value) =>
+                setSelectedStatuses((current) =>
+                  toggleSelection(
+                    current,
+                    value as EventStatusOption,
+                    EVENT_STATUS_VALUES,
+                  ),
+                )
+              }
+              onSelectAll={() => setSelectedStatuses(EVENT_STATUS_VALUES)}
+              onClear={() => setSelectedStatuses([])}
+            />
+            <FilterDropdown
+              title="Affiliation"
+              summary={affiliationFilterSummary}
+              isOpen={openFilterDropdown === "affiliation"}
+              options={affiliationFilterOptions}
+              selectedValues={selectedAffiliations}
+              onToggle={() =>
+                setOpenFilterDropdown((current) =>
+                  current === "affiliation" ? null : "affiliation",
+                )
+              }
+              onToggleValue={(value) =>
+                setSelectedAffiliations((current) =>
+                  toggleSelection(
+                    current,
+                    value as Affiliation,
+                    AFFILIATION_ORDER,
+                  ),
+                )
+              }
+              onSelectAll={() => setSelectedAffiliations(AFFILIATION_ORDER)}
+              onClear={() => setSelectedAffiliations([])}
+            />
+            <FilterDropdown
+              title="History"
+              summary={historyFilterSummary}
+              isOpen={openFilterDropdown === "history"}
+              options={historyFilterOptions}
+              selectedValues={selectedActivity}
+              onToggle={() =>
+                setOpenFilterDropdown((current) =>
+                  current === "history" ? null : "history",
+                )
+              }
+              onToggleValue={(value) =>
+                setSelectedActivity((current) =>
+                  toggleSelection(
+                    current,
+                    value as ActivityOption,
+                    ACTIVITY_VALUES,
+                  ),
+                )
+              }
+              onSelectAll={() => setSelectedActivity(ACTIVITY_VALUES)}
+              onClear={() => setSelectedActivity([])}
+            />
           </div>
         </div>
       </div>
