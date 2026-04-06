@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { verifyAdminRequest } from "@/app/lib/auth";
 import { isValidEmail, isValidUUID } from "@/app/lib/validation";
-import { db, eq, events, inArray, notify, tickets } from "@ssb/db";
+import { db, eq, events, inArray, notify, tickets, waitlist } from "@ssb/db";
 
 type EventSummary = {
   id: string;
@@ -64,7 +64,7 @@ export async function GET(
 
     const email = normalizeEmail(emailParam);
 
-    const [selectedEvent, notifyRows, ticketRows] = await Promise.all([
+    const [selectedEvent, notifyRows, waitlistRows, ticketRows] = await Promise.all([
       db.query.events.findFirst({
         where: eq(events.id, eventId),
         columns: {
@@ -75,6 +75,12 @@ export async function GET(
         where: eq(notify.email, email),
         columns: {
           speakerId: true,
+        },
+      }),
+      db.query.waitlist.findMany({
+        where: eq(waitlist.email, email),
+        columns: {
+          eventId: true,
         },
       }),
       db.query.tickets.findMany({
@@ -93,8 +99,14 @@ export async function GET(
     const notifyEventIds = new Set(
       notifyRows.map((row) => row.speakerId).filter(Boolean),
     );
+    const waitlistEventIds = new Set<string>();
     const ticketedEventIds = new Set<string>();
     const attendedEventIds = new Set<string>();
+
+    for (const row of waitlistRows) {
+      if (!row.eventId) continue;
+      waitlistEventIds.add(row.eventId);
+    }
 
     for (const row of ticketRows) {
       if (!row.eventId) continue;
@@ -107,6 +119,7 @@ export async function GET(
     const relatedEventIds = Array.from(
       new Set([
         ...notifyEventIds,
+        ...waitlistEventIds,
         ...ticketedEventIds,
         ...attendedEventIds,
       ]),
@@ -115,6 +128,7 @@ export async function GET(
     if (relatedEventIds.length === 0) {
       return NextResponse.json({
         notifyEvents: [],
+        waitlistEvents: [],
         ticketedEvents: [],
         attendedEvents: [],
       });
@@ -137,6 +151,11 @@ export async function GET(
       .filter((event): event is NonNullable<typeof event> => Boolean(event))
       .map(eventSummaryFromRecord)
       .sort(sortEventSummaries);
+    const waitlistEvents = Array.from(waitlistEventIds)
+      .map((id) => eventMap.get(id))
+      .filter((event): event is NonNullable<typeof event> => Boolean(event))
+      .map(eventSummaryFromRecord)
+      .sort(sortEventSummaries);
     const ticketedEvents = Array.from(ticketedEventIds)
       .map((id) => eventMap.get(id))
       .filter((event): event is NonNullable<typeof event> => Boolean(event))
@@ -150,6 +169,7 @@ export async function GET(
 
     return NextResponse.json({
       notifyEvents,
+      waitlistEvents,
       ticketedEvents,
       attendedEvents,
     });

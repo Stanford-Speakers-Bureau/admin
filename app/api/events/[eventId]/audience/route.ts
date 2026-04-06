@@ -3,7 +3,7 @@ import { getHighestAffiliation } from "@/app/lib/affiliation";
 import { verifyAdminRequest } from "@/app/lib/auth";
 import { getSupabaseClient } from "@/app/lib/supabase";
 import { isValidUUID } from "@/app/lib/validation";
-import { db, eq, events, inArray, notify, tickets } from "@ssb/db";
+import { db, eq, events } from "@ssb/db";
 
 type Affiliation =
   | "student"
@@ -27,6 +27,7 @@ type AudienceUserAccumulator = {
   affiliation: Affiliation;
   lastLoginAt: string | null;
   notifyEventIds: Set<string>;
+  waitlistEventIds: Set<string>;
   ticketedEventIds: Set<string>;
   attendedEventIds: Set<string>;
 };
@@ -38,7 +39,6 @@ const AFFILIATION_PRIORITY: Affiliation[] = [
   "staff",
   "member",
 ];
-const EMAIL_QUERY_CHUNK_SIZE = 500;
 
 function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
@@ -78,22 +78,13 @@ function createUserAccumulator(email: string): AudienceUserAccumulator {
     affiliation: "missing",
     lastLoginAt: null,
     notifyEventIds: new Set(),
+    waitlistEventIds: new Set(),
     ticketedEventIds: new Set(),
     attendedEventIds: new Set(),
   };
 }
 
-function chunkArray<T>(values: T[], chunkSize: number): T[][] {
-  const chunks: T[][] = [];
-
-  for (let index = 0; index < values.length; index += chunkSize) {
-    chunks.push(values.slice(index, index + chunkSize));
-  }
-
-  return chunks;
-}
-
-async function listLegacyAuthUsers(): Promise<{
+async function listAuthUsers(): Promise<{
   users: LegacyAuthUser[];
   warning: string | null;
 }> {
@@ -125,11 +116,11 @@ async function listLegacyAuthUsers(): Promise<{
 
     return { users, warning: null };
   } catch (error) {
-    console.error("Audience legacy auth fetch error:", error);
+    console.error("Audience auth fetch error:", error);
     return {
       users: [],
       warning:
-        "Older auth records could not be loaded, so some accounts may be missing from this view.",
+        "Auth records could not be loaded, so some accounts may be missing from this view.",
     };
   }
 }
@@ -153,7 +144,15 @@ export async function GET(
       );
     }
 
-    const [selectedEvent, profileRows, legacyAuthResult] = await Promise.all([
+    const [
+      selectedEvent,
+      profileRows,
+      roleRows,
+      authUserResult,
+      notifyRows,
+      waitlistRows,
+      ticketRows,
+    ] = await Promise.all([
       db.query.events.findFirst({
         where: eq(events.id, eventId),
         columns: {
@@ -172,7 +171,33 @@ export async function GET(
           eduPersonScopedAffiliation: true,
         },
       }),
-      listLegacyAuthUsers(),
+      db.query.roles.findMany({
+        columns: {
+          email: true,
+        },
+      }),
+      listAuthUsers(),
+      db.query.notify.findMany({
+        columns: {
+          email: true,
+          speakerId: true,
+        },
+      }),
+      db.query.waitlist.findMany({
+        columns: {
+          email: true,
+          eventId: true,
+          name: true,
+        },
+      }),
+      db.query.tickets.findMany({
+        columns: {
+          email: true,
+          eventId: true,
+          scanned: true,
+          name: true,
+        },
+      }),
     ]);
 
     if (!selectedEvent) {
@@ -202,8 +227,18 @@ export async function GET(
       usersByEmail.set(email, user);
     }
 
-    for (const legacyUser of legacyAuthResult.users) {
-      if (!legacyUser.email || !legacyUser.last_sign_in_at) {
+    for (const roleRow of roleRows) {
+      if (!roleRow.email) {
+        continue;
+      }
+
+      const email = normalizeEmail(roleRow.email);
+      const user = usersByEmail.get(email) ?? createUserAccumulator(email);
+      usersByEmail.set(email, user);
+    }
+
+    for (const legacyUser of authUserResult.users) {
+      if (!legacyUser.email) {
         continue;
       }
 
@@ -214,6 +249,47 @@ export async function GET(
         user.lastLoginAt,
         legacyUser.last_sign_in_at ?? null,
       );
+      usersByEmail.set(email, user);
+    }
+
+    for (const row of notifyRows) {
+      const email = normalizeEmail(row.email);
+      const user = usersByEmail.get(email) ?? createUserAccumulator(email);
+
+      user.notifyEventIds.add(row.speakerId);
+      usersByEmail.set(email, user);
+    }
+
+    for (const row of waitlistRows) {
+      const email = normalizeEmail(row.email);
+      const user = usersByEmail.get(email) ?? createUserAccumulator(email);
+
+      user.displayName = user.displayName || row.name || null;
+
+      if (!row.eventId) {
+        usersByEmail.set(email, user);
+        continue;
+      }
+
+      user.waitlistEventIds.add(row.eventId);
+      usersByEmail.set(email, user);
+    }
+
+    for (const row of ticketRows) {
+      const email = normalizeEmail(row.email);
+      const user = usersByEmail.get(email) ?? createUserAccumulator(email);
+
+      user.displayName = user.displayName || row.name || null;
+
+      if (!row.eventId) {
+        usersByEmail.set(email, user);
+        continue;
+      }
+
+      user.ticketedEventIds.add(row.eventId);
+      if (row.scanned) {
+        user.attendedEventIds.add(row.eventId);
+      }
       usersByEmail.set(email, user);
     }
 
@@ -240,72 +316,15 @@ export async function GET(
             missing: 0,
           },
         },
-        warnings: legacyAuthResult.warning ? [legacyAuthResult.warning] : [],
+        warnings: authUserResult.warning ? [authUserResult.warning] : [],
       });
-    }
-
-    const loggedInEmails = Array.from(usersByEmail.keys());
-    const emailChunks = chunkArray(loggedInEmails, EMAIL_QUERY_CHUNK_SIZE);
-
-    const [notifyRowChunks, ticketRowChunks] = await Promise.all([
-      Promise.all(
-        emailChunks.map((chunk) =>
-          db.query.notify.findMany({
-            where: inArray(notify.email, chunk),
-            columns: {
-              email: true,
-              speakerId: true,
-            },
-          }),
-        ),
-      ),
-      Promise.all(
-        emailChunks.map((chunk) =>
-          db.query.tickets.findMany({
-            where: inArray(tickets.email, chunk),
-            columns: {
-              email: true,
-              eventId: true,
-              scanned: true,
-              name: true,
-            },
-          }),
-        ),
-      ),
-    ]);
-
-    const notifyRows = notifyRowChunks.flat();
-    const ticketRows = ticketRowChunks.flat();
-
-    for (const row of notifyRows) {
-      const email = normalizeEmail(row.email);
-      const user = usersByEmail.get(email);
-
-      if (!user) continue;
-
-      user.notifyEventIds.add(row.speakerId);
-    }
-
-    for (const row of ticketRows) {
-      const email = normalizeEmail(row.email);
-      const user = usersByEmail.get(email);
-
-      if (!user) continue;
-
-      user.displayName = user.displayName || row.name || null;
-
-      if (!row.eventId) continue;
-
-      user.ticketedEventIds.add(row.eventId);
-      if (row.scanned) {
-        user.attendedEventIds.add(row.eventId);
-      }
     }
 
     const users = Array.from(usersByEmail.values())
       .map((user) => {
         const historyEventIds = new Set([
           ...user.notifyEventIds,
+          ...user.waitlistEventIds,
           ...user.ticketedEventIds,
           ...user.attendedEventIds,
         ]);
@@ -317,11 +336,13 @@ export async function GET(
           lastLoginAt: user.lastLoginAt,
           currentEventStatus: {
             onNotifyList: user.notifyEventIds.has(eventId),
+            waitlisted: user.waitlistEventIds.has(eventId),
             ticketed: user.ticketedEventIds.has(eventId),
             attended: user.attendedEventIds.has(eventId),
           },
           counts: {
             notified: user.notifyEventIds.size,
+            waitlisted: user.waitlistEventIds.size,
             ticketed: user.ticketedEventIds.size,
             attended: user.attendedEventIds.size,
             totalHistoryEvents: historyEventIds.size,
@@ -330,12 +351,14 @@ export async function GET(
       })
       .sort((a, b) => {
         const aCurrentScore =
-          Number(a.currentEventStatus.attended) * 4 +
-          Number(a.currentEventStatus.ticketed) * 2 +
+          Number(a.currentEventStatus.attended) * 8 +
+          Number(a.currentEventStatus.ticketed) * 4 +
+          Number(a.currentEventStatus.waitlisted) * 2 +
           Number(a.currentEventStatus.onNotifyList);
         const bCurrentScore =
-          Number(b.currentEventStatus.attended) * 4 +
-          Number(b.currentEventStatus.ticketed) * 2 +
+          Number(b.currentEventStatus.attended) * 8 +
+          Number(b.currentEventStatus.ticketed) * 4 +
+          Number(b.currentEventStatus.waitlisted) * 2 +
           Number(b.currentEventStatus.onNotifyList);
 
         if (bCurrentScore !== aCurrentScore) {
@@ -360,6 +383,7 @@ export async function GET(
       (acc, user) => {
         const engagedWithCurrentEvent =
           user.currentEventStatus.onNotifyList ||
+          user.currentEventStatus.waitlisted ||
           user.currentEventStatus.ticketed ||
           user.currentEventStatus.attended;
 
@@ -387,7 +411,7 @@ export async function GET(
       },
     );
 
-    const warnings = legacyAuthResult.warning ? [legacyAuthResult.warning] : [];
+    const warnings = authUserResult.warning ? [authUserResult.warning] : [];
 
     return NextResponse.json({
       event: {

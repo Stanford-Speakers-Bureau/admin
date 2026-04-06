@@ -25,6 +25,25 @@ type Affiliation =
   | "member"
   | "missing";
 
+const EVENT_STATUS_OPTIONS = [
+  { value: "notify", label: "Notify" },
+  { value: "waitlisted", label: "Waitlisted" },
+  { value: "ticketed", label: "Ticketed" },
+  { value: "attended", label: "Attended" },
+  { value: "none", label: "No current status" },
+] as const;
+
+type EventStatusOption = (typeof EVENT_STATUS_OPTIONS)[number]["value"];
+const EVENT_STATUS_VALUES = EVENT_STATUS_OPTIONS.map((option) => option.value);
+
+const ACTIVITY_OPTIONS = [
+  { value: "with_history", label: "With event history" },
+  { value: "without_history", label: "No event history" },
+] as const;
+
+type ActivityOption = (typeof ACTIVITY_OPTIONS)[number]["value"];
+const ACTIVITY_VALUES = ACTIVITY_OPTIONS.map((option) => option.value);
+
 type AudienceUser = {
   email: string;
   displayName: string | null;
@@ -32,11 +51,13 @@ type AudienceUser = {
   lastLoginAt: string | null;
   currentEventStatus: {
     onNotifyList: boolean;
+    waitlisted: boolean;
     ticketed: boolean;
     attended: boolean;
   };
   counts: {
     notified: number;
+    waitlisted: number;
     ticketed: number;
     attended: number;
     totalHistoryEvents: number;
@@ -58,19 +79,10 @@ type AudienceResponse = {
 
 type AudienceUserDetails = {
   notifyEvents: AudienceEventSummary[];
+  waitlistEvents: AudienceEventSummary[];
   ticketedEvents: AudienceEventSummary[];
   attendedEvents: AudienceEventSummary[];
 };
-
-type EventStatusFilter =
-  | "all"
-  | "engaged"
-  | "notify"
-  | "ticketed"
-  | "attended";
-
-type AffiliationFilter = "all" | Affiliation;
-type ActivityFilter = "all" | "with_history" | "without_history";
 
 const USER_PAGE_SIZE = 50;
 const AFFILIATION_ORDER: Affiliation[] = [
@@ -114,6 +126,22 @@ function affiliationClasses(affiliation: Affiliation): string {
   }
 }
 
+function toggleSelection<T extends string>(
+  selected: T[],
+  value: T,
+  orderedOptions: readonly T[],
+): T[] {
+  const next = new Set(selected);
+
+  if (next.has(value)) {
+    next.delete(value);
+  } else {
+    next.add(value);
+  }
+
+  return orderedOptions.filter((option) => next.has(option));
+}
+
 function AffiliationPill({
   affiliation,
 }: {
@@ -128,17 +156,46 @@ function AffiliationPill({
   );
 }
 
+function FilterCheckbox({
+  checked,
+  label,
+  onChange,
+}: {
+  checked: boolean;
+  label: string;
+  onChange: () => void;
+}) {
+  return (
+    <label
+      className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors ${
+        checked
+          ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-200"
+          : "border-zinc-700 bg-zinc-900/40 text-zinc-300 hover:border-zinc-600"
+      }`}
+    >
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={onChange}
+        className="h-4 w-4 rounded border-zinc-600 bg-zinc-900 text-emerald-500 focus:ring-emerald-500/40"
+      />
+      <span>{label}</span>
+    </label>
+  );
+}
+
 function EventBadge({
   event,
   tone,
 }: {
   event: AudienceEventSummary;
-  tone: "amber" | "blue" | "emerald";
+  tone: "amber" | "blue" | "emerald" | "violet";
 }) {
   const toneClasses = {
     amber: "border-amber-500/30 bg-amber-500/10 text-amber-300",
     blue: "border-blue-500/30 bg-blue-500/10 text-blue-300",
     emerald: "border-emerald-500/30 bg-emerald-500/10 text-emerald-300",
+    violet: "border-violet-500/30 bg-violet-500/10 text-violet-300",
   };
 
   return (
@@ -153,11 +210,12 @@ function EventBadge({
 }
 
 function getCurrentEventStatus(user: AudienceUser): {
-  label: "Notify" | "Ticketed" | "Attended" | "None";
+  label: "Notify" | "Waitlisted" | "Ticketed" | "Attended" | "None";
   classes: string;
 } {
   const activeClasses = {
     amber: "border-amber-500/30 bg-amber-500/10 text-amber-300",
+    violet: "border-violet-500/30 bg-violet-500/10 text-violet-300",
     blue: "border-blue-500/30 bg-blue-500/10 text-blue-300",
     emerald: "border-emerald-500/30 bg-emerald-500/10 text-emerald-300",
   };
@@ -170,6 +228,10 @@ function getCurrentEventStatus(user: AudienceUser): {
     return { label: "Ticketed", classes: activeClasses.blue };
   }
 
+  if (user.currentEventStatus.waitlisted) {
+    return { label: "Waitlisted", classes: activeClasses.violet };
+  }
+
   if (user.currentEventStatus.onNotifyList) {
     return { label: "Notify", classes: activeClasses.amber };
   }
@@ -178,6 +240,15 @@ function getCurrentEventStatus(user: AudienceUser): {
     label: "None",
     classes: "border-zinc-700 bg-zinc-800/80 text-zinc-500",
   };
+}
+
+function hasNoCurrentEventStatus(user: AudienceUser): boolean {
+  return (
+    !user.currentEventStatus.onNotifyList &&
+    !user.currentEventStatus.waitlisted &&
+    !user.currentEventStatus.ticketed &&
+    !user.currentEventStatus.attended
+  );
 }
 
 export default function AudienceClient() {
@@ -193,15 +264,27 @@ export default function AudienceClient() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<EventStatusFilter>("all");
-  const [affiliationFilter, setAffiliationFilter] =
-    useState<AffiliationFilter>("all");
-  const [activityFilter, setActivityFilter] = useState<ActivityFilter>("all");
+  const [selectedStatuses, setSelectedStatuses] = useState<EventStatusOption[]>(
+    EVENT_STATUS_VALUES,
+  );
+  const [selectedAffiliations, setSelectedAffiliations] = useState<Affiliation[]>(
+    AFFILIATION_ORDER,
+  );
+  const [selectedActivity, setSelectedActivity] = useState<ActivityOption[]>(
+    ACTIVITY_VALUES,
+  );
   const [expandedEmail, setExpandedEmail] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [showSendModal, setShowSendModal] = useState(false);
   const [sendState, setSendState] = useState<BulkSendProgressState | null>(null);
   const [individualSending, setIndividualSending] = useState<string | null>(null);
+
+  function resetFilters() {
+    setSearch("");
+    setSelectedStatuses(EVENT_STATUS_VALUES);
+    setSelectedAffiliations(AFFILIATION_ORDER);
+    setSelectedActivity(ACTIVITY_VALUES);
+  }
 
   useEffect(() => {
     async function fetchAudienceData() {
@@ -283,29 +366,35 @@ export default function AudienceClient() {
 
     let list = data.users;
 
-    if (statusFilter === "engaged") {
-      list = list.filter(
-        (user) =>
-          user.currentEventStatus.onNotifyList ||
-          user.currentEventStatus.ticketed ||
-          user.currentEventStatus.attended,
-      );
-    } else if (statusFilter === "notify") {
-      list = list.filter((user) => user.currentEventStatus.onNotifyList);
-    } else if (statusFilter === "ticketed") {
-      list = list.filter((user) => user.currentEventStatus.ticketed);
-    } else if (statusFilter === "attended") {
-      list = list.filter((user) => user.currentEventStatus.attended);
+    if (selectedStatuses.length !== EVENT_STATUS_VALUES.length) {
+      const selectedStatusSet = new Set(selectedStatuses);
+      list = list.filter((user) => {
+        const matchesNoStatus = hasNoCurrentEventStatus(user);
+
+        return (
+          (selectedStatusSet.has("notify") && user.currentEventStatus.onNotifyList) ||
+          (selectedStatusSet.has("waitlisted") && user.currentEventStatus.waitlisted) ||
+          (selectedStatusSet.has("ticketed") && user.currentEventStatus.ticketed) ||
+          (selectedStatusSet.has("attended") && user.currentEventStatus.attended) ||
+          (selectedStatusSet.has("none") && matchesNoStatus)
+        );
+      });
     }
 
-    if (affiliationFilter !== "all") {
-      list = list.filter((user) => user.affiliation === affiliationFilter);
+    if (selectedAffiliations.length !== AFFILIATION_ORDER.length) {
+      const selectedAffiliationSet = new Set(selectedAffiliations);
+      list = list.filter((user) => selectedAffiliationSet.has(user.affiliation));
     }
 
-    if (activityFilter === "with_history") {
-      list = list.filter((user) => user.counts.totalHistoryEvents > 0);
-    } else if (activityFilter === "without_history") {
-      list = list.filter((user) => user.counts.totalHistoryEvents === 0);
+    if (selectedActivity.length !== ACTIVITY_VALUES.length) {
+      const selectedActivitySet = new Set(selectedActivity);
+      list = list.filter((user) => {
+        const hasHistory = user.counts.totalHistoryEvents > 0;
+        return (
+          (selectedActivitySet.has("with_history") && hasHistory) ||
+          (selectedActivitySet.has("without_history") && !hasHistory)
+        );
+      });
     }
 
     const tokens = search
@@ -328,7 +417,19 @@ export default function AudienceClient() {
     }
 
     return list;
-  }, [activityFilter, affiliationFilter, data, search, statusFilter]);
+  }, [
+    data,
+    search,
+    selectedActivity,
+    selectedAffiliations,
+    selectedStatuses,
+  ]);
+
+  const hasActiveFilters =
+    search.trim().length > 0 ||
+    selectedStatuses.length !== EVENT_STATUS_VALUES.length ||
+    selectedAffiliations.length !== AFFILIATION_ORDER.length ||
+    selectedActivity.length !== ACTIVITY_VALUES.length;
 
   const nonNotifyEmails = useMemo(() => {
     if (!data) return [];
@@ -398,7 +499,13 @@ export default function AudienceClient() {
   useEffect(() => {
     setCurrentPage(1);
     setExpandedEmail(null);
-  }, [activityFilter, affiliationFilter, search, selectedEventId, statusFilter]);
+  }, [
+    search,
+    selectedActivity,
+    selectedAffiliations,
+    selectedEventId,
+    selectedStatuses,
+  ]);
 
   useEffect(() => {
     setSendState(null);
@@ -497,7 +604,7 @@ export default function AudienceClient() {
             Event Audience
           </h1>
           <p className="text-zinc-400 text-sm">
-            Users who have logged in and their notify, ticket, and attendance history for{" "}
+            Known people and their event history for{" "}
             <span className="text-zinc-200 font-medium">
               {data.event.name || "Unnamed event"}
             </span>
@@ -584,7 +691,7 @@ export default function AudienceClient() {
           <p className="text-2xl font-bold text-blue-400">
             {data.stats.currentEventEngagedUsers}
           </p>
-          <p className="text-[10px] text-zinc-600">Notify, ticketed, or attended</p>
+          <p className="text-[10px] text-zinc-600">Notify, waitlisted, ticketed, or attended</p>
         </div>
         <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
           <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-1">
@@ -599,7 +706,7 @@ export default function AudienceClient() {
             No Event History
           </p>
           <p className="text-2xl font-bold text-zinc-300">{usersWithoutHistory}</p>
-          <p className="text-[10px] text-zinc-600">Logged in, but no notify/ticket activity</p>
+          <p className="text-[10px] text-zinc-600">No notify, waitlist, or ticket activity on file</p>
         </div>
       </div>
 
@@ -610,27 +717,27 @@ export default function AudienceClient() {
               Affiliation Breakdown
             </h3>
             <p className="text-xs text-zinc-500">
-              Click a category to filter the table
+              Click categories to include or exclude them
             </p>
           </div>
-          {affiliationFilter !== "all" && (
+          {selectedAffiliations.length !== AFFILIATION_ORDER.length && (
             <button
-              onClick={() => setAffiliationFilter("all")}
+              onClick={() => setSelectedAffiliations(AFFILIATION_ORDER)}
               className="text-xs text-zinc-400 hover:text-white transition-colors"
             >
-              Clear affiliation filter
+              Reset affiliations
             </button>
           )}
         </div>
         <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
           {AFFILIATION_ORDER.map((affiliation) => {
-            const isActive = affiliationFilter === affiliation;
+            const isActive = selectedAffiliations.includes(affiliation);
             return (
               <button
                 key={affiliation}
                 onClick={() =>
-                  setAffiliationFilter((current) =>
-                    current === affiliation ? "all" : affiliation,
+                  setSelectedAffiliations((current) =>
+                    toggleSelection(current, affiliation, AFFILIATION_ORDER),
                   )
                 }
                 className={`rounded-xl border p-4 text-left transition-colors ${
@@ -652,7 +759,23 @@ export default function AudienceClient() {
       </div>
 
       <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
-        <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1.2fr)_repeat(3,minmax(0,180px))] gap-3">
+        <div className="flex items-center justify-between gap-3 mb-4">
+          <div>
+            <h3 className="text-sm font-semibold text-zinc-300">Filters</h3>
+            <p className="text-xs text-zinc-500">
+              Uncheck options to narrow the audience
+            </p>
+          </div>
+          {hasActiveFilters && (
+            <button
+              onClick={resetFilters}
+              className="text-xs text-zinc-400 hover:text-white transition-colors"
+            >
+              Reset filters
+            </button>
+          )}
+        </div>
+        <div className="space-y-4">
           <div>
             <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-2">
               Search Users
@@ -665,54 +788,64 @@ export default function AudienceClient() {
               className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-sm placeholder-zinc-500 focus:outline-none focus:border-zinc-600"
             />
           </div>
-          <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-2">
-              Current Event
-            </label>
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value as EventStatusFilter)}
-              className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-sm focus:outline-none focus:border-zinc-600"
-            >
-              <option value="all">All users</option>
-              <option value="engaged">Any event status</option>
-              <option value="notify">On notify list</option>
-              <option value="ticketed">Ticketed</option>
-              <option value="attended">Attended</option>
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-2">
-              Affiliation
-            </label>
-            <select
-              value={affiliationFilter}
-              onChange={(e) =>
-                setAffiliationFilter(e.target.value as AffiliationFilter)
-              }
-              className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-sm focus:outline-none focus:border-zinc-600"
-            >
-              <option value="all">All affiliations</option>
-              {AFFILIATION_ORDER.map((affiliation) => (
-                <option key={affiliation} value={affiliation}>
-                  {formatAffiliationLabel(affiliation)}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-2">
-              History
-            </label>
-            <select
-              value={activityFilter}
-              onChange={(e) => setActivityFilter(e.target.value as ActivityFilter)}
-              className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-sm focus:outline-none focus:border-zinc-600"
-            >
-              <option value="all">All users</option>
-              <option value="with_history">With event history</option>
-              <option value="without_history">No event history</option>
-            </select>
+          <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+            <div className="rounded-xl border border-zinc-800 bg-zinc-950/30 p-4">
+              <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-3">
+                Current Event
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {EVENT_STATUS_OPTIONS.map((option) => (
+                  <FilterCheckbox
+                    key={option.value}
+                    checked={selectedStatuses.includes(option.value)}
+                    label={option.label}
+                    onChange={() =>
+                      setSelectedStatuses((current) =>
+                        toggleSelection(current, option.value, EVENT_STATUS_VALUES),
+                      )
+                    }
+                  />
+                ))}
+              </div>
+            </div>
+            <div className="rounded-xl border border-zinc-800 bg-zinc-950/30 p-4">
+              <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-3">
+                Affiliation
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {AFFILIATION_ORDER.map((affiliation) => (
+                  <FilterCheckbox
+                    key={affiliation}
+                    checked={selectedAffiliations.includes(affiliation)}
+                    label={formatAffiliationLabel(affiliation)}
+                    onChange={() =>
+                      setSelectedAffiliations((current) =>
+                        toggleSelection(current, affiliation, AFFILIATION_ORDER),
+                      )
+                    }
+                  />
+                ))}
+              </div>
+            </div>
+            <div className="rounded-xl border border-zinc-800 bg-zinc-950/30 p-4">
+              <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-3">
+                History
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {ACTIVITY_OPTIONS.map((option) => (
+                  <FilterCheckbox
+                    key={option.value}
+                    checked={selectedActivity.includes(option.value)}
+                    label={option.label}
+                    onChange={() =>
+                      setSelectedActivity((current) =>
+                        toggleSelection(current, option.value, ACTIVITY_VALUES),
+                      )
+                    }
+                  />
+                ))}
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -788,7 +921,7 @@ export default function AudienceClient() {
                                   <p className="text-sm text-rose-300">{detailError}</p>
                                 </div>
                               ) : userDetails ? (
-                                <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                                <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-4 gap-4">
                                   <div className="rounded-xl border border-zinc-800 bg-zinc-950/40 p-4">
                                     <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-2">
                                       Notified
@@ -806,6 +939,26 @@ export default function AudienceClient() {
                                     ) : (
                                       <p className="text-xs text-zinc-500">
                                         No notify signups yet.
+                                      </p>
+                                    )}
+                                  </div>
+                                  <div className="rounded-xl border border-zinc-800 bg-zinc-950/40 p-4">
+                                    <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-2">
+                                      Waitlisted
+                                    </p>
+                                    {userDetails.waitlistEvents.length > 0 ? (
+                                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                        {userDetails.waitlistEvents.map((event) => (
+                                          <EventBadge
+                                            key={`waitlist-${event.id}`}
+                                            event={event}
+                                            tone="violet"
+                                          />
+                                        ))}
+                                      </div>
+                                    ) : (
+                                      <p className="text-xs text-zinc-500">
+                                        No waitlist history yet.
                                       </p>
                                     )}
                                   </div>
@@ -871,7 +1024,7 @@ export default function AudienceClient() {
                             >
                               {currentEventStatus.label}
                             </span>
-                            {!user.currentEventStatus.onNotifyList && !user.currentEventStatus.ticketed && !user.currentEventStatus.attended && (
+                            {hasNoCurrentEventStatus(user) && (
                               <button
                                 onClick={(e) => { e.stopPropagation(); sendAnnouncementToOne(user.email); }}
                                 disabled={individualSending === user.email || sendState?.active}
@@ -895,7 +1048,7 @@ export default function AudienceClient() {
                               {user.counts.totalHistoryEvents}
                             </span>
                             <span className="text-[11px] text-zinc-500">
-                              {user.counts.notified} N / {user.counts.ticketed} T /{" "}
+                              {user.counts.notified} N / {user.counts.waitlisted} W / {user.counts.ticketed} T /{" "}
                               {user.counts.attended} A
                             </span>
                           </div>
