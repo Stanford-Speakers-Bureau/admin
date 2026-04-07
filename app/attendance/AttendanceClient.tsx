@@ -50,9 +50,49 @@ type AttendanceResponse = {
 };
 
 type FilterTab = "all" | "loyalists" | "flakers" | "mixed";
+type SegmentedAttendees = Record<FilterTab, Attendee[]>;
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
+const FILTER_TAB_LABELS: Record<FilterTab, string> = {
+  all: "All",
+  loyalists: "Loyalists",
+  flakers: "Flakers",
+  mixed: "Mixed",
+};
+
+const FILTER_TABS = (Object.entries(FILTER_TAB_LABELS) as Array<
+  [FilterTab, string]
+>).map(([key, label]) => ({ key, label }));
+
+const EMPTY_SEGMENTS: SegmentedAttendees = {
+  all: [],
+  loyalists: [],
+  flakers: [],
+  mixed: [],
+};
+
+function matchesFilterTab(attendee: Attendee, filterTab: FilterTab, minEvents: number): boolean {
+  if (attendee.eventsRegistered < minEvents) return false;
+  if (filterTab === "loyalists") return attendee.attendanceRate >= 0.9;
+  if (filterTab === "flakers") return attendee.attendanceRate <= 0.1;
+  if (filterTab === "mixed") return attendee.attendanceRate > 0.1 && attendee.attendanceRate < 0.9;
+  return true;
+}
+
+function getAttendeeSegment(attendee: Attendee): Exclude<FilterTab, "all"> {
+  if (attendee.attendanceRate >= 0.9) return "loyalists";
+  if (attendee.attendanceRate <= 0.1) return "flakers";
+  return "mixed";
+}
+
+function escapeCsvValue(value: string | number): string {
+  const stringValue = String(value);
+  if (/[",\n]/.test(stringValue)) {
+    return `"${stringValue.replace(/"/g, "\"\"")}"`;
+  }
+  return stringValue;
+}
 
 function ProgressBar({ value, max, color = "#10b981" }: { value: number; max: number; color?: string }) {
   const pct = max > 0 ? Math.min((value / max) * 100, 100) : 0;
@@ -131,14 +171,21 @@ export default function AttendanceClient() {
 
   const maxBucket = useMemo(() => Math.max(...histogram.map((b) => b.count), 1), [histogram]);
 
+  const attendeesByTab = useMemo<SegmentedAttendees>(() => {
+    if (!data) return EMPTY_SEGMENTS;
+
+    const all = data.attendees.filter((attendee) => matchesFilterTab(attendee, "all", minEvents));
+    return {
+      all,
+      loyalists: all.filter((attendee) => matchesFilterTab(attendee, "loyalists", minEvents)),
+      flakers: all.filter((attendee) => matchesFilterTab(attendee, "flakers", minEvents)),
+      mixed: all.filter((attendee) => matchesFilterTab(attendee, "mixed", minEvents)),
+    };
+  }, [data, minEvents]);
+
   // Filtered & searched attendees
   const filteredAttendees = useMemo(() => {
-    if (!data) return [];
-    let list = data.attendees.filter((a) => a.eventsRegistered >= minEvents);
-
-    if (filterTab === "loyalists") list = list.filter((a) => a.attendanceRate >= 0.9);
-    else if (filterTab === "flakers") list = list.filter((a) => a.attendanceRate <= 0.1);
-    else if (filterTab === "mixed") list = list.filter((a) => a.attendanceRate > 0.1 && a.attendanceRate < 0.9);
+    let list = attendeesByTab[filterTab];
 
     if (search) {
       const q = search.toLowerCase();
@@ -150,7 +197,7 @@ export default function AttendanceClient() {
     }
 
     return list;
-  }, [data, filterTab, search, minEvents]);
+  }, [attendeesByTab, filterTab, search]);
 
   // Per-event new vs returning
   const eventRetention = useMemo(() => {
@@ -191,6 +238,58 @@ export default function AttendanceClient() {
   useEffect(() => {
     setExpandedEmail(null);
   }, [currentPage]);
+
+  function exportAttendees(filter: FilterTab) {
+    const attendees = attendeesByTab[filter];
+    if (attendees.length === 0) return;
+
+    const rows = [
+      [
+        "Segment",
+        "Name",
+        "Email",
+        "Events Registered",
+        "Events Attended",
+        "Attendance Rate",
+        "Current Streak",
+        "First Seen",
+        "Last Seen",
+        "Event History",
+      ],
+      ...attendees.map((attendee) => [
+        FILTER_TAB_LABELS[getAttendeeSegment(attendee)],
+        attendee.name || "",
+        attendee.email,
+        attendee.eventsRegistered,
+        attendee.eventsAttended,
+        `${(attendee.attendanceRate * 100).toFixed(1)}%`,
+        attendee.currentStreak,
+        formatDate(attendee.firstSeen),
+        formatDate(attendee.lastSeen),
+        attendee.events
+          .map((event) => {
+            const eventDate = formatDate(event.eventDate);
+            const eventLabel = event.eventName || "Unnamed";
+            return `${eventLabel} (${eventDate}): ${event.attended ? "Attended" : "No-show"}`;
+          })
+          .join(" | "),
+      ]),
+    ];
+
+    const csv = rows
+      .map((row) => row.map((value) => escapeCsvValue(value)).join(","))
+      .join("\n");
+
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    const segmentSlug = FILTER_TAB_LABELS[filter].toLowerCase();
+
+    link.href = url;
+    link.download = `attendance-${segmentSlug}-min-${minEvents}-events.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
 
   // ── Loading / Error states ──
 
@@ -242,9 +341,9 @@ export default function AttendanceClient() {
   }
 
   const { stats } = data;
-  const multiEventCount = data.attendees.filter((a) => a.eventsRegistered >= minEvents).length;
-  const loyalistCount = data.attendees.filter((a) => a.eventsRegistered >= minEvents && a.attendanceRate >= 0.9).length;
-  const flakerCount = data.attendees.filter((a) => a.eventsRegistered >= minEvents && a.attendanceRate <= 0.1).length;
+  const multiEventCount = attendeesByTab.all.length;
+  const loyalistCount = attendeesByTab.loyalists.length;
+  const flakerCount = attendeesByTab.flakers.length;
   const totalPages = Math.max(1, Math.ceil(filteredAttendees.length / ATTENDEE_PAGE_SIZE));
   const clampedPage = Math.min(currentPage, totalPages);
   const pageStart = (clampedPage - 1) * ATTENDEE_PAGE_SIZE;
@@ -256,9 +355,41 @@ export default function AttendanceClient() {
 
   return (
     <div className="px-4 sm:px-6 py-8 space-y-6">
-      <div>
-        <h1 className="text-2xl sm:text-3xl font-bold text-white font-serif mb-1">Attendance Overview</h1>
-        <p className="text-zinc-400 text-sm">Cross-event attendee patterns across {data.events.length} past events</p>
+      <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+        <div>
+          <h1 className="text-2xl sm:text-3xl font-bold text-white font-serif mb-1">Attendance Overview</h1>
+          <p className="text-zinc-400 text-sm">Cross-event attendee patterns across {data.events.length} past events</p>
+        </div>
+        <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4 xl:min-w-[360px]">
+          <div className="flex items-center gap-2 mb-3">
+            <svg className="w-4 h-4 text-zinc-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+            </svg>
+            <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">Export CSV</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {FILTER_TABS.map((tab) => {
+              const exportCount = attendeesByTab[tab.key].length;
+
+              return (
+                <button
+                  key={tab.key}
+                  onClick={() => exportAttendees(tab.key)}
+                  disabled={exportCount === 0}
+                  className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+                    filterTab === tab.key
+                      ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/15"
+                      : "border-zinc-700 bg-zinc-800 text-zinc-300 hover:bg-zinc-700"
+                  }`}
+                >
+                  <span>{tab.label}</span>
+                  <span className="rounded-full bg-black/20 px-2 py-0.5 text-[11px] text-inherit">{exportCount}</span>
+                </button>
+              );
+            })}
+          </div>
+          <p className="mt-3 text-[11px] text-zinc-600">Exports follow the current minimum events setting.</p>
+        </div>
       </div>
 
       {/* ── Stats cards ── */}
@@ -377,12 +508,7 @@ export default function AttendanceClient() {
       {/* ── Filter tabs + search ── */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
         <div className="flex items-center gap-1 bg-zinc-900/80 p-1 rounded-xl border border-zinc-800">
-          {([
-            { key: "all", label: "All", count: multiEventCount },
-            { key: "loyalists", label: "Loyalists", count: loyalistCount },
-            { key: "flakers", label: "Flakers", count: flakerCount },
-            { key: "mixed", label: "Mixed", count: multiEventCount - loyalistCount - flakerCount },
-          ] as const).map((tab) => (
+          {FILTER_TABS.map((tab) => (
             <button
               key={tab.key}
               onClick={() => setFilterTab(tab.key)}
@@ -393,7 +519,15 @@ export default function AttendanceClient() {
               }`}
             >
               {tab.label}
-              <span className="ml-1.5 text-xs text-zinc-500">{tab.count}</span>
+              <span className="ml-1.5 text-xs text-zinc-500">
+                {tab.key === "all"
+                  ? multiEventCount
+                  : tab.key === "loyalists"
+                    ? loyalistCount
+                    : tab.key === "flakers"
+                      ? flakerCount
+                      : attendeesByTab.mixed.length}
+              </span>
             </button>
           ))}
         </div>
