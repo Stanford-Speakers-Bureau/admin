@@ -805,6 +805,20 @@ function buildParagraph(text: string, opts?: { color?: string; fontSize?: string
   return `${gmailBlendStart}<p style="margin: 0 0 ${marginBottom} 0; color: ${color}; font-size: ${fontSize}; font-weight: ${fontWeight}; line-height: 1.6;">${text}</p>${gmailBlendEnd}`;
 }
 
+/** Builds a prominent cancel-ticket banner shown at the very top of non-VIP/non-external emails */
+function buildCancelBanner(cancelTicketUrl: string): string {
+  return `
+    <tr>
+      <td align="center" style="padding: 12px 20px 0; background-color: #27272a;">
+        <div style="max-width: 600px; margin: 0 auto;">
+          <div style="background-color: #18181b; border: 2px solid #A80D0C; border-radius: 8px; padding: 14px 20px; text-align: center;">
+            <p style="margin: 0; color: #d4d4d8; font-size: 14px; font-weight: 600; line-height: 1.5;">Can&rsquo;t make it? <a href="${cancelTicketUrl}" style="color: #A80D0C; text-decoration: underline; font-weight: 700;">Please cancel</a> so someone else can attend.</p>
+          </div>
+        </div>
+      </td>
+    </tr>`;
+}
+
 /** Builds the email footer */
 function buildFooter(): string {
   return `
@@ -1072,6 +1086,10 @@ async function generateTicketEmailHTML(
     isExternal,
   });
 
+  const cancelBanner = !isVIP && !isExternal && cancelTicketUrl
+    ? buildCancelBanner(cancelTicketUrl)
+    : "";
+
   const contentSections: string[] = [];
 
   // Important notice
@@ -1088,12 +1106,14 @@ async function generateTicketEmailHTML(
     contentSections.push(buildParagraph("Your ticket is confirmed &mdash; we can't wait to see you!"));
   }
 
-  // Cancel ticket message + button
-  contentSections.push(buildParagraph(
-    "Can't make it? Please cancel so someone else can attend.",
-  ));
-  if (cancelTicketUrl) {
-    contentSections.push(buildButton(cancelTicketUrl, "Cancel Ticket"));
+  // Cancel ticket message + button (VIP/External only — regular tickets use the top banner)
+  if (isVIP || isExternal) {
+    contentSections.push(buildParagraph(
+      "Can't make it? Please cancel so someone else can attend.",
+    ));
+    if (cancelTicketUrl) {
+      contentSections.push(buildButton(cancelTicketUrl, "Cancel Ticket"));
+    }
   }
 
   // Event details card
@@ -1125,6 +1145,7 @@ async function generateTicketEmailHTML(
   }
 
   const bodyContent = `
+    ${cancelBanner}
     ${heroCard}
     <!-- Content -->
     <tr>
@@ -1152,12 +1173,18 @@ function generateTicketEmailText(data: TicketEmailData): string {
   const eventUrl = eventRoute ? `${baseUrl}/events/${eventRoute}` : null;
   const cancelTicketUrl = ticketId ? `${baseUrl}/cancel/${ticketId}` : null;
 
+  const isVIP = ticketType?.toUpperCase() === "VIP";
+  const isExternal = ticketType?.toUpperCase() === "EXTERNAL";
+  const cancelLine = cancelTicketUrl
+    ? `Can't make it? Please cancel so someone else can attend.\nCancel Ticket: ${cancelTicketUrl}`
+    : "";
+
   return `
-${ticketType?.toUpperCase() === "VIP" ? "VIP Ticket Confirmed!" : ticketType?.toUpperCase() === "EXTERNAL" ? "External Ticket Confirmed!" : "Ticket Confirmed!"}
+${!isVIP && !isExternal && cancelLine ? `${cancelLine}\n\n---\n` : ""}${isVIP ? "VIP Ticket Confirmed!" : isExternal ? "External Ticket Confirmed!" : "Ticket Confirmed!"}
 
 Your ticket is confirmed — we can't wait to see you!
 
-${ticketType?.toUpperCase() === "VIP" ? "Use the VIP entrance when you arrive — we've saved you a front-row seat.\n\n" : ""}Event Details:
+${isVIP ? "Use the VIP entrance when you arrive — we've saved you a front-row seat.\n\n" : ""}Event Details:
 ${data.name ? `- Name: ${data.name}\n` : ""}- Event: ${eventName || "Event"}
 - Date & Time: ${formattedDate}
 ${formattedDoorsOpen ? `- Doors Open: ${formattedDoorsOpen}\n` : ""}- Ticket Type: ${ticketType || "STANDARD"}
@@ -1165,10 +1192,7 @@ ${formattedDoorsOpen ? `- Doors Open: ${formattedDoorsOpen}\n` : ""}- Ticket Typ
 ${eventUrl ? `- Event URL: ${eventUrl}` : ""}
 
 ${buildImportantNoticeText()}
-
-Can't make it? Please cancel so someone else can attend.
-
-${cancelTicketUrl ? `Cancel Ticket: ${cancelTicketUrl}` : ""}
+${isVIP || isExternal ? `\n${cancelLine}` : ""}
 
 Stanford Speakers Bureau
 For ADA accommodations or other questions, please email ${FROM_EMAIL}
@@ -1370,6 +1394,10 @@ async function generateDayOfReminderEmailHTML(
     isExternal,
   });
 
+  const cancelBanner = !isVIP && !isExternal && cancelTicketUrl
+    ? buildCancelBanner(cancelTicketUrl)
+    : "";
+
   const contentSections: string[] = [];
 
   // Important notice (with standby line extra item)
@@ -1389,12 +1417,14 @@ async function generateDayOfReminderEmailHTML(
     `See you tonight! Doors open at ${formattedDoorsOpen || "7:30 PM"} &mdash; don't be late, no late entry allowed.`,
   ));
 
-  // Cancel ticket message + button
-  contentSections.push(buildParagraph(
-    "Can't make it? Please cancel so someone else can attend.",
-  ));
-  if (cancelTicketUrl) {
-    contentSections.push(buildButton(cancelTicketUrl, "Cancel Ticket"));
+  // Cancel ticket message + button (VIP/External only — regular tickets use the top banner)
+  if (isVIP || isExternal) {
+    contentSections.push(buildParagraph(
+      "Can't make it? Please cancel so someone else can attend.",
+    ));
+    if (cancelTicketUrl) {
+      contentSections.push(buildButton(cancelTicketUrl, "Cancel Ticket"));
+    }
   }
 
   // Event details card
@@ -1426,6 +1456,7 @@ async function generateDayOfReminderEmailHTML(
   }
 
   const bodyContent = `
+    ${cancelBanner}
     ${heroCard}
     <!-- Content -->
     <tr>
@@ -1463,16 +1494,19 @@ function generateDayOfReminderEmailText(
   const eventUrl = eventRoute ? `${baseUrl}/events/${eventRoute}` : null;
   const cancelTicketUrl = ticketId ? `${baseUrl}/cancel/${ticketId}` : null;
 
-  return `
-${eventName || "Event"} is TODAY${formattedDoorsOpen ? ` - Doors at ${formattedDoorsOpen}` : ""}!
+  const isVIP = ticketType?.toUpperCase() === "VIP";
+  const isExternal = ticketType?.toUpperCase() === "EXTERNAL";
+  const cancelLine = cancelTicketUrl
+    ? `Can't make it? Please cancel so someone else can attend.\nCancel Ticket: ${cancelTicketUrl}`
+    : "";
 
-${ticketType?.toUpperCase() === "VIP" ? "Use the VIP entrance when you arrive — we've saved you a front-row seat.\n\n" : ""}See you tonight! Doors open at ${formattedDoorsOpen || "7:30 PM"} — don't be late, no late entry allowed.
+  return `
+${!isVIP && !isExternal && cancelLine ? `${cancelLine}\n\n---\n` : ""}${eventName || "Event"} is TODAY${formattedDoorsOpen ? ` - Doors at ${formattedDoorsOpen}` : ""}!
+
+${isVIP ? "Use the VIP entrance when you arrive — we've saved you a front-row seat.\n\n" : ""}See you tonight! Doors open at ${formattedDoorsOpen || "7:30 PM"} — don't be late, no late entry allowed.
 
 ${buildImportantNoticeText()}
-
-Can't make it? Please cancel so someone else can attend.
-
-${cancelTicketUrl ? `Cancel Ticket: ${cancelTicketUrl}` : ""}
+${isVIP || isExternal ? `\n${cancelLine}` : ""}
 
 Event Details:
 ${data.name ? `- Name: ${data.name}\n` : ""}- Event: ${eventName || "Event"}
@@ -1705,6 +1739,10 @@ async function generateEarlyReminderEmailHTML(
     isExternal,
   });
 
+  const cancelBanner = !isVIP && !isExternal && cancelTicketUrl
+    ? buildCancelBanner(cancelTicketUrl)
+    : "";
+
   const contentSections: string[] = [];
 
   // Important notice
@@ -1729,12 +1767,14 @@ async function generateEarlyReminderEmailHTML(
     `${promo ? "Not interested? No worries, we're" : "We're"} excited to see you ${isTomorrow ? "tomorrow" : `this ${dayLabel}`}! Doors open at ${formattedDoorsOpen} &mdash; no late entry, so plan to arrive early.`,
   ));
 
-  // Cancel ticket message + button
-  contentSections.push(buildParagraph(
-    "Can't make it? Please cancel so someone else can attend.",
-  ));
-  if (cancelTicketUrl) {
-    contentSections.push(buildButton(cancelTicketUrl, "Cancel Ticket"));
+  // Cancel ticket message + button (VIP/External only — regular tickets use the top banner)
+  if (isVIP || isExternal) {
+    contentSections.push(buildParagraph(
+      "Can't make it? Please cancel so someone else can attend.",
+    ));
+    if (cancelTicketUrl) {
+      contentSections.push(buildButton(cancelTicketUrl, "Cancel Ticket"));
+    }
   }
 
   // Event details card
@@ -1766,6 +1806,7 @@ async function generateEarlyReminderEmailHTML(
   }
 
   const bodyContent = `
+    ${cancelBanner}
     ${heroCard}
     <!-- Content -->
     <tr>
@@ -1824,16 +1865,19 @@ ${promo.time ? `\u{1F554} ${promo.time}` : ""}
 `
     : "";
 
+  const isVIP = ticketType?.toUpperCase() === "VIP";
+  const isExternal = ticketType?.toUpperCase() === "EXTERNAL";
+  const cancelLine = cancelTicketUrl
+    ? `Can't make it? Please cancel so someone else can attend.\nCancel Ticket: ${cancelTicketUrl}`
+    : "";
+
   return `
-${eventName} is ${dayPhrase}!${promo?.title ? ` ${promo.title}` : ""}
+${!isVIP && !isExternal && cancelLine ? `${cancelLine}\n\n---\n` : ""}${eventName} is ${dayPhrase}!${promo?.title ? ` ${promo.title}` : ""}
 ${promoSection}
 ${promo ? "Not interested? No worries, we're" : "We're"} excited to see you ${isTomorrow ? "tomorrow" : `this ${dayLabel}`}! Doors open at ${formattedDoorsOpen} — no late entry, so plan to arrive early.
 
-Can't make it? Please cancel so someone else can attend.
-
-${cancelTicketUrl ? `Cancel Ticket: ${cancelTicketUrl}` : ""}
-
 ${buildImportantNoticeText()}
+${isVIP || isExternal ? `\n${cancelLine}` : ""}
 
 Event Details:
 ${data.name ? `- Name: ${data.name}\n` : ""}- Event: ${eventName || "Event"}
