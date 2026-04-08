@@ -1,4 +1,4 @@
-import { db, eq, roles, userProfiles } from "@ssb/db";
+import { db, eq, inArray, roles, userProfiles } from "@ssb/db";
 import { getSession, type SessionUser } from "./session";
 import { getSupabaseClient } from "./supabase";
 
@@ -15,8 +15,59 @@ type AuthorizedResult = {
 
 export type AdminVerificationResult = UnauthorizedResult | AuthorizedResult;
 
-function normalizeEmail(email: string): string {
+export function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
+}
+
+export function parseRoleNames(rawRoles: string | null | undefined): string[] {
+  return (rawRoles ?? "")
+    .split(",")
+    .map((role) => role.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+export function hasRoleName(
+  rawRoles: string | null | undefined,
+  roleName: string,
+): boolean {
+  return parseRoleNames(rawRoles).includes(roleName.trim().toLowerCase());
+}
+
+export async function getFeeWaiverEmailSetForEmails(
+  emails: string[],
+): Promise<Set<string>> {
+  const normalizedEmails = [...new Set(
+    emails.map((email) => normalizeEmail(email)).filter(Boolean),
+  )];
+
+  if (normalizedEmails.length === 0) {
+    return new Set();
+  }
+
+  const roleRows = await db.query.roles.findMany({
+    where: inArray(roles.email, normalizedEmails),
+    columns: {
+      email: true,
+      roles: true,
+    },
+  });
+
+  return new Set(
+    roleRows
+      .filter((row) => hasRoleName(row.roles, "fee_waiver"))
+      .map((row) => (row.email ? normalizeEmail(row.email) : ""))
+      .filter(Boolean),
+  );
+}
+
+export async function hasFeeWaiverForEmail(email: string): Promise<boolean> {
+  const normalizedEmail = normalizeEmail(email);
+  if (!normalizedEmail) {
+    return false;
+  }
+
+  const feeWaiverEmails = await getFeeWaiverEmailSetForEmails([normalizedEmail]);
+  return feeWaiverEmails.has(normalizedEmail);
 }
 
 function normalizeAffiliations(values: string[]): string[] {
@@ -94,6 +145,15 @@ export async function getDisplayNameForEmail(email: string): Promise<string | nu
   return profile?.displayName || null;
 }
 
+export async function getRoleNamesForEmail(email: string): Promise<string[]> {
+  const roleRecords = await db.query.roles.findMany({
+    where: eq(roles.email, normalizeEmail(email)),
+    columns: { roles: true },
+  });
+
+  return [...new Set(roleRecords.flatMap((roleRecord) => parseRoleNames(roleRecord.roles)))];
+}
+
 export async function verifyAdminRequest(): Promise<AdminVerificationResult> {
   const user = await getSessionUser();
 
@@ -101,12 +161,9 @@ export async function verifyAdminRequest(): Promise<AdminVerificationResult> {
     return { authorized: false, error: "Not authenticated" };
   }
 
-  const roleRecord = await db.query.roles.findFirst({
-    where: eq(roles.email, user.email),
-    columns: { roles: true },
-  });
+  const userRoles = await getRoleNamesForEmail(user.email);
 
-  if (!roleRecord || !roleRecord.roles?.split(",").includes("admin")) {
+  if (!userRoles.includes("admin")) {
     return { authorized: false, error: "Not authorized" };
   }
 

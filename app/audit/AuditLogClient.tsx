@@ -35,6 +35,7 @@ type AuditLogItem = AuditLogEntry | AuditLogGroup;
 const ACTION_LABELS: Record<string, string> = {
   "notify.signup": "Signed up for Notify",
   "ticket.get": "Got Ticket",
+  "ticket.ineligible": "Blocked Ineligible Claim",
   "ticket.cancel": "Canceled Ticket",
   "ticket.create": "Created Ticket",
   "ticket.delete": "Deleted Ticket",
@@ -60,7 +61,7 @@ const ACTION_LABELS: Record<string, string> = {
 };
 
 const ACTION_OPTIONS = [
-  { group: "Tickets", actions: ["ticket.get", "ticket.cancel", "ticket.create", "ticket.delete", "ticket.update_name", "ticket.update_type", "ticket.unscan"] },
+  { group: "Tickets", actions: ["ticket.get", "ticket.ineligible", "ticket.cancel", "ticket.create", "ticket.delete", "ticket.update_name", "ticket.update_type", "ticket.unscan"] },
   { group: "Email", actions: ["email.send", "email.send_mass"] },
   { group: "Events", actions: ["event.create", "event.edit", "event.toggle_live", "event.toggle_standby", "event.delete"] },
   { group: "Users", actions: ["user.add_role", "user.remove_role"] },

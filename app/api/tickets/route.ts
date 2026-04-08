@@ -1,9 +1,13 @@
 import { NextResponse } from "next/server";
 import {
   getAvailablePublicTickets,
-  isEventUnderCapacity,
 } from "@/app/lib/supabase";
-import { verifyAdminRequest } from "@/app/lib/auth";
+import {
+  getFeeWaiverEmailSetForEmails,
+  hasFeeWaiverForEmail,
+  normalizeEmail,
+  verifyAdminRequest,
+} from "@/app/lib/auth";
 import {
   sendDayOfReminderEmail,
   sendEarlyReminderEmail,
@@ -11,8 +15,22 @@ import {
   sendStandbyLineEmail,
 } from "@/app/lib/email";
 import { PACIFIC_TIMEZONE } from "@/app/lib/constants";
-import { pullFromWaitlist } from "@/app/lib/waitlist";
-import { db, eq, and, or, ilike, inArray, isNotNull, count as dbCount, tickets, events, waitlist, referrals } from "@ssb/db";
+import {
+  pullFromWaitlist,
+  removeWaitlistEntryForEmail,
+} from "@/app/lib/waitlist";
+import {
+  db,
+  eq,
+  and,
+  or,
+  ilike,
+  inArray,
+  count as dbCount,
+  sql,
+  tickets,
+  events,
+} from "@ssb/db";
 import { isValidUUID } from "@/app/lib/validation";
 import { logAuditEvent } from "@/app/lib/audit";
 
@@ -38,7 +56,7 @@ function serializeTicket(ticket: {
     desc?: string | null;
     doorsOpen?: Date | null;
   } | null;
-}) {
+}, hasFeeWaiver = false) {
   return {
     id: ticket.id,
     email: ticket.email,
@@ -48,6 +66,7 @@ function serializeTicket(ticket: {
     scanned: ticket.scanned,
     scan_time: ticket.scanTime?.toISOString() ?? null,
     referral: ticket.referral,
+    has_fee_waiver: hasFeeWaiver,
     event_id: ticket.eventId,
     events: ticket.event
       ? {
@@ -64,6 +83,60 @@ function serializeTicket(ticket: {
       : null,
   };
 }
+
+function buildFeeWaiverTicketCondition() {
+  return sql<boolean>`exists (
+    select 1
+    from roles role_row
+    where lower(trim(role_row.email)) = lower(trim(${tickets.email}))
+      and role_row.roles ilike '%fee_waiver%'
+      and exists (
+        select 1
+        from unnest(string_to_array(coalesce(role_row.roles, ''), ',')) as role_name(role_value)
+        where lower(trim(role_value)) = 'fee_waiver'
+      )
+  )`;
+}
+
+async function serializeTicketWithFeeWaiver(ticket: {
+  id: string;
+  email: string;
+  name: string | null;
+  type: string;
+  createdAt: Date;
+  scanned: boolean;
+  scanTime: Date | null;
+  referral: string | null;
+  eventId: string | null;
+  event?: {
+    id: string;
+    name: string | null;
+    route: string | null;
+    startTimeDate: Date | null;
+    endTimeDate?: Date | null;
+    venue?: string | null;
+    venueLink?: string | null;
+    desc?: string | null;
+    doorsOpen?: Date | null;
+  } | null;
+}) {
+  return serializeTicket(ticket, await hasFeeWaiverForEmail(ticket.email));
+}
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : "";
+}
+
+type TicketCancellationRpcResult = {
+  success?: boolean;
+  cancelled_ticket_id?: string | null;
+  promoted?: boolean;
+  promoted_ticket_id?: string | null;
+  promoted_email?: string | null;
+  promoted_name?: string | null;
+  promoted_referral?: string | null;
+  promoted_ticket_type?: string | null;
+};
 
 /** Standard ticket columns */
 const TICKET_COLUMNS = {
@@ -190,26 +263,24 @@ export async function GET(req: Request) {
     const search = searchParams.get("search");
     const type = searchParams.get("type");
     const scanned = searchParams.get("scanned");
+    const feeWaiver = searchParams.get("feeWaiver");
     const limit = parseInt(searchParams.get("limit") || "100");
     const offset = parseInt(searchParams.get("offset") || "0");
+    const feeWaiverCondition = buildFeeWaiverTicketCondition();
+    const whereClause = and(
+      eventId ? eq(tickets.eventId, eventId) : undefined,
+      search ? or(ilike(tickets.email, `%${search}%`), ilike(tickets.name, `%${search}%`)) : undefined,
+      type ? eq(tickets.type, type) : undefined,
+      scanned !== null && scanned !== undefined && scanned !== ""
+        ? eq(tickets.scanned, scanned === "true")
+        : undefined,
+      feeWaiver === "true" ? feeWaiverCondition : undefined,
+    );
 
-    // Build where conditions for main query and filtered count
-    const conditions: ReturnType<typeof eq>[] = [];
-    if (eventId) conditions.push(eq(tickets.eventId, eventId));
-    if (search) conditions.push(or(ilike(tickets.email, `%${search}%`), ilike(tickets.name, `%${search}%`))!);
-    if (type) conditions.push(eq(tickets.type, type));
-    if (scanned !== null && scanned !== undefined && scanned !== "") {
-      conditions.push(eq(tickets.scanned, scanned === "true"));
-    }
-    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
-
-    // Build where conditions for unfiltered counts (only eventId filter)
-    const baseConditions: ReturnType<typeof eq>[] = [];
-    if (eventId) baseConditions.push(eq(tickets.eventId, eventId));
-    const baseWhereClause = baseConditions.length > 0 ? and(...baseConditions) : undefined;
+    const baseWhereClause = eventId ? eq(tickets.eventId, eventId) : undefined;
 
     // Run all queries in parallel
-    const [ticketResults, [totalResult], [scannedResult], [unscannedResult], [filteredResult], [standardResult], [vipResult], [externalResult], [waitlistResult]] =
+    const [ticketResults, [totalResult], [scannedResult], [unscannedResult], [filteredResult], [standardResult], [vipResult], [externalResult], [waitlistResult], [feeWaiverResult]] =
       await Promise.all([
         db.query.tickets.findMany({
           where: whereClause,
@@ -227,13 +298,23 @@ export async function GET(req: Request) {
         db.select({ count: dbCount() }).from(tickets).where(baseWhereClause ? and(baseWhereClause, eq(tickets.type, "VIP")) : eq(tickets.type, "VIP")),
         db.select({ count: dbCount() }).from(tickets).where(baseWhereClause ? and(baseWhereClause, eq(tickets.type, "EXTERNAL")) : eq(tickets.type, "EXTERNAL")),
         db.select({ count: dbCount() }).from(tickets).where(baseWhereClause ? and(baseWhereClause, eq(tickets.type, "STANDBY")) : eq(tickets.type, "STANDBY")),
+        db.select({ count: dbCount() })
+          .from(tickets)
+          .where(baseWhereClause ? and(baseWhereClause, feeWaiverCondition) : feeWaiverCondition),
       ]);
 
+    const feeWaiverEmails = await getFeeWaiverEmailSetForEmails(
+      ticketResults.map((ticket) => ticket.email),
+    );
+
     return NextResponse.json({
-      tickets: ticketResults.map(serializeTicket),
+      tickets: ticketResults.map((ticket) =>
+        serializeTicket(ticket, feeWaiverEmails.has(normalizeEmail(ticket.email)))
+      ),
       total: totalResult?.count ?? 0,
       scannedCount: scannedResult?.count ?? 0,
       unscannedCount: unscannedResult?.count ?? 0,
+      feeWaiverCount: feeWaiverResult?.count ?? 0,
       filteredCount: filteredResult?.count ?? 0,
       standardCount: standardResult?.count ?? 0,
       vipCount: vipResult?.count ?? 0,
@@ -279,8 +360,78 @@ export async function DELETE(req: Request) {
       return NextResponse.json({ error: "Ticket not found" }, { status: 404 });
     }
 
-    // Delete the ticket
-    await db.delete(tickets).where(eq(tickets.id, id));
+    if (!ticketToDelete.eventId) {
+      await db.delete(tickets).where(eq(tickets.id, id));
+
+      await logAuditEvent({
+        action: "ticket.delete",
+        actor: auth.email!,
+        eventId: null,
+        eventName: null,
+        targetEmail: ticketToDelete.email,
+        metadata: { ticketId: id, type: ticketToDelete.type },
+      });
+
+      return NextResponse.json({ success: true });
+    }
+
+    let rpcData: TicketCancellationRpcResult | null = null;
+    try {
+      const result = await db.execute<{
+        cancel_ticket_and_promote: TicketCancellationRpcResult;
+      }>(sql`
+        SELECT cancel_ticket_and_promote(
+          ${ticketToDelete.eventId}::uuid,
+          ${ticketToDelete.email}
+        )
+      `);
+      rpcData = result[0]?.cancel_ticket_and_promote ?? null;
+    } catch (rpcError: unknown) {
+      const message = getErrorMessage(rpcError).toLowerCase();
+      if (message.includes("does not exist") && message.includes("function")) {
+        console.error("Ticket cancellation RPC missing:", rpcError);
+        return NextResponse.json(
+          {
+            error:
+              "Ticket cancellation RPC is not installed in the database (cancel_ticket_and_promote).",
+          },
+          { status: 500 },
+        );
+      }
+      if (message.includes("already_scanned")) {
+        return NextResponse.json(
+          { error: "Cannot cancel a ticket that has already been scanned." },
+          { status: 400 },
+        );
+      }
+      if (message.includes("event_not_found")) {
+        return NextResponse.json({ error: "Event not found" }, { status: 404 });
+      }
+      if (message.includes("not_found")) {
+        return NextResponse.json(
+          { error: "No ticket found for this event" },
+          { status: 400 },
+        );
+      }
+
+      console.error("Ticket cancellation RPC error:", rpcError);
+      return NextResponse.json(
+        { error: "Internal server error" },
+        { status: 500 },
+      );
+    }
+
+    const cancelledTicketId = rpcData?.cancelled_ticket_id ?? null;
+    if (!cancelledTicketId) {
+      console.error(
+        "Ticket cancellation RPC returned without a cancelled ticket id:",
+        rpcData,
+      );
+      return NextResponse.json(
+        { error: "Internal server error" },
+        { status: 500 },
+      );
+    }
 
     await logAuditEvent({
       action: "ticket.delete",
@@ -288,49 +439,44 @@ export async function DELETE(req: Request) {
       eventId: ticketToDelete.eventId,
       eventName: ticketToDelete.event?.name ?? null,
       targetEmail: ticketToDelete.email,
-      metadata: { ticketId: id, type: ticketToDelete.type },
+      metadata: { ticketId: cancelledTicketId, type: ticketToDelete.type },
     });
 
-    // Sync referral counts
-    try {
-      const [allReferrals, ticketCounts] = await Promise.all([
-        db.query.referrals.findMany({ columns: { id: true, eventId: true, referralCode: true, count: true } }),
-        db.select({ eventId: tickets.eventId, referral: tickets.referral, count: dbCount() })
-          .from(tickets).where(isNotNull(tickets.referral)).groupBy(tickets.eventId, tickets.referral),
-      ]);
-      const countMap = new Map(ticketCounts.map((r) => [`${r.eventId}:${r.referral}`, r.count]));
-      for (const referral of allReferrals) {
-        const actual = countMap.get(`${referral.eventId}:${referral.referralCode}`) ?? 0;
-        if (referral.count !== actual) {
-          await db.update(referrals).set({ count: actual }).where(eq(referrals.id, referral.id));
+    if (rpcData?.promoted_ticket_id && rpcData.promoted_email) {
+      const promotedTicket = await db.query.tickets.findFirst({
+        where: eq(tickets.id, rpcData.promoted_ticket_id),
+        columns: TICKET_COLUMNS,
+        with: TICKET_WITH_EVENT_DETAILS,
+      });
+
+      if (promotedTicket) {
+        try {
+          await sendTicketEmail({
+            email: promotedTicket.email,
+            name: promotedTicket.name || rpcData.promoted_name || null,
+            eventName: promotedTicket.event?.name || "Event",
+            ticketType:
+              rpcData.promoted_ticket_type
+              || promotedTicket.type
+              || "STANDARD",
+            eventStartTime: promotedTicket.event?.startTimeDate?.toISOString() || null,
+            eventEndTime: promotedTicket.event?.endTimeDate?.toISOString() || null,
+            eventRoute: promotedTicket.event?.route || null,
+            ticketId: promotedTicket.id,
+            eventVenue: promotedTicket.event?.venue || null,
+            eventVenueLink: promotedTicket.event?.venueLink || null,
+            eventDescription: promotedTicket.event?.desc || null,
+            doorsOpenTime: promotedTicket.event?.doorsOpen?.toISOString() || null,
+            eventId: promotedTicket.event?.id || null,
+            imgVersion: promotedTicket.event?.imgVersion ?? null,
+            eventTagline: promotedTicket.event?.tagline || null,
+          });
+        } catch (emailError) {
+          console.error(
+            "Email sending error for promoted waitlist ticket (non-fatal):",
+            emailError,
+          );
         }
-      }
-    } catch (syncError) {
-      console.error("Sync referral counts error:", syncError);
-      return NextResponse.json(
-        { error: "Failed to sync referrals" },
-        { status: 500 },
-      );
-    }
-
-    // Sync event scanned counts
-    try {
-      await syncEventScannedCounts();
-    } catch (syncError) {
-      console.error("Sync scanned counts error:", syncError);
-      return NextResponse.json(
-        { error: "Failed to sync scanned" },
-        { status: 500 },
-      );
-    }
-
-    // If the deleted ticket was non-VIP and we have capacity, pull from waitlist
-    if (ticketToDelete.type !== "VIP" && ticketToDelete.eventId) {
-      try {
-        await pullFromWaitlist(null, ticketToDelete.eventId, 1);
-      } catch (waitlistError) {
-        console.error("Waitlist conversion error (non-fatal):", waitlistError);
-        // Don't fail the delete if waitlist conversion fails
       }
     }
 
@@ -411,7 +557,10 @@ export async function PATCH(req: Request) {
         metadata: { ticketId: id, newName },
       });
 
-      return NextResponse.json({ success: true, ticket: serializeTicket(ticket!) });
+      return NextResponse.json({
+        success: true,
+        ticket: await serializeTicketWithFeeWaiver(ticket!),
+      });
     } else if (action === "unscan") {
       // Unscan the ticket: set scanned to false and clear scan-related fields
       await db.update(tickets).set({
@@ -445,7 +594,10 @@ export async function PATCH(req: Request) {
         metadata: { ticketId: id },
       });
 
-      return NextResponse.json({ success: true, ticket: serializeTicket(ticket!) });
+      return NextResponse.json({
+        success: true,
+        ticket: await serializeTicketWithFeeWaiver(ticket!),
+      });
     } else if (action === "updateType" || type) {
       // Update ticket type
       if (type !== "VIP" && type !== "STANDARD" && type !== "EXTERNAL" && type !== "STANDBY") {
@@ -535,70 +687,10 @@ export async function PATCH(req: Request) {
         }
       }
 
-      // If type changed, pull someone off the waitlist if there's available public capacity
+      // Let the shared waitlist helper reconcile any newly available public capacity.
       if (typeChanged && ticket?.eventId) {
         try {
-          const hasCapacity = await isEventUnderCapacity(ticket.eventId);
-
-          if (hasCapacity) {
-            // Get the first person on the waitlist for this event
-            const waitlistEntry = await db.query.waitlist.findFirst({
-              where: eq(waitlist.eventId, ticket.eventId),
-              orderBy: (t, { asc }) => [asc(t.position)],
-              columns: { id: true, email: true, name: true },
-            });
-
-            if (waitlistEntry) {
-              // Create a STANDARD ticket for the waitlist person
-              const [inserted] = await db.insert(tickets).values({
-                eventId: ticket.eventId,
-                email: waitlistEntry.email,
-                name: waitlistEntry.name ?? null,
-                type: "STANDARD",
-              }).returning();
-              const newTicket = await db.query.tickets.findFirst({
-                where: eq(tickets.id, inserted.id),
-                columns: TICKET_COLUMNS,
-                with: TICKET_WITH_EVENT_DETAILS,
-              });
-
-              // Remove them from the waitlist
-              try {
-                await db.delete(waitlist).where(eq(waitlist.id, waitlistEntry.id));
-              } catch (waitlistDeleteError) {
-                console.error(
-                  "Waitlist removal error (non-fatal):",
-                  waitlistDeleteError,
-                );
-              }
-
-              // Send ticket email to the person who was on the waitlist
-              if (newTicket) try {
-                await sendTicketEmail({
-                  email: newTicket.email,
-                  name: newTicket.name || null,
-                  eventName: newTicket.event?.name || "Event",
-                  ticketType: newTicket.type || "STANDARD",
-                  eventStartTime: newTicket.event?.startTimeDate?.toISOString() || null,
-                  eventEndTime: newTicket.event?.endTimeDate?.toISOString() || null,
-                  eventRoute: newTicket.event?.route || null,
-                  ticketId: newTicket.id,
-                  eventVenue: newTicket.event?.venue || null,
-                  eventVenueLink: newTicket.event?.venueLink || null,
-                  eventDescription: newTicket.event?.desc || null,
-                  doorsOpenTime: newTicket.event?.doorsOpen?.toISOString() || null,
-                  eventId: newTicket.event?.id || null,
-                  imgVersion: newTicket.event?.imgVersion ?? null,
-                  eventTagline: newTicket.event?.tagline || null,
-                });
-              } catch (emailError) {
-                console.error(
-                  "Email sending error for waitlist conversion (non-fatal):",
-                  emailError,
-                );
-              }
-            }
-          }
+          await pullFromWaitlist(null, ticket.eventId, 1);
         } catch (waitlistError) {
           console.error(
             "Waitlist conversion error (non-fatal):",
@@ -616,7 +708,10 @@ export async function PATCH(req: Request) {
         metadata: { ticketId: id, oldType: currentTicket.type, newType: type },
       });
 
-      return NextResponse.json({ success: true, ticket: serializeTicket(ticket!) });
+      return NextResponse.json({
+        success: true,
+        ticket: await serializeTicketWithFeeWaiver(ticket!),
+      });
     } else if (action === "updateScanned" || typeof scanned === "boolean") {
       // Update scanned status
       const updateData: {
@@ -655,7 +750,10 @@ export async function PATCH(req: Request) {
         );
       }
 
-      return NextResponse.json({ success: true, ticket: serializeTicket(ticket!) });
+      return NextResponse.json({
+        success: true,
+        ticket: await serializeTicketWithFeeWaiver(ticket!),
+      });
     } else if (action === "resendEmail") {
       // Resend ticket confirmation email
       const ticket = await db.query.tickets.findFirst({
@@ -1195,9 +1293,9 @@ export async function POST(req: Request) {
         with: TICKET_WITH_EVENT_DETAILS,
       });
 
-      // Remove user from waitlist if they were on it
+      // Remove the stale waitlist entry through the DB RPC so positions stay contiguous.
       try {
-        await db.delete(waitlist).where(and(eq(waitlist.eventId, eventId), eq(waitlist.email, email)));
+        await removeWaitlistEntryForEmail(eventId, email);
       } catch (waitlistError) {
         console.error("Waitlist removal error (non-fatal):", waitlistError);
       }
@@ -1243,8 +1341,8 @@ export async function POST(req: Request) {
         }
       }
 
-      // If upgraded to VIP (from STANDARD), pull someone off the waitlist if there's capacity
-      if (typeChanged && newType === "VIP" && updatedTicket?.eventId) {
+      // Reconcile any capacity change created by the new ticket type.
+      if (typeChanged && updatedTicket?.eventId) {
         try {
           await pullFromWaitlist(null, updatedTicket.eventId, 1);
         } catch (waitlistError) {
@@ -1266,7 +1364,7 @@ export async function POST(req: Request) {
 
       return NextResponse.json({
         success: true,
-        ticket: serializeTicket(updatedTicket!),
+        ticket: await serializeTicketWithFeeWaiver(updatedTicket!),
         updated: true,
       });
     }
@@ -1284,9 +1382,9 @@ export async function POST(req: Request) {
       with: TICKET_WITH_EVENT_DETAILS,
     });
 
-    // Remove user from waitlist if they were on it
+    // Remove the stale waitlist entry through the DB RPC so positions stay contiguous.
     try {
-      await db.delete(waitlist).where(and(eq(waitlist.eventId, eventId), eq(waitlist.email, email)));
+      await removeWaitlistEntryForEmail(eventId, email);
     } catch (waitlistError) {
       console.error("Waitlist removal error (non-fatal):", waitlistError);
     }
@@ -1347,7 +1445,10 @@ export async function POST(req: Request) {
       metadata: { ticketId: ticket!.id, type: ticket!.type },
     });
 
-    return NextResponse.json({ success: true, ticket: serializeTicket(ticket!) });
+    return NextResponse.json({
+      success: true,
+      ticket: await serializeTicketWithFeeWaiver(ticket!),
+    });
   } catch (error) {
     console.error("Ticket creation error:", error);
     return NextResponse.json(

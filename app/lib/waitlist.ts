@@ -1,6 +1,161 @@
 import { getAvailablePublicTickets } from "@/app/lib/supabase";
-import { db, eq, inArray, tickets, waitlist } from "@ssb/db";
+import {
+  db,
+  and,
+  eq,
+  gt,
+  inArray,
+  sql,
+  events,
+  referrals,
+  tickets,
+  waitlist,
+} from "@ssb/db";
 import { sendTicketEmail } from "@/app/lib/email";
+import {
+  getFeeWaiverEmailSetForEmails,
+  normalizeEmail,
+} from "@/app/lib/auth";
+
+const WAITLIST_BATCH_MULTIPLIER = 5;
+const MIN_WAITLIST_BATCH_SIZE = 50;
+
+type EligibleWaitlistEntry = {
+  email: string;
+  name: string | null;
+  position: number;
+  referral: string | null;
+};
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : "";
+}
+
+function normalizeReferralCode(
+  referralCode: string | null | undefined,
+): string | null {
+  const normalized = referralCode?.trim().toLowerCase() || null;
+  return normalized || null;
+}
+
+async function sanitizePromotionReferral(args: {
+  eventId: string;
+  referralCode: string | null;
+  referralsEnabled: boolean;
+  userEmail: string;
+}): Promise<string | null> {
+  const { eventId, referralCode, referralsEnabled, userEmail } = args;
+  const normalizedReferral = normalizeReferralCode(referralCode);
+
+  if (!normalizedReferral || !referralsEnabled) {
+    return null;
+  }
+
+  const userReferralCode = normalizeReferralCode(
+    userEmail.split("@")[0] ?? null,
+  );
+  if (normalizedReferral === userReferralCode) {
+    return null;
+  }
+
+  const referralRecord = await db.query.referrals.findFirst({
+    where: and(
+      eq(referrals.eventId, eventId),
+      eq(referrals.referralCode, normalizedReferral),
+    ),
+    columns: { id: true },
+  });
+
+  return referralRecord ? normalizedReferral : null;
+}
+
+export async function removeWaitlistEntryForEmail(
+  eventId: string,
+  email: string,
+): Promise<boolean> {
+  try {
+    await db.execute(sql`
+      SELECT leave_waitlist(${eventId}::uuid, ${email})
+    `);
+    return true;
+  } catch (error: unknown) {
+    const message = getErrorMessage(error).toLowerCase();
+    if (message.includes("not_found")) {
+      return false;
+    }
+
+    throw error;
+  }
+}
+
+async function getEligibleWaitlistEntries(
+  eventId: string,
+  maxToPull: number,
+): Promise<EligibleWaitlistEntry[]> {
+  const eligibleEntries: EligibleWaitlistEntry[] = [];
+  const batchSize = Math.max(maxToPull * WAITLIST_BATCH_MULTIPLIER, MIN_WAITLIST_BATCH_SIZE);
+  let lastSeenPosition: number | null = null;
+
+  while (eligibleEntries.length < maxToPull) {
+    const waitlistBatch: EligibleWaitlistEntry[] = await db.query.waitlist.findMany({
+      where: lastSeenPosition === null
+        ? eq(waitlist.eventId, eventId)
+        : and(eq(waitlist.eventId, eventId), gt(waitlist.position, lastSeenPosition)),
+      orderBy: (t, { asc }) => [asc(t.position)],
+      limit: batchSize,
+      columns: {
+        email: true,
+        name: true,
+        position: true,
+        referral: true,
+      },
+    });
+
+    if (!waitlistBatch.length) {
+      break;
+    }
+
+    const batchEmails = waitlistBatch.map((entry) => entry.email);
+    const [feeWaiverEmails, existingTickets] = await Promise.all([
+      getFeeWaiverEmailSetForEmails(batchEmails),
+      db.query.tickets.findMany({
+        where: and(
+          eq(tickets.eventId, eventId),
+          inArray(tickets.email, batchEmails),
+        ),
+        columns: { email: true },
+      }),
+    ]);
+
+    const existingTicketEmails = new Set(
+      existingTickets.map((ticket) => normalizeEmail(ticket.email)),
+    );
+
+    for (const entry of waitlistBatch) {
+      const normalizedEmail = normalizeEmail(entry.email);
+
+      if (
+        feeWaiverEmails.has(normalizedEmail)
+        || existingTicketEmails.has(normalizedEmail)
+      ) {
+        continue;
+      }
+
+      eligibleEntries.push(entry);
+
+      if (eligibleEntries.length >= maxToPull) {
+        break;
+      }
+    }
+
+    lastSeenPosition = waitlistBatch[waitlistBatch.length - 1]?.position ?? null;
+    if (waitlistBatch.length < batchSize) {
+      break;
+    }
+  }
+
+  return eligibleEntries;
+}
 
 async function sendWithRetry(
   fn: () => Promise<void>,
@@ -31,27 +186,112 @@ export async function pullFromWaitlist(
 
   if (maxToPull <= 0) return 0;
 
-  // Get the first people on the waitlist for this event
-  const waitlistEntries = await db.query.waitlist.findMany({
-    where: eq(waitlist.eventId, eventId),
-    orderBy: (t, { asc }) => [asc(t.position)],
-    limit: maxToPull,
-    columns: { id: true, email: true, name: true },
+  const event = await db.query.events.findFirst({
+    where: eq(events.id, eventId),
+    columns: { referralsEnabled: true },
   });
 
-  if (!waitlistEntries.length) return 0;
+  if (!event) {
+    return 0;
+  }
 
-  // Create STANDARD tickets for each waitlist person
-  const insertedIds: string[] = [];
-  for (const entry of waitlistEntries) {
+  const eligibleWaitlistEntries = await getEligibleWaitlistEntries(
+    eventId,
+    maxToPull,
+  );
+
+  if (!eligibleWaitlistEntries.length) return 0;
+
+  let promotedCount = 0;
+
+  for (const entry of eligibleWaitlistEntries) {
+    const sanitizedReferral = await sanitizePromotionReferral({
+      eventId,
+      referralCode: entry.referral,
+      referralsEnabled: event.referralsEnabled ?? false,
+      userEmail: entry.email,
+    });
+
     try {
       const [inserted] = await db.insert(tickets).values({
         eventId,
         email: entry.email,
         name: entry.name ?? null,
         type: "STANDARD",
-      }).returning();
-      insertedIds.push(inserted.id);
+        referral: sanitizedReferral,
+      }).onConflictDoNothing({
+        target: [tickets.eventId, tickets.email],
+      }).returning({ id: tickets.id });
+
+      if (!inserted) {
+        try {
+          await removeWaitlistEntryForEmail(eventId, entry.email);
+        } catch (waitlistError) {
+          console.error("Waitlist cleanup after duplicate ticket failed:", waitlistError);
+        }
+        continue;
+      }
+
+      const newTicket = await db.query.tickets.findFirst({
+        where: eq(tickets.id, inserted.id),
+        columns: { id: true, email: true, name: true, type: true, eventId: true },
+        with: {
+          event: {
+            columns: {
+              id: true,
+              name: true,
+              route: true,
+              startTimeDate: true,
+              endTimeDate: true,
+              venue: true,
+              venueLink: true,
+              desc: true,
+              doorsOpen: true,
+              tagline: true,
+              imgVersion: true,
+            },
+          },
+        },
+      });
+
+      try {
+        await removeWaitlistEntryForEmail(eventId, entry.email);
+      } catch (waitlistError) {
+        console.error("Waitlist removal error after promotion (non-fatal):", waitlistError);
+      }
+
+      if (!newTicket) {
+        continue;
+      }
+
+      promotedCount++;
+
+      try {
+        await sendWithRetry(() =>
+          sendTicketEmail({
+            email: newTicket.email,
+            name: newTicket.name || null,
+            eventName: newTicket.event?.name || "Event",
+            ticketType: newTicket.type || "STANDARD",
+            eventStartTime: newTicket.event?.startTimeDate?.toISOString() || null,
+            eventEndTime: newTicket.event?.endTimeDate?.toISOString() || null,
+            eventRoute: newTicket.event?.route || null,
+            ticketId: newTicket.id,
+            eventVenue: newTicket.event?.venue || null,
+            eventVenueLink: newTicket.event?.venueLink || null,
+            eventDescription: newTicket.event?.desc || null,
+            doorsOpenTime: newTicket.event?.doorsOpen?.toISOString() || null,
+            eventId: newTicket.event?.id || null,
+            imgVersion: newTicket.event?.imgVersion ?? null,
+            eventTagline: newTicket.event?.tagline || null,
+          })
+        );
+      } catch (emailError) {
+        console.error(
+          "Email sending error for waitlist conversion (non-fatal):",
+          emailError,
+        );
+      }
     } catch (err) {
       console.error(
         "Failed to create ticket for waitlist person (non-fatal):",
@@ -59,74 +299,6 @@ export async function pullFromWaitlist(
       );
     }
   }
-  const newTickets = insertedIds.length > 0
-    ? await db.query.tickets.findMany({
-        where: inArray(tickets.id, insertedIds),
-        columns: { id: true, email: true, name: true, type: true, eventId: true },
-        with: {
-          event: {
-            columns: { id: true, name: true, route: true, startTimeDate: true, endTimeDate: true, venue: true, venueLink: true, desc: true, doorsOpen: true, tagline: true, imgVersion: true },
-          },
-        },
-      })
-    : [];
 
-  if (!newTickets.length) return 0;
-
-  if (newTickets.length !== waitlistEntries.length) {
-    console.error(
-      "Waitlist conversion mismatch (non-fatal):",
-      `requested=${waitlistEntries.length}`,
-      `created=${newTickets.length}`,
-    );
-  }
-
-  // Send emails first — only remove from waitlist after a successful send.
-  // This way, a failed email leaves the waitlist entry intact so it can be
-  // retried without the user losing their spot.
-  const confirmedEmails = new Set<string>();
-  for (const newTicket of newTickets) {
-    try {
-      await sendWithRetry(() =>
-        sendTicketEmail({
-          email: newTicket.email,
-          name: newTicket.name || null,
-          eventName: newTicket.event?.name || "Event",
-          ticketType: newTicket.type || "STANDARD",
-          eventStartTime: newTicket.event?.startTimeDate?.toISOString() || null,
-          eventEndTime: newTicket.event?.endTimeDate?.toISOString() || null,
-          eventRoute: newTicket.event?.route || null,
-          ticketId: newTicket.id,
-          eventVenue: newTicket.event?.venue || null,
-          eventVenueLink: newTicket.event?.venueLink || null,
-          eventDescription: newTicket.event?.desc || null,
-          doorsOpenTime: newTicket.event?.doorsOpen?.toISOString() || null,
-          eventId: newTicket.event?.id || null,
-          imgVersion: newTicket.event?.imgVersion ?? null,
-          eventTagline: newTicket.event?.tagline || null,
-        })
-      );
-      confirmedEmails.add(newTicket.email);
-    } catch (emailError) {
-      console.error(
-        "Email sending error for waitlist conversion (non-fatal):",
-        emailError,
-      );
-    }
-  }
-
-  // Only remove waitlist entries whose email was successfully sent.
-  const confirmedWaitlistIds = waitlistEntries
-    .filter((e) => confirmedEmails.has(e.email))
-    .map((e) => e.id);
-
-  if (confirmedWaitlistIds.length > 0) {
-    try {
-      await db.delete(waitlist).where(inArray(waitlist.id, confirmedWaitlistIds));
-    } catch (err) {
-      console.error("Waitlist removal error (non-fatal):", err);
-    }
-  }
-
-  return newTickets.length;
+  return promotedCount;
 }

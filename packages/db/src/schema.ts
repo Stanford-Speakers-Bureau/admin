@@ -12,42 +12,55 @@ import {
 import { relations } from "drizzle-orm";
 
 // ── Events ──────────────────────────────────────────────────────────────────
-export const events = pgTable("events", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-  name: text("name"),
-  capacity: bigint("capacity", { mode: "number" }).notNull().default(0),
-  venue: text("venue"),
-  reserved: bigint("reserved", { mode: "number" }).notNull().default(0),
-  venueLink: text("venue_link"),
-  releaseDate: timestamp("release_date", { withTimezone: true }),
-  startTimeDate: timestamp("start_time_date", { withTimezone: true }),
-  endTimeDate: timestamp("end_time_date", { withTimezone: true }),
-  doorsOpen: timestamp("doors_open", { withTimezone: true }),
-  desc: text("desc"),
-  img: text("img"),
-  mobileImg: text("mobile_img"),
-  appleWalletImg: text("apple_wallet_img"),
-  route: text("route"),
-  tagline: text("tagline"),
-  tickets: bigint("tickets", { mode: "number" }).notNull().default(0),
-  live: boolean("live").notNull().default(false),
-  scanned: bigint("scanned", { mode: "number" }).notNull().default(0),
-  latitude: numeric("latitude").notNull().default("0"),
-  longitude: numeric("longitude").notNull().default("0"),
-  address: text("address").notNull().default(""),
-  imgVersion: bigint("img_version", { mode: "number" }).notNull().default(1),
-  ticketingDate: timestamp("ticketing_date", { withTimezone: true }),
-  livestream: text("livestream"),
-  title: text("title"),
-  priority: text("priority"),
-  hideTicketingDate: boolean("hide_ticketing_date").notNull().default(false),
-  waitlistChance: text("waitlist_chance").notNull().default("High"),
-  standbyEnabled: boolean("standby_enabled").notNull().default(false),
-  referralsEnabled: boolean("referrals_enabled").notNull().default(false),
-});
+export const events = pgTable(
+  "events",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    name: text("name"),
+    capacity: bigint("capacity", { mode: "number" }).notNull().default(0),
+    venue: text("venue"),
+    reserved: bigint("reserved", { mode: "number" }).notNull().default(0),
+    venueLink: text("venue_link"),
+    releaseDate: timestamp("release_date", { withTimezone: true }),
+    startTimeDate: timestamp("start_time_date", { withTimezone: true }),
+    endTimeDate: timestamp("end_time_date", { withTimezone: true }),
+    doorsOpen: timestamp("doors_open", { withTimezone: true }),
+    desc: text("desc"),
+    img: text("img"),
+    mobileImg: text("mobile_img"),
+    appleWalletImg: text("apple_wallet_img"),
+    route: text("route"),
+    tagline: text("tagline"),
+    tickets: bigint("tickets", { mode: "number" }).notNull().default(0),
+    publicTicketsSold: bigint("public_tickets_sold", { mode: "number" })
+      .notNull()
+      .default(0),
+    vipTicketsSold: bigint("vip_tickets_sold", { mode: "number" })
+      .notNull()
+      .default(0),
+    standbyTicketsSold: bigint("standby_tickets_sold", { mode: "number" })
+      .notNull()
+      .default(0),
+    live: boolean("live").notNull().default(false),
+    scanned: bigint("scanned", { mode: "number" }).notNull().default(0),
+    latitude: numeric("latitude").notNull().default("0"),
+    longitude: numeric("longitude").notNull().default("0"),
+    address: text("address").notNull().default(""),
+    imgVersion: bigint("img_version", { mode: "number" }).notNull().default(1),
+    ticketingDate: timestamp("ticketing_date", { withTimezone: true }),
+    livestream: text("livestream"),
+    title: text("title"),
+    priority: text("priority"),
+    hideTicketingDate: boolean("hide_ticketing_date").notNull().default(false),
+    waitlistChance: text("waitlist_chance").notNull().default("High"),
+    standbyEnabled: boolean("standby_enabled").notNull().default(false),
+    referralsEnabled: boolean("referrals_enabled").notNull().default(false),
+  },
+  (t) => [index("events_route_idx").on(t.route)],
+);
 
 // ── Tickets ─────────────────────────────────────────────────────────────────
 export const tickets = pgTable(
@@ -73,8 +86,10 @@ export const tickets = pgTable(
   (t) => [
     index("tickets_email_idx").on(t.email),
     index("tickets_event_id_idx").on(t.eventId),
+    index("tickets_event_type_idx").on(t.eventId, t.type),
     index("tickets_referral_idx").on(t.referral),
     index("tickets_scanned_idx").on(t.scanned),
+    uniqueIndex("tickets_event_email_unique").on(t.eventId, t.email),
   ],
 );
 
