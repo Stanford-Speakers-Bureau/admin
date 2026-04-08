@@ -3,7 +3,12 @@ import {
   getAvailablePublicTickets,
   isEventUnderCapacity,
 } from "@/app/lib/supabase";
-import { hasRoleName, verifyAdminRequest } from "@/app/lib/auth";
+import {
+  getFeeWaiverEmailSetForEmails,
+  hasFeeWaiverForEmail,
+  normalizeEmail,
+  verifyAdminRequest,
+} from "@/app/lib/auth";
 import {
   sendDayOfReminderEmail,
   sendEarlyReminderEmail,
@@ -12,7 +17,7 @@ import {
 } from "@/app/lib/email";
 import { PACIFIC_TIMEZONE } from "@/app/lib/constants";
 import { pullFromWaitlist } from "@/app/lib/waitlist";
-import { db, eq, and, or, ilike, inArray, isNotNull, count as dbCount, tickets, events, waitlist, referrals, roles } from "@ssb/db";
+import { db, eq, and, or, ilike, inArray, isNotNull, count as dbCount, sql, tickets, events, waitlist, referrals } from "@ssb/db";
 import { isValidUUID } from "@/app/lib/validation";
 import { logAuditEvent } from "@/app/lib/audit";
 
@@ -66,47 +71,18 @@ function serializeTicket(ticket: {
   };
 }
 
-function normalizeEmail(email: string | null | undefined): string {
-  return (email ?? "").trim().toLowerCase();
-}
-
-async function getFeeWaiverEmailSet(
-  emails?: string[],
-): Promise<Set<string>> {
-  const normalizedEmails = emails
-    ? [...new Set(emails.map((email) => normalizeEmail(email)).filter(Boolean))]
-    : null;
-
-  if (normalizedEmails && normalizedEmails.length === 0) {
-    return new Set();
-  }
-
-  const feeWaiverRows = await db.query.roles.findMany({
-    where: normalizedEmails
-      ? and(ilike(roles.roles, "%fee_waiver%"), inArray(roles.email, normalizedEmails))
-      : ilike(roles.roles, "%fee_waiver%"),
-    columns: {
-      email: true,
-      roles: true,
-    },
-  });
-
-  return new Set(
-    feeWaiverRows
-      .filter((row) => hasRoleName(row.roles, "fee_waiver"))
-      .map((row) => normalizeEmail(row.email))
-      .filter(Boolean),
-  );
-}
-
-async function hasFeeWaiverForEmail(email: string): Promise<boolean> {
-  const normalizedEmail = normalizeEmail(email);
-  if (!normalizedEmail) {
-    return false;
-  }
-
-  const feeWaiverEmails = await getFeeWaiverEmailSet([normalizedEmail]);
-  return feeWaiverEmails.has(normalizedEmail);
+function buildFeeWaiverTicketCondition() {
+  return sql<boolean>`exists (
+    select 1
+    from roles role_row
+    where lower(trim(role_row.email)) = lower(trim(${tickets.email}))
+      and role_row.roles ilike '%fee_waiver%'
+      and exists (
+        select 1
+        from unnest(string_to_array(coalesce(role_row.roles, ''), ',')) as role_name(role_value)
+        where lower(trim(role_value)) = 'fee_waiver'
+      )
+  )`;
 }
 
 async function serializeTicketWithFeeWaiver(ticket: {
@@ -262,30 +238,18 @@ export async function GET(req: Request) {
     const feeWaiver = searchParams.get("feeWaiver");
     const limit = parseInt(searchParams.get("limit") || "100");
     const offset = parseInt(searchParams.get("offset") || "0");
-    const feeWaiverEmails = await getFeeWaiverEmailSet();
-    const feeWaiverEmailList = [...feeWaiverEmails];
+    const feeWaiverCondition = buildFeeWaiverTicketCondition();
+    const whereClause = and(
+      eventId ? eq(tickets.eventId, eventId) : undefined,
+      search ? or(ilike(tickets.email, `%${search}%`), ilike(tickets.name, `%${search}%`)) : undefined,
+      type ? eq(tickets.type, type) : undefined,
+      scanned !== null && scanned !== undefined && scanned !== ""
+        ? eq(tickets.scanned, scanned === "true")
+        : undefined,
+      feeWaiver === "true" ? feeWaiverCondition : undefined,
+    );
 
-    // Build where conditions for main query and filtered count
-    const conditions: ReturnType<typeof eq>[] = [];
-    if (eventId) conditions.push(eq(tickets.eventId, eventId));
-    if (search) conditions.push(or(ilike(tickets.email, `%${search}%`), ilike(tickets.name, `%${search}%`))!);
-    if (type) conditions.push(eq(tickets.type, type));
-    if (scanned !== null && scanned !== undefined && scanned !== "") {
-      conditions.push(eq(tickets.scanned, scanned === "true"));
-    }
-    if (feeWaiver === "true") {
-      if (feeWaiverEmailList.length === 0) {
-        conditions.push(eq(tickets.email, "__no_fee_waiver_match__"));
-      } else {
-        conditions.push(inArray(tickets.email, feeWaiverEmailList));
-      }
-    }
-    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
-
-    // Build where conditions for unfiltered counts (only eventId filter)
-    const baseConditions: ReturnType<typeof eq>[] = [];
-    if (eventId) baseConditions.push(eq(tickets.eventId, eventId));
-    const baseWhereClause = baseConditions.length > 0 ? and(...baseConditions) : undefined;
+    const baseWhereClause = eventId ? eq(tickets.eventId, eventId) : undefined;
 
     // Run all queries in parallel
     const [ticketResults, [totalResult], [scannedResult], [unscannedResult], [filteredResult], [standardResult], [vipResult], [externalResult], [waitlistResult], [feeWaiverResult]] =
@@ -306,16 +270,14 @@ export async function GET(req: Request) {
         db.select({ count: dbCount() }).from(tickets).where(baseWhereClause ? and(baseWhereClause, eq(tickets.type, "VIP")) : eq(tickets.type, "VIP")),
         db.select({ count: dbCount() }).from(tickets).where(baseWhereClause ? and(baseWhereClause, eq(tickets.type, "EXTERNAL")) : eq(tickets.type, "EXTERNAL")),
         db.select({ count: dbCount() }).from(tickets).where(baseWhereClause ? and(baseWhereClause, eq(tickets.type, "STANDBY")) : eq(tickets.type, "STANDBY")),
-        feeWaiverEmailList.length > 0
-          ? db.select({ count: dbCount() })
-            .from(tickets)
-            .where(
-              baseWhereClause
-                ? and(baseWhereClause, inArray(tickets.email, feeWaiverEmailList))
-                : inArray(tickets.email, feeWaiverEmailList),
-            )
-          : Promise.resolve([{ count: 0 }]),
+        db.select({ count: dbCount() })
+          .from(tickets)
+          .where(baseWhereClause ? and(baseWhereClause, feeWaiverCondition) : feeWaiverCondition),
       ]);
+
+    const feeWaiverEmails = await getFeeWaiverEmailSetForEmails(
+      ticketResults.map((ticket) => ticket.email),
+    );
 
     return NextResponse.json({
       tickets: ticketResults.map((ticket) =>

@@ -1,39 +1,13 @@
 import { getAvailablePublicTickets } from "@/app/lib/supabase";
-import { db, eq, inArray, roles, tickets, waitlist } from "@ssb/db";
+import { db, and, eq, gt, inArray, tickets, waitlist } from "@ssb/db";
 import { sendTicketEmail } from "@/app/lib/email";
-import { hasRoleName } from "@/app/lib/auth";
+import {
+  getFeeWaiverEmailSetForEmails,
+  normalizeEmail,
+} from "@/app/lib/auth";
 
 const WAITLIST_BATCH_MULTIPLIER = 5;
 const MIN_WAITLIST_BATCH_SIZE = 50;
-
-function normalizeEmail(email: string | null | undefined): string {
-  return (email ?? "").trim().toLowerCase();
-}
-
-async function getFeeWaiverEmailSet(emails: string[]): Promise<Set<string>> {
-  const normalizedEmails = [...new Set(
-    emails.map((email) => normalizeEmail(email)).filter(Boolean),
-  )];
-
-  if (normalizedEmails.length === 0) {
-    return new Set();
-  }
-
-  const roleRows = await db.query.roles.findMany({
-    where: inArray(roles.email, normalizedEmails),
-    columns: {
-      email: true,
-      roles: true,
-    },
-  });
-
-  return new Set(
-    roleRows
-      .filter((row) => hasRoleName(row.roles, "fee_waiver"))
-      .map((row) => normalizeEmail(row.email))
-      .filter((email): email is string => !!email),
-  );
-}
 
 async function getEligibleWaitlistEntries(
   eventId: string,
@@ -41,22 +15,28 @@ async function getEligibleWaitlistEntries(
 ): Promise<Array<{ id: string; email: string; name: string | null }>> {
   const eligibleEntries: Array<{ id: string; email: string; name: string | null }> = [];
   const batchSize = Math.max(maxToPull * WAITLIST_BATCH_MULTIPLIER, MIN_WAITLIST_BATCH_SIZE);
-  let offset = 0;
+  let lastSeenPosition: number | null = null;
 
   while (eligibleEntries.length < maxToPull) {
-    const waitlistBatch = await db.query.waitlist.findMany({
-      where: eq(waitlist.eventId, eventId),
+    const waitlistBatch: Array<{
+      id: string;
+      email: string;
+      name: string | null;
+      position: number;
+    }> = await db.query.waitlist.findMany({
+      where: lastSeenPosition === null
+        ? eq(waitlist.eventId, eventId)
+        : and(eq(waitlist.eventId, eventId), gt(waitlist.position, lastSeenPosition)),
       orderBy: (t, { asc }) => [asc(t.position)],
-      offset,
       limit: batchSize,
-      columns: { id: true, email: true, name: true },
+      columns: { id: true, email: true, name: true, position: true },
     });
 
     if (!waitlistBatch.length) {
       break;
     }
 
-    const feeWaiverEmails = await getFeeWaiverEmailSet(
+    const feeWaiverEmails = await getFeeWaiverEmailSetForEmails(
       waitlistBatch.map((entry) => entry.email),
     );
 
@@ -70,7 +50,7 @@ async function getEligibleWaitlistEntries(
       }
     }
 
-    offset += waitlistBatch.length;
+    lastSeenPosition = waitlistBatch[waitlistBatch.length - 1]?.position ?? null;
     if (waitlistBatch.length < batchSize) {
       break;
     }

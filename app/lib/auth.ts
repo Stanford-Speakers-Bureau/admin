@@ -1,4 +1,4 @@
-import { db, eq, roles, userProfiles } from "@ssb/db";
+import { db, eq, inArray, roles, userProfiles } from "@ssb/db";
 import { getSession, type SessionUser } from "./session";
 import { getSupabaseClient } from "./supabase";
 
@@ -15,7 +15,7 @@ type AuthorizedResult = {
 
 export type AdminVerificationResult = UnauthorizedResult | AuthorizedResult;
 
-function normalizeEmail(email: string): string {
+export function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
 }
 
@@ -31,6 +31,43 @@ export function hasRoleName(
   roleName: string,
 ): boolean {
   return parseRoleNames(rawRoles).includes(roleName.trim().toLowerCase());
+}
+
+export async function getFeeWaiverEmailSetForEmails(
+  emails: string[],
+): Promise<Set<string>> {
+  const normalizedEmails = [...new Set(
+    emails.map((email) => normalizeEmail(email)).filter(Boolean),
+  )];
+
+  if (normalizedEmails.length === 0) {
+    return new Set();
+  }
+
+  const roleRows = await db.query.roles.findMany({
+    where: inArray(roles.email, normalizedEmails),
+    columns: {
+      email: true,
+      roles: true,
+    },
+  });
+
+  return new Set(
+    roleRows
+      .filter((row) => hasRoleName(row.roles, "fee_waiver"))
+      .map((row) => (row.email ? normalizeEmail(row.email) : ""))
+      .filter(Boolean),
+  );
+}
+
+export async function hasFeeWaiverForEmail(email: string): Promise<boolean> {
+  const normalizedEmail = normalizeEmail(email);
+  if (!normalizedEmail) {
+    return false;
+  }
+
+  const feeWaiverEmails = await getFeeWaiverEmailSetForEmails([normalizedEmail]);
+  return feeWaiverEmails.has(normalizedEmail);
 }
 
 function normalizeAffiliations(values: string[]): string[] {

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { verifyAdminRequest } from "@/app/lib/auth";
+import { normalizeEmail, verifyAdminRequest } from "@/app/lib/auth";
 import { isValidEmail, isValidUUID } from "@/app/lib/validation";
 import { db, eq, roles } from "@ssb/db";
 import { logAuditEvent } from "@/app/lib/audit";
@@ -35,8 +35,10 @@ export async function POST(req: Request) {
         );
       }
 
+      const normalizedTargetEmail = normalizeEmail(email);
+
       // Validate email format
-      if (!isValidEmail(email)) {
+      if (!isValidEmail(normalizedTargetEmail)) {
         return NextResponse.json(
           { error: "Invalid email format" },
           { status: 400 },
@@ -45,7 +47,7 @@ export async function POST(req: Request) {
 
       // Check if user exists in roles table
       const existing = await db.query.roles.findFirst({
-        where: eq(roles.email, email),
+        where: eq(roles.email, normalizedTargetEmail),
       });
 
       if (existing) {
@@ -76,7 +78,7 @@ export async function POST(req: Request) {
         await logAuditEvent({
           action: "user.add_role",
           actor: auth.email!,
-          targetEmail: email,
+          targetEmail: normalizedTargetEmail,
           metadata: { role: roleName },
         });
 
@@ -92,13 +94,13 @@ export async function POST(req: Request) {
       } else {
         // Create new user with role
         const [created] = await db.insert(roles)
-          .values({ email, roles: roleName })
+          .values({ email: normalizedTargetEmail, roles: roleName })
           .returning();
 
         await logAuditEvent({
           action: "user.add_role",
           actor: auth.email!,
-          targetEmail: email,
+          targetEmail: normalizedTargetEmail,
           metadata: { role: roleName },
         });
 
