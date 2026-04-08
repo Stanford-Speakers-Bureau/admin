@@ -257,7 +257,7 @@ function formatFullDateTime(dateString: string | null): string {
   }).format(new Date(dateString));
 }
 
-/** Format exact date+time with timezone as "Thursday, January 23, 2026 at 8:00 PM PST" */
+/** Format exact date+time as "Thursday, January 23, 2026 at 8:00 PM" */
 function formatFullDateTimeWithTimezone(dateString: string | null): string {
   if (!dateString) return "TBA";
   return new Intl.DateTimeFormat("en-US", {
@@ -268,7 +268,6 @@ function formatFullDateTimeWithTimezone(dateString: string | null): string {
     hour: "numeric",
     minute: "2-digit",
     hour12: true,
-    timeZoneName: "short",
     timeZone: PACIFIC_TIMEZONE,
   }).format(new Date(dateString));
 }
@@ -286,7 +285,6 @@ function formatTicketDropTime(dateString: string | null): string {
     hour: "numeric",
     minute: "2-digit",
     hour12: true,
-    timeZoneName: "short",
     timeZone: PACIFIC_TIMEZONE,
   }).format(d);
   return `${day} &middot; ${time}`;
@@ -1504,7 +1502,6 @@ export async function sendDayOfReminderEmail(
       hour: "numeric",
       minute: "2-digit",
       hour12: true,
-      timeZoneName: "short",
       timeZone: PACIFIC_TIMEZONE,
     }).format(new Date(data.doorsOpenTime))
     : null;
@@ -1866,7 +1863,6 @@ export async function sendEarlyReminderEmail(
       hour: "numeric",
       minute: "2-digit",
       hour12: true,
-      timeZoneName: "short",
       timeZone: PACIFIC_TIMEZONE,
     }).format(new Date(data.doorsOpenTime))
     : "7:30 PM";
