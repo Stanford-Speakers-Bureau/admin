@@ -3,7 +3,8 @@ import { verifyAdminRequest } from "@/app/lib/auth";
 import { isValidUUID } from "@/app/lib/validation";
 import { sendStandbyLineEmail } from "@/app/lib/email";
 import { PACIFIC_TIMEZONE } from "@/app/lib/constants";
-import { db, eq, and, inArray, waitlist, events, tickets } from "@ssb/db";
+import { removeWaitlistEntryForEmail } from "@/app/lib/waitlist";
+import { db, eq, and, waitlist, events, tickets } from "@ssb/db";
 import { logAuditEvent } from "@/app/lib/audit";
 
 async function sendWithRetry(
@@ -265,8 +266,6 @@ export async function POST(req: Request) {
     let errorCount = 0;
     let skippedExistingCount = 0;
     const errors: string[] = [];
-    const issuedStandbyIds: string[] = [];
-
     for (const entry of waitlistEntries) {
       try {
         const existingTicket = await db.query.tickets.findFirst({
@@ -278,8 +277,12 @@ export async function POST(req: Request) {
         });
 
         if (existingTicket) {
-          issuedStandbyIds.push(entry.id);
           skippedExistingCount++;
+          try {
+            await removeWaitlistEntryForEmail(eventId, entry.email);
+          } catch (waitlistError) {
+            console.error("Waitlist cleanup after existing ticket failed:", waitlistError);
+          }
           continue;
         }
 
@@ -305,7 +308,11 @@ export async function POST(req: Request) {
           })
         );
 
-        issuedStandbyIds.push(entry.id);
+        try {
+          await removeWaitlistEntryForEmail(eventId, entry.email);
+        } catch (waitlistError) {
+          console.error("Waitlist removal after standby issuance failed:", waitlistError);
+        }
         successCount++;
       } catch (error) {
         errorCount++;
@@ -314,11 +321,6 @@ export async function POST(req: Request) {
         errors.push(`${entry.email}: ${errorMessage}`);
         console.error(`Failed to issue standby ticket for ${entry.email}:`, error);
       }
-    }
-
-    // Remove successfully processed entries from the online waitlist
-    if (issuedStandbyIds.length > 0) {
-      await db.delete(waitlist).where(inArray(waitlist.id, issuedStandbyIds));
     }
 
     await logAuditEvent({
