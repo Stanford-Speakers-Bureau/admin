@@ -8,6 +8,7 @@ import {
   runChunkedSend,
 } from "@/app/lib/bulkSend";
 import { formatDate } from "@/app/lib/formatting";
+import { isValidEmail } from "@/app/lib/validation";
 
 export type Ticket = {
   id: string;
@@ -43,6 +44,35 @@ type TicketManagementClientProps = {
   initialStandbyCount: number;
 };
 
+function parseSpreadsheetTicketRows(clipboardText: string): TicketRow[] {
+  const rows = clipboardText
+    .replace(/\r\n?/g, "\n")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  if (rows.length === 0) {
+    return [];
+  }
+
+  const parsedRows: TicketRow[] = [];
+
+  for (const row of rows) {
+    const columns = row.split("\t").map((column) => column.trim());
+    const hasUnexpectedExtraColumns = columns.slice(2).some(Boolean);
+
+    if (columns.length < 2 || hasUnexpectedExtraColumns) {
+      return [];
+    }
+
+    parsedRows.push({
+      name: columns[0] || "",
+      email: columns[1] || "",
+    });
+  }
+
+  return parsedRows;
+}
 
 export default function TicketManagementClient({
   initialTickets,
@@ -100,6 +130,53 @@ export default function TicketManagementClient({
 
   const REMINDER_CHUNK_SIZE = 50;
   const RECIPIENT_PAGE_SIZE = 500;
+
+  function resetNewTicketForm() {
+    setNewTicketRows([{ name: "", email: "" }]);
+    setNewTicketEventId(selectedEventId);
+    setNewTicketType("VIP");
+  }
+
+  function handleSpreadsheetPaste(
+    index: number,
+    event: React.ClipboardEvent<HTMLInputElement>,
+  ) {
+    const clipboardText = event.clipboardData.getData("text");
+
+    if (!clipboardText.includes("\t")) {
+      return;
+    }
+
+    const parsedRows = parseSpreadsheetTicketRows(clipboardText);
+
+    event.preventDefault();
+
+    if (parsedRows.length === 0) {
+      setSuccess(null);
+      setError("Paste exactly 2 columns from Google Sheets: name and email.");
+      return;
+    }
+
+    setNewTicketRows((prev) => {
+      const next = [...prev];
+      const requiredLength = index + parsedRows.length;
+
+      while (next.length < requiredLength) {
+        next.push({ name: "", email: "" });
+      }
+
+      parsedRows.forEach((row, offset) => {
+        next[index + offset] = row;
+      });
+
+      return next;
+    });
+
+    setError(null);
+    setSuccess(
+      `Loaded ${parsedRows.length} attendee row${parsedRows.length === 1 ? "" : "s"} from pasted data.`,
+    );
+  }
 
   useEffect(() => {
     if (error) {
@@ -701,7 +778,7 @@ export default function TicketManagementClient({
       (row) => row.email.trim() && row.name.trim(),
     );
     const invalidRows = rowsToSubmit.filter(
-      (row) => !row.email.includes("@") || !row.email.includes("."),
+      (row) => !isValidEmail(row.email.trim()),
     );
     if (invalidRows.length > 0) {
       setError(
@@ -766,9 +843,7 @@ export default function TicketManagementClient({
       setSuccess(
         `Successfully created ${successCount} ticket(s)${errors.length > 0 ? ` (${errors.length} failed)` : ""}`,
       );
-      setNewTicketRows([{ name: "", email: "" }]);
-      setNewTicketEventId("");
-      setNewTicketType("VIP");
+      resetNewTicketForm();
       if (errors.length === 0) {
         setShowAddForm(false);
       }
@@ -928,7 +1003,10 @@ export default function TicketManagementClient({
               Reload
             </button>
             <button
-              onClick={() => setShowAddForm(!showAddForm)}
+              onClick={() => {
+                setShowAddForm((prev) => !prev);
+                setNewTicketEventId((prev) => prev || selectedEventId);
+              }}
               className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-emerald-500 to-teal-500 text-white rounded-xl font-medium hover:opacity-90 transition-opacity"
             >
               <svg
@@ -1039,7 +1117,9 @@ export default function TicketManagementClient({
         <div className="mb-6 bg-zinc-900 rounded-2xl border border-zinc-800 p-6">
           <h2 className="text-xl font-bold text-white mb-4">Add Tickets</h2>
           <p className="text-sm text-zinc-400 mb-4">
-            Each row is one ticket. Name and email are required.
+            Each row is one ticket. Name and email are required. Paste 2 columns
+            from Google Sheets into any attendee cell to auto-fill rows for
+            review.
           </p>
           <form onSubmit={handleAddTicket} className="space-y-4">
             {/* Shared: Event + Type */}
@@ -1121,6 +1201,9 @@ export default function TicketManagementClient({
                           <input
                             type="text"
                             value={row.name}
+                            onPaste={(event) =>
+                              handleSpreadsheetPaste(index, event)
+                            }
                             onChange={(e) => {
                               setNewTicketRows((prev) => {
                                 const next = [...prev];
@@ -1136,6 +1219,9 @@ export default function TicketManagementClient({
                           <input
                             type="email"
                             value={row.email}
+                            onPaste={(event) =>
+                              handleSpreadsheetPaste(index, event)
+                            }
                             onChange={(e) => {
                               setNewTicketRows((prev) => {
                                 const next = [...prev];
@@ -1210,9 +1296,7 @@ export default function TicketManagementClient({
                 type="button"
                 onClick={() => {
                   setShowAddForm(false);
-                  setNewTicketRows([{ name: "", email: "" }]);
-                  setNewTicketEventId("");
-                  setNewTicketType("VIP");
+                  resetNewTicketForm();
                 }}
                 className="px-6 py-3 text-zinc-400 hover:text-white transition-colors"
               >
