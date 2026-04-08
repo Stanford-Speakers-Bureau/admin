@@ -1,17 +1,18 @@
 import { getAvailablePublicTickets } from "@/app/lib/supabase";
 import { db, eq, inArray, roles, tickets, waitlist } from "@ssb/db";
 import { sendTicketEmail } from "@/app/lib/email";
+import { hasRoleName } from "@/app/lib/auth";
 
-function hasRole(rawRoles: string | null | undefined, roleName: string): boolean {
-  return (rawRoles ?? "")
-    .split(",")
-    .map((role) => role.trim().toLowerCase())
-    .includes(roleName);
+const WAITLIST_BATCH_MULTIPLIER = 5;
+const MIN_WAITLIST_BATCH_SIZE = 50;
+
+function normalizeEmail(email: string | null | undefined): string {
+  return (email ?? "").trim().toLowerCase();
 }
 
 async function getFeeWaiverEmailSet(emails: string[]): Promise<Set<string>> {
   const normalizedEmails = [...new Set(
-    emails.map((email) => email.trim().toLowerCase()).filter(Boolean),
+    emails.map((email) => normalizeEmail(email)).filter(Boolean),
   )];
 
   if (normalizedEmails.length === 0) {
@@ -28,10 +29,54 @@ async function getFeeWaiverEmailSet(emails: string[]): Promise<Set<string>> {
 
   return new Set(
     roleRows
-      .filter((row) => hasRole(row.roles, "fee_waiver"))
-      .map((row) => row.email?.trim().toLowerCase())
+      .filter((row) => hasRoleName(row.roles, "fee_waiver"))
+      .map((row) => normalizeEmail(row.email))
       .filter((email): email is string => !!email),
   );
+}
+
+async function getEligibleWaitlistEntries(
+  eventId: string,
+  maxToPull: number,
+): Promise<Array<{ id: string; email: string; name: string | null }>> {
+  const eligibleEntries: Array<{ id: string; email: string; name: string | null }> = [];
+  const batchSize = Math.max(maxToPull * WAITLIST_BATCH_MULTIPLIER, MIN_WAITLIST_BATCH_SIZE);
+  let offset = 0;
+
+  while (eligibleEntries.length < maxToPull) {
+    const waitlistBatch = await db.query.waitlist.findMany({
+      where: eq(waitlist.eventId, eventId),
+      orderBy: (t, { asc }) => [asc(t.position)],
+      offset,
+      limit: batchSize,
+      columns: { id: true, email: true, name: true },
+    });
+
+    if (!waitlistBatch.length) {
+      break;
+    }
+
+    const feeWaiverEmails = await getFeeWaiverEmailSet(
+      waitlistBatch.map((entry) => entry.email),
+    );
+
+    for (const entry of waitlistBatch) {
+      if (!feeWaiverEmails.has(normalizeEmail(entry.email))) {
+        eligibleEntries.push(entry);
+      }
+
+      if (eligibleEntries.length >= maxToPull) {
+        break;
+      }
+    }
+
+    offset += waitlistBatch.length;
+    if (waitlistBatch.length < batchSize) {
+      break;
+    }
+  }
+
+  return eligibleEntries;
 }
 
 async function sendWithRetry(
@@ -63,21 +108,10 @@ export async function pullFromWaitlist(
 
   if (maxToPull <= 0) return 0;
 
-  // Get the first people on the waitlist for this event
-  const waitlistEntries = await db.query.waitlist.findMany({
-    where: eq(waitlist.eventId, eventId),
-    orderBy: (t, { asc }) => [asc(t.position)],
-    columns: { id: true, email: true, name: true },
-  });
-
-  if (!waitlistEntries.length) return 0;
-
-  const feeWaiverEmails = await getFeeWaiverEmailSet(
-    waitlistEntries.map((entry) => entry.email),
+  const eligibleWaitlistEntries = await getEligibleWaitlistEntries(
+    eventId,
+    maxToPull,
   );
-  const eligibleWaitlistEntries = waitlistEntries
-    .filter((entry) => !feeWaiverEmails.has(entry.email.trim().toLowerCase()))
-    .slice(0, maxToPull);
 
   if (!eligibleWaitlistEntries.length) return 0;
 
@@ -156,9 +190,8 @@ export async function pullFromWaitlist(
   }
 
   // Only remove waitlist entries whose email was successfully sent.
-  const confirmedWaitlistIds = waitlistEntries
-    .filter((e) => !feeWaiverEmails.has(e.email.trim().toLowerCase()))
-    .filter((e) => confirmedEmails.has(e.email))
+  const confirmedWaitlistIds = eligibleWaitlistEntries
+    .filter((entry) => confirmedEmails.has(entry.email))
     .map((e) => e.id);
 
   if (confirmedWaitlistIds.length > 0) {

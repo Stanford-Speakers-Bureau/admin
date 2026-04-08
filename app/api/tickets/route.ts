@@ -3,7 +3,7 @@ import {
   getAvailablePublicTickets,
   isEventUnderCapacity,
 } from "@/app/lib/supabase";
-import { verifyAdminRequest } from "@/app/lib/auth";
+import { hasRoleName, verifyAdminRequest } from "@/app/lib/auth";
 import {
   sendDayOfReminderEmail,
   sendEarlyReminderEmail,
@@ -70,16 +70,21 @@ function normalizeEmail(email: string | null | undefined): string {
   return (email ?? "").trim().toLowerCase();
 }
 
-function hasRole(rawRoles: string | null | undefined, roleName: string): boolean {
-  return (rawRoles ?? "")
-    .split(",")
-    .map((role) => role.trim().toLowerCase())
-    .includes(roleName);
-}
+async function getFeeWaiverEmailSet(
+  emails?: string[],
+): Promise<Set<string>> {
+  const normalizedEmails = emails
+    ? [...new Set(emails.map((email) => normalizeEmail(email)).filter(Boolean))]
+    : null;
 
-async function getAllFeeWaiverEmailSet(): Promise<Set<string>> {
+  if (normalizedEmails && normalizedEmails.length === 0) {
+    return new Set();
+  }
+
   const feeWaiverRows = await db.query.roles.findMany({
-    where: ilike(roles.roles, "%fee_waiver%"),
+    where: normalizedEmails
+      ? and(ilike(roles.roles, "%fee_waiver%"), inArray(roles.email, normalizedEmails))
+      : ilike(roles.roles, "%fee_waiver%"),
     columns: {
       email: true,
       roles: true,
@@ -88,10 +93,20 @@ async function getAllFeeWaiverEmailSet(): Promise<Set<string>> {
 
   return new Set(
     feeWaiverRows
-      .filter((row) => hasRole(row.roles, "fee_waiver"))
+      .filter((row) => hasRoleName(row.roles, "fee_waiver"))
       .map((row) => normalizeEmail(row.email))
       .filter(Boolean),
   );
+}
+
+async function hasFeeWaiverForEmail(email: string): Promise<boolean> {
+  const normalizedEmail = normalizeEmail(email);
+  if (!normalizedEmail) {
+    return false;
+  }
+
+  const feeWaiverEmails = await getFeeWaiverEmailSet([normalizedEmail]);
+  return feeWaiverEmails.has(normalizedEmail);
 }
 
 async function serializeTicketWithFeeWaiver(ticket: {
@@ -116,8 +131,7 @@ async function serializeTicketWithFeeWaiver(ticket: {
     doorsOpen?: Date | null;
   } | null;
 }) {
-  const feeWaiverEmails = await getAllFeeWaiverEmailSet();
-  return serializeTicket(ticket, feeWaiverEmails.has(normalizeEmail(ticket.email)));
+  return serializeTicket(ticket, await hasFeeWaiverForEmail(ticket.email));
 }
 
 /** Standard ticket columns */
@@ -248,7 +262,8 @@ export async function GET(req: Request) {
     const feeWaiver = searchParams.get("feeWaiver");
     const limit = parseInt(searchParams.get("limit") || "100");
     const offset = parseInt(searchParams.get("offset") || "0");
-    const feeWaiverEmails = await getAllFeeWaiverEmailSet();
+    const feeWaiverEmails = await getFeeWaiverEmailSet();
+    const feeWaiverEmailList = [...feeWaiverEmails];
 
     // Build where conditions for main query and filtered count
     const conditions: ReturnType<typeof eq>[] = [];
@@ -259,7 +274,6 @@ export async function GET(req: Request) {
       conditions.push(eq(tickets.scanned, scanned === "true"));
     }
     if (feeWaiver === "true") {
-      const feeWaiverEmailList = [...feeWaiverEmails];
       if (feeWaiverEmailList.length === 0) {
         conditions.push(eq(tickets.email, "__no_fee_waiver_match__"));
       } else {
@@ -274,7 +288,7 @@ export async function GET(req: Request) {
     const baseWhereClause = baseConditions.length > 0 ? and(...baseConditions) : undefined;
 
     // Run all queries in parallel
-    const [ticketResults, [totalResult], [scannedResult], [unscannedResult], [filteredResult], [standardResult], [vipResult], [externalResult], [waitlistResult], baseTicketEmails] =
+    const [ticketResults, [totalResult], [scannedResult], [unscannedResult], [filteredResult], [standardResult], [vipResult], [externalResult], [waitlistResult], [feeWaiverResult]] =
       await Promise.all([
         db.query.tickets.findMany({
           where: whereClause,
@@ -292,17 +306,16 @@ export async function GET(req: Request) {
         db.select({ count: dbCount() }).from(tickets).where(baseWhereClause ? and(baseWhereClause, eq(tickets.type, "VIP")) : eq(tickets.type, "VIP")),
         db.select({ count: dbCount() }).from(tickets).where(baseWhereClause ? and(baseWhereClause, eq(tickets.type, "EXTERNAL")) : eq(tickets.type, "EXTERNAL")),
         db.select({ count: dbCount() }).from(tickets).where(baseWhereClause ? and(baseWhereClause, eq(tickets.type, "STANDBY")) : eq(tickets.type, "STANDBY")),
-        db.query.tickets.findMany({
-          where: baseWhereClause,
-          columns: { email: true },
-        }),
+        feeWaiverEmailList.length > 0
+          ? db.select({ count: dbCount() })
+            .from(tickets)
+            .where(
+              baseWhereClause
+                ? and(baseWhereClause, inArray(tickets.email, feeWaiverEmailList))
+                : inArray(tickets.email, feeWaiverEmailList),
+            )
+          : Promise.resolve([{ count: 0 }]),
       ]);
-
-    const feeWaiverCount = baseTicketEmails.reduce(
-      (count, ticket) =>
-        count + (feeWaiverEmails.has(normalizeEmail(ticket.email)) ? 1 : 0),
-      0,
-    );
 
     return NextResponse.json({
       tickets: ticketResults.map((ticket) =>
@@ -311,7 +324,7 @@ export async function GET(req: Request) {
       total: totalResult?.count ?? 0,
       scannedCount: scannedResult?.count ?? 0,
       unscannedCount: unscannedResult?.count ?? 0,
-      feeWaiverCount,
+      feeWaiverCount: feeWaiverResult?.count ?? 0,
       filteredCount: filteredResult?.count ?? 0,
       standardCount: standardResult?.count ?? 0,
       vipCount: vipResult?.count ?? 0,

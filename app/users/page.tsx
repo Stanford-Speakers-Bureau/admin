@@ -4,18 +4,11 @@ import AdminUsersClient, {
   FeeWaiver,
   Scanner,
 } from "./AdminUsersClient";
-import { verifyAdminRequest } from "@/app/lib/auth";
+import { hasRoleName, verifyAdminRequest } from "@/app/lib/auth";
 import { db } from "@ssb/db";
 import { connection } from "next/server";
 
 export const dynamic = "force-dynamic";
-
-function hasRole(rawRoles: string | null | undefined, roleName: string): boolean {
-  return (rawRoles ?? "")
-    .split(",")
-    .map((role) => role.trim().toLowerCase())
-    .includes(roleName);
-}
 
 async function getInitialUsers(): Promise<{
   admins: Admin[];
@@ -41,10 +34,10 @@ async function getInitialUsers(): Promise<{
       roles: r.roles,
     }));
 
-    const admins = serialized.filter((r) => hasRole(r.roles, "admin"));
-    const bans = serialized.filter((r) => hasRole(r.roles, "banned"));
-    const feeWaivers = serialized.filter((r) => hasRole(r.roles, "fee_waiver"));
-    const scanners = serialized.filter((r) => hasRole(r.roles, "scanner"));
+    const admins = serialized.filter((r) => hasRoleName(r.roles, "admin"));
+    const bans = serialized.filter((r) => hasRoleName(r.roles, "banned"));
+    const feeWaivers = serialized.filter((r) => hasRoleName(r.roles, "fee_waiver"));
+    const scanners = serialized.filter((r) => hasRoleName(r.roles, "scanner"));
 
     return {
       admins: admins as Admin[],
