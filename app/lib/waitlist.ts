@@ -1,6 +1,38 @@
 import { getAvailablePublicTickets } from "@/app/lib/supabase";
-import { db, eq, inArray, tickets, waitlist } from "@ssb/db";
+import { db, eq, inArray, roles, tickets, waitlist } from "@ssb/db";
 import { sendTicketEmail } from "@/app/lib/email";
+
+function hasRole(rawRoles: string | null | undefined, roleName: string): boolean {
+  return (rawRoles ?? "")
+    .split(",")
+    .map((role) => role.trim().toLowerCase())
+    .includes(roleName);
+}
+
+async function getFeeWaiverEmailSet(emails: string[]): Promise<Set<string>> {
+  const normalizedEmails = [...new Set(
+    emails.map((email) => email.trim().toLowerCase()).filter(Boolean),
+  )];
+
+  if (normalizedEmails.length === 0) {
+    return new Set();
+  }
+
+  const roleRows = await db.query.roles.findMany({
+    where: inArray(roles.email, normalizedEmails),
+    columns: {
+      email: true,
+      roles: true,
+    },
+  });
+
+  return new Set(
+    roleRows
+      .filter((row) => hasRole(row.roles, "fee_waiver"))
+      .map((row) => row.email?.trim().toLowerCase())
+      .filter((email): email is string => !!email),
+  );
+}
 
 async function sendWithRetry(
   fn: () => Promise<void>,
@@ -35,15 +67,23 @@ export async function pullFromWaitlist(
   const waitlistEntries = await db.query.waitlist.findMany({
     where: eq(waitlist.eventId, eventId),
     orderBy: (t, { asc }) => [asc(t.position)],
-    limit: maxToPull,
     columns: { id: true, email: true, name: true },
   });
 
   if (!waitlistEntries.length) return 0;
 
+  const feeWaiverEmails = await getFeeWaiverEmailSet(
+    waitlistEntries.map((entry) => entry.email),
+  );
+  const eligibleWaitlistEntries = waitlistEntries
+    .filter((entry) => !feeWaiverEmails.has(entry.email.trim().toLowerCase()))
+    .slice(0, maxToPull);
+
+  if (!eligibleWaitlistEntries.length) return 0;
+
   // Create STANDARD tickets for each waitlist person
   const insertedIds: string[] = [];
-  for (const entry of waitlistEntries) {
+  for (const entry of eligibleWaitlistEntries) {
     try {
       const [inserted] = await db.insert(tickets).values({
         eventId,
@@ -73,10 +113,10 @@ export async function pullFromWaitlist(
 
   if (!newTickets.length) return 0;
 
-  if (newTickets.length !== waitlistEntries.length) {
+  if (newTickets.length !== eligibleWaitlistEntries.length) {
     console.error(
       "Waitlist conversion mismatch (non-fatal):",
-      `requested=${waitlistEntries.length}`,
+      `requested=${eligibleWaitlistEntries.length}`,
       `created=${newTickets.length}`,
     );
   }
@@ -117,6 +157,7 @@ export async function pullFromWaitlist(
 
   // Only remove waitlist entries whose email was successfully sent.
   const confirmedWaitlistIds = waitlistEntries
+    .filter((e) => !feeWaiverEmails.has(e.email.trim().toLowerCase()))
     .filter((e) => confirmedEmails.has(e.email))
     .map((e) => e.id);
 

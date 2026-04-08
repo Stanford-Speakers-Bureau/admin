@@ -9,6 +9,7 @@ export default async function AdminTicketsPage() {
       initialTotal={0}
       initialScannedCount={0}
       initialUnscannedCount={0}
+      initialFeeWaiverCount={0}
       initialFilteredCount={0}
       initialStandardCount={0}
       initialVipCount={0}

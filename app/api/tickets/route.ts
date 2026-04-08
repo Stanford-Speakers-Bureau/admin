@@ -12,7 +12,7 @@ import {
 } from "@/app/lib/email";
 import { PACIFIC_TIMEZONE } from "@/app/lib/constants";
 import { pullFromWaitlist } from "@/app/lib/waitlist";
-import { db, eq, and, or, ilike, inArray, isNotNull, count as dbCount, tickets, events, waitlist, referrals } from "@ssb/db";
+import { db, eq, and, or, ilike, inArray, isNotNull, count as dbCount, tickets, events, waitlist, referrals, roles } from "@ssb/db";
 import { isValidUUID } from "@/app/lib/validation";
 import { logAuditEvent } from "@/app/lib/audit";
 
@@ -38,7 +38,7 @@ function serializeTicket(ticket: {
     desc?: string | null;
     doorsOpen?: Date | null;
   } | null;
-}) {
+}, hasFeeWaiver = false) {
   return {
     id: ticket.id,
     email: ticket.email,
@@ -48,6 +48,7 @@ function serializeTicket(ticket: {
     scanned: ticket.scanned,
     scan_time: ticket.scanTime?.toISOString() ?? null,
     referral: ticket.referral,
+    has_fee_waiver: hasFeeWaiver,
     event_id: ticket.eventId,
     events: ticket.event
       ? {
@@ -63,6 +64,60 @@ function serializeTicket(ticket: {
       }
       : null,
   };
+}
+
+function normalizeEmail(email: string | null | undefined): string {
+  return (email ?? "").trim().toLowerCase();
+}
+
+function hasRole(rawRoles: string | null | undefined, roleName: string): boolean {
+  return (rawRoles ?? "")
+    .split(",")
+    .map((role) => role.trim().toLowerCase())
+    .includes(roleName);
+}
+
+async function getAllFeeWaiverEmailSet(): Promise<Set<string>> {
+  const feeWaiverRows = await db.query.roles.findMany({
+    where: ilike(roles.roles, "%fee_waiver%"),
+    columns: {
+      email: true,
+      roles: true,
+    },
+  });
+
+  return new Set(
+    feeWaiverRows
+      .filter((row) => hasRole(row.roles, "fee_waiver"))
+      .map((row) => normalizeEmail(row.email))
+      .filter(Boolean),
+  );
+}
+
+async function serializeTicketWithFeeWaiver(ticket: {
+  id: string;
+  email: string;
+  name: string | null;
+  type: string;
+  createdAt: Date;
+  scanned: boolean;
+  scanTime: Date | null;
+  referral: string | null;
+  eventId: string | null;
+  event?: {
+    id: string;
+    name: string | null;
+    route: string | null;
+    startTimeDate: Date | null;
+    endTimeDate?: Date | null;
+    venue?: string | null;
+    venueLink?: string | null;
+    desc?: string | null;
+    doorsOpen?: Date | null;
+  } | null;
+}) {
+  const feeWaiverEmails = await getAllFeeWaiverEmailSet();
+  return serializeTicket(ticket, feeWaiverEmails.has(normalizeEmail(ticket.email)));
 }
 
 /** Standard ticket columns */
@@ -190,8 +245,10 @@ export async function GET(req: Request) {
     const search = searchParams.get("search");
     const type = searchParams.get("type");
     const scanned = searchParams.get("scanned");
+    const feeWaiver = searchParams.get("feeWaiver");
     const limit = parseInt(searchParams.get("limit") || "100");
     const offset = parseInt(searchParams.get("offset") || "0");
+    const feeWaiverEmails = await getAllFeeWaiverEmailSet();
 
     // Build where conditions for main query and filtered count
     const conditions: ReturnType<typeof eq>[] = [];
@@ -201,6 +258,14 @@ export async function GET(req: Request) {
     if (scanned !== null && scanned !== undefined && scanned !== "") {
       conditions.push(eq(tickets.scanned, scanned === "true"));
     }
+    if (feeWaiver === "true") {
+      const feeWaiverEmailList = [...feeWaiverEmails];
+      if (feeWaiverEmailList.length === 0) {
+        conditions.push(eq(tickets.email, "__no_fee_waiver_match__"));
+      } else {
+        conditions.push(inArray(tickets.email, feeWaiverEmailList));
+      }
+    }
     const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
 
     // Build where conditions for unfiltered counts (only eventId filter)
@@ -209,7 +274,7 @@ export async function GET(req: Request) {
     const baseWhereClause = baseConditions.length > 0 ? and(...baseConditions) : undefined;
 
     // Run all queries in parallel
-    const [ticketResults, [totalResult], [scannedResult], [unscannedResult], [filteredResult], [standardResult], [vipResult], [externalResult], [waitlistResult]] =
+    const [ticketResults, [totalResult], [scannedResult], [unscannedResult], [filteredResult], [standardResult], [vipResult], [externalResult], [waitlistResult], baseTicketEmails] =
       await Promise.all([
         db.query.tickets.findMany({
           where: whereClause,
@@ -227,13 +292,26 @@ export async function GET(req: Request) {
         db.select({ count: dbCount() }).from(tickets).where(baseWhereClause ? and(baseWhereClause, eq(tickets.type, "VIP")) : eq(tickets.type, "VIP")),
         db.select({ count: dbCount() }).from(tickets).where(baseWhereClause ? and(baseWhereClause, eq(tickets.type, "EXTERNAL")) : eq(tickets.type, "EXTERNAL")),
         db.select({ count: dbCount() }).from(tickets).where(baseWhereClause ? and(baseWhereClause, eq(tickets.type, "STANDBY")) : eq(tickets.type, "STANDBY")),
+        db.query.tickets.findMany({
+          where: baseWhereClause,
+          columns: { email: true },
+        }),
       ]);
 
+    const feeWaiverCount = baseTicketEmails.reduce(
+      (count, ticket) =>
+        count + (feeWaiverEmails.has(normalizeEmail(ticket.email)) ? 1 : 0),
+      0,
+    );
+
     return NextResponse.json({
-      tickets: ticketResults.map(serializeTicket),
+      tickets: ticketResults.map((ticket) =>
+        serializeTicket(ticket, feeWaiverEmails.has(normalizeEmail(ticket.email)))
+      ),
       total: totalResult?.count ?? 0,
       scannedCount: scannedResult?.count ?? 0,
       unscannedCount: unscannedResult?.count ?? 0,
+      feeWaiverCount,
       filteredCount: filteredResult?.count ?? 0,
       standardCount: standardResult?.count ?? 0,
       vipCount: vipResult?.count ?? 0,
@@ -411,7 +489,10 @@ export async function PATCH(req: Request) {
         metadata: { ticketId: id, newName },
       });
 
-      return NextResponse.json({ success: true, ticket: serializeTicket(ticket!) });
+      return NextResponse.json({
+        success: true,
+        ticket: await serializeTicketWithFeeWaiver(ticket!),
+      });
     } else if (action === "unscan") {
       // Unscan the ticket: set scanned to false and clear scan-related fields
       await db.update(tickets).set({
@@ -445,7 +526,10 @@ export async function PATCH(req: Request) {
         metadata: { ticketId: id },
       });
 
-      return NextResponse.json({ success: true, ticket: serializeTicket(ticket!) });
+      return NextResponse.json({
+        success: true,
+        ticket: await serializeTicketWithFeeWaiver(ticket!),
+      });
     } else if (action === "updateType" || type) {
       // Update ticket type
       if (type !== "VIP" && type !== "STANDARD" && type !== "EXTERNAL" && type !== "STANDBY") {
@@ -616,7 +700,10 @@ export async function PATCH(req: Request) {
         metadata: { ticketId: id, oldType: currentTicket.type, newType: type },
       });
 
-      return NextResponse.json({ success: true, ticket: serializeTicket(ticket!) });
+      return NextResponse.json({
+        success: true,
+        ticket: await serializeTicketWithFeeWaiver(ticket!),
+      });
     } else if (action === "updateScanned" || typeof scanned === "boolean") {
       // Update scanned status
       const updateData: {
@@ -655,7 +742,10 @@ export async function PATCH(req: Request) {
         );
       }
 
-      return NextResponse.json({ success: true, ticket: serializeTicket(ticket!) });
+      return NextResponse.json({
+        success: true,
+        ticket: await serializeTicketWithFeeWaiver(ticket!),
+      });
     } else if (action === "resendEmail") {
       // Resend ticket confirmation email
       const ticket = await db.query.tickets.findFirst({
@@ -1266,7 +1356,7 @@ export async function POST(req: Request) {
 
       return NextResponse.json({
         success: true,
-        ticket: serializeTicket(updatedTicket!),
+        ticket: await serializeTicketWithFeeWaiver(updatedTicket!),
         updated: true,
       });
     }
@@ -1347,7 +1437,10 @@ export async function POST(req: Request) {
       metadata: { ticketId: ticket!.id, type: ticket!.type },
     });
 
-    return NextResponse.json({ success: true, ticket: serializeTicket(ticket!) });
+    return NextResponse.json({
+      success: true,
+      ticket: await serializeTicketWithFeeWaiver(ticket!),
+    });
   } catch (error) {
     console.error("Ticket creation error:", error);
     return NextResponse.json(

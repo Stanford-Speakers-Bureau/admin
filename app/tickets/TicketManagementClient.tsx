@@ -19,6 +19,7 @@ export type Ticket = {
   scanned: boolean;
   scan_time: string | null;
   referral: string | null;
+  has_fee_waiver: boolean;
   event_id: string;
   events: {
     id: string;
@@ -37,6 +38,7 @@ type TicketManagementClientProps = {
   initialTotal: number;
   initialScannedCount: number;
   initialUnscannedCount: number;
+  initialFeeWaiverCount: number;
   initialFilteredCount: number;
   initialStandardCount: number;
   initialVipCount: number;
@@ -79,6 +81,7 @@ export default function TicketManagementClient({
   initialTotal,
   initialScannedCount,
   initialUnscannedCount,
+  initialFeeWaiverCount,
   initialFilteredCount,
   initialStandardCount,
   initialVipCount,
@@ -90,6 +93,7 @@ export default function TicketManagementClient({
   const [total, setTotal] = useState(initialTotal);
   const [scannedCount, setScannedCount] = useState(initialScannedCount);
   const [unscannedCount, setUnscannedCount] = useState(initialUnscannedCount);
+  const [feeWaiverCount, setFeeWaiverCount] = useState(initialFeeWaiverCount);
   const [filteredCount, setFilteredCount] = useState(initialFilteredCount);
   const [standardCount, setStandardCount] = useState(initialStandardCount);
   const [vipCount, setVipCount] = useState(initialVipCount);
@@ -98,6 +102,7 @@ export default function TicketManagementClient({
   const [search, setSearch] = useState("");
   const [ticketTypeFilter, setTicketTypeFilter] = useState<string>("");
   const [scannedFilter, setScannedFilter] = useState<string>("");
+  const [feeWaiverFilter, setFeeWaiverFilter] = useState<string>("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -196,6 +201,10 @@ export default function TicketManagementClient({
     setBulkReminderState(null);
   }, [selectedEventId]);
 
+  useEffect(() => {
+    setFeeWaiverFilter("");
+  }, [selectedEventId]);
+
   async function fetchTickets() {
     // Don't fetch if no event is selected
     if (!selectedEventId) {
@@ -203,6 +212,7 @@ export default function TicketManagementClient({
       setTotal(0);
       setScannedCount(0);
       setUnscannedCount(0);
+      setFeeWaiverCount(0);
       setFilteredCount(0);
       setStandardCount(0);
       setVipCount(0);
@@ -235,6 +245,9 @@ export default function TicketManagementClient({
       if (scannedFilter) {
         params.append("scanned", scannedFilter);
       }
+      if (feeWaiverFilter) {
+        params.append("feeWaiver", feeWaiverFilter);
+      }
 
       const response = await fetch(`/api/tickets?${params}`);
 
@@ -248,6 +261,7 @@ export default function TicketManagementClient({
       setTotal(data.total || 0);
       setScannedCount(data.scannedCount || 0);
       setUnscannedCount(data.unscannedCount || 0);
+      setFeeWaiverCount(data.feeWaiverCount || 0);
       setFilteredCount(data.filteredCount || 0);
       setStandardCount(data.standardCount || 0);
       setVipCount(data.vipCount || 0);
@@ -347,7 +361,7 @@ export default function TicketManagementClient({
 
   useEffect(() => {
     fetchTickets();
-  }, [selectedEventId, offset, ticketTypeFilter, scannedFilter]);
+  }, [selectedEventId, offset, ticketTypeFilter, scannedFilter, feeWaiverFilter]);
 
   // Debounced search
   useEffect(() => {
@@ -383,6 +397,9 @@ export default function TicketManagementClient({
         setScannedCount((prev) => prev - 1);
       } else {
         setUnscannedCount((prev) => prev - 1);
+      }
+      if (ticketToDelete?.has_fee_waiver) {
+        setFeeWaiverCount((prev: number) => prev - 1);
       }
       // Update ticket type counts
       if (ticketToDelete?.type === "STANDARD") {
@@ -831,6 +848,10 @@ export default function TicketManagementClient({
       setTickets((prev) => [...createdTickets, ...prev]);
       setTotal((prev) => prev + successCount);
       setUnscannedCount((prev) => prev + successCount);
+      setFeeWaiverCount(
+        (prev: number) =>
+          prev + createdTickets.filter((ticket) => ticket.has_fee_waiver).length,
+      );
       if (newTicketType === "STANDARD") {
         setStandardCount((prev) => prev + successCount);
       } else if (newTicketType === "EXTERNAL") {
@@ -910,9 +931,35 @@ export default function TicketManagementClient({
                     {unscannedCount}
                   </span>
                 </div>
+                {feeWaiverCount > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFeeWaiverFilter((prev) =>
+                        prev === "true" ? "" : "true",
+                      );
+                      setOffset(0);
+                    }}
+                    className={`flex items-center gap-2 rounded-lg px-2 py-1 transition-colors ${
+                      feeWaiverFilter === "true"
+                        ? "bg-amber-500/15 text-amber-300"
+                        : "hover:bg-zinc-800 text-inherit"
+                    }`}
+                    title={
+                      feeWaiverFilter === "true"
+                        ? "Show all tickets"
+                        : "Filter to fee waiver tickets"
+                    }
+                  >
+                    <span className="text-zinc-400">Fee Waiver:</span>
+                    <span className="text-amber-400 font-semibold">
+                      {feeWaiverCount}
+                    </span>
+                  </button>
+                )}
               </>
             )}
-            {(search || ticketTypeFilter || scannedFilter) &&
+            {(search || ticketTypeFilter || scannedFilter || feeWaiverFilter) &&
               selectedEventId && (
                 <div className="flex items-center gap-2">
                   <span className="text-zinc-400">Matching Filters:</span>
@@ -1395,7 +1442,7 @@ export default function TicketManagementClient({
           <p className="text-zinc-600 text-sm">
             {!selectedEventId
               ? "Choose an event from the filter above"
-              : search || ticketTypeFilter || scannedFilter
+              : search || ticketTypeFilter || scannedFilter || feeWaiverFilter
                 ? "Try adjusting your filters"
                 : "Create your first ticket to get started"}
           </p>
@@ -1406,9 +1453,6 @@ export default function TicketManagementClient({
             <table className="w-full">
               <thead className="bg-zinc-800/50 border-b border-zinc-800">
                 <tr>
-                  <th className="px-3 sm:px-4 py-3 sm:py-4 text-left text-xs font-medium text-zinc-400 uppercase tracking-wider whitespace-nowrap">
-                    Event
-                  </th>
                   <th className="px-3 sm:px-4 py-3 sm:py-4 text-left text-xs font-medium text-zinc-400 uppercase tracking-wider whitespace-nowrap">
                     Name
                   </th>
@@ -1435,11 +1479,6 @@ export default function TicketManagementClient({
                     key={ticket.id}
                     className="hover:bg-zinc-800/30 transition-colors"
                   >
-                    <td className="px-3 sm:px-4 py-3 sm:py-4 whitespace-nowrap max-w-[160px]">
-                      <div className="text-sm font-medium text-white truncate" title={ticket.events?.name || "Unknown Event"}>
-                        {ticket.events?.name || "Unknown Event"}
-                      </div>
-                    </td>
                     <td className="px-3 sm:px-4 py-3 sm:py-4 whitespace-nowrap">
                       {editingNameId === ticket.id ? (
                         <input

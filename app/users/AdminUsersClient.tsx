@@ -20,29 +20,40 @@ export type Scanner = {
   created_at: string;
 };
 
+export type FeeWaiver = {
+  id: string;
+  email: string;
+  created_at: string;
+};
+
 type AdminUsersClientProps = {
   initialAdmins: Admin[];
   initialBans: Ban[];
+  initialFeeWaivers: FeeWaiver[];
   initialScanners: Scanner[];
 };
 
 export default function AdminUsersClient({
   initialAdmins,
   initialBans,
+  initialFeeWaivers,
   initialScanners,
 }: AdminUsersClientProps) {
   const [admins, setAdmins] = useState<Admin[]>(initialAdmins);
   const [bans, setBans] = useState<Ban[]>(initialBans);
+  const [feeWaivers, setFeeWaivers] = useState<FeeWaiver[]>(initialFeeWaivers);
   const [scanners, setScanners] = useState<Scanner[]>(initialScanners);
-  const [activeTab, setActiveTab] = useState<"admins" | "bans" | "scanners">(
-    "admins",
-  );
+  const [activeTab, setActiveTab] = useState<
+    "admins" | "bans" | "feeWaivers" | "scanners"
+  >("admins");
   const [newEmail, setNewEmail] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
-  async function handleAddUser(type: "admin" | "ban" | "scanner") {
+  async function handleAddUser(
+    type: "admin" | "ban" | "fee_waiver" | "scanner",
+  ) {
     if (!newEmail.trim()) {
       setError("Please enter an email address");
       return;
@@ -90,6 +101,8 @@ export default function AdminUsersClient({
         if (created) {
           if (type === "admin") {
             setAdmins((prev) => [created as Admin, ...prev]);
+          } else if (type === "fee_waiver") {
+            setFeeWaivers((prev) => [created as FeeWaiver, ...prev]);
           } else if (type === "ban") {
             setBans((prev) => [created as Ban, ...prev]);
           } else {
@@ -113,6 +126,8 @@ export default function AdminUsersClient({
       const typeLabel =
         type === "admin"
           ? "admin(s)"
+          : type === "fee_waiver"
+            ? "fee waiver user(s)"
           : type === "scanner"
             ? "scanner(s)"
             : "banned user(s)";
@@ -128,7 +143,7 @@ export default function AdminUsersClient({
 
   async function handleRemoveUser(
     id: string,
-    type: "admin" | "ban" | "scanner",
+    type: "admin" | "ban" | "fee_waiver" | "scanner",
   ) {
     try {
       const response = await fetch("/api/users", {
@@ -140,6 +155,8 @@ export default function AdminUsersClient({
       if (response.ok) {
         if (type === "admin") {
           setAdmins((prev) => prev.filter((a) => a.id !== id));
+        } else if (type === "fee_waiver") {
+          setFeeWaivers((prev) => prev.filter((user) => user.id !== id));
         } else if (type === "ban") {
           setBans((prev) => prev.filter((b) => b.id !== id));
         } else {
@@ -163,7 +180,7 @@ export default function AdminUsersClient({
           User Management
         </h1>
         <p className="text-zinc-400">
-          Manage admin access, scanners, and banned users.
+          Manage admin access, scanners, fee waiver users, and banned users.
         </p>
       </div>
 
@@ -214,6 +231,29 @@ export default function AdminUsersClient({
             />
           </svg>
           Scanners ({scanners.length})
+        </button>
+        <button
+          onClick={() => setActiveTab("feeWaivers")}
+          className={`flex items-center gap-2 px-4 py-2 rounded text-sm font-medium transition-all ${
+            activeTab === "feeWaivers"
+              ? "bg-amber-500/20 text-amber-400 border border-amber-500/30"
+              : "bg-zinc-900 text-zinc-400 border border-zinc-800 hover:border-zinc-700"
+          }`}
+        >
+          <svg
+            className="w-4 h-4"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M12 9v3.75m0 3.75h.008v.008H12v-.008Zm7.938-2.25A9 9 0 1112 3a9 9 0 017.938 9.75Z"
+            />
+          </svg>
+          Fee Waiver ({feeWaivers.length})
         </button>
         <button
           onClick={() => setActiveTab("bans")}
@@ -322,6 +362,8 @@ export default function AdminUsersClient({
             ? "Add New Admin"
             : activeTab === "scanners"
               ? "Add New Scanner"
+              : activeTab === "feeWaivers"
+                ? "Add Fee Waiver User"
               : "Ban a User"}
         </h3>
         <p className="text-zinc-500 text-sm mb-4">
@@ -354,6 +396,8 @@ export default function AdminUsersClient({
                     ? "admin"
                     : activeTab === "scanners"
                       ? "scanner"
+                      : activeTab === "feeWaivers"
+                        ? "fee_waiver"
                       : "ban",
                 )
               }
@@ -367,6 +411,8 @@ export default function AdminUsersClient({
                   ? "admin"
                   : activeTab === "scanners"
                     ? "scanner"
+                    : activeTab === "feeWaivers"
+                      ? "fee_waiver"
                     : "ban",
               )
             }
@@ -376,6 +422,8 @@ export default function AdminUsersClient({
                 ? "bg-purple-500 hover:bg-purple-600"
                 : activeTab === "scanners"
                   ? "bg-blue-500 hover:bg-blue-600"
+                  : activeTab === "feeWaivers"
+                    ? "bg-amber-500 hover:bg-amber-600"
                   : "bg-rose-500 hover:bg-rose-600"
             }`}
           >
@@ -400,6 +448,8 @@ export default function AdminUsersClient({
                   ? "Add Admin"
                   : activeTab === "scanners"
                     ? "Add Scanner"
+                    : activeTab === "feeWaivers"
+                      ? "Add Fee Waiver"
                     : "Ban User"}
               </>
             )}
@@ -517,6 +567,65 @@ export default function AdminUsersClient({
                     />
                   </svg>
                   Remove
+                </button>
+              </div>
+            ))
+          )
+        ) : activeTab === "feeWaivers" ? (
+          feeWaivers.length === 0 ? (
+            <div className="text-center py-12 bg-zinc-900/50 rounded-xl border border-zinc-800">
+              <p className="text-zinc-400">No fee waiver users</p>
+            </div>
+          ) : (
+            feeWaivers.map((feeWaiver) => (
+              <div
+                key={feeWaiver.id}
+                className="bg-zinc-900 rounded-xl border border-zinc-800 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:border-zinc-700 transition-colors"
+              >
+                <div className="flex items-center gap-4">
+                  <div className="w-10 h-10 bg-amber-500/20 rounded-full flex items-center justify-center">
+                    <svg
+                      className="w-5 h-5 text-amber-400"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M12 9v3.75m0 3.75h.008v.008H12v-.008Zm7.938-2.25A9 9 0 1112 3a9 9 0 017.938 9.75Z"
+                      />
+                    </svg>
+                  </div>
+                  <div>
+                    <p className="text-white font-medium">{feeWaiver.email}</p>
+                    <p className="text-zinc-500 text-sm">
+                      Marked ineligible{" "}
+                      {new Date(feeWaiver.created_at).toLocaleDateString("en-US", {
+                        timeZone: "America/Los_Angeles",
+                      })}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => handleRemoveUser(feeWaiver.id, "fee_waiver")}
+                  className="flex items-center gap-2 px-3 py-1.5 text-emerald-400 hover:bg-emerald-500/10 rounded text-sm transition-colors"
+                >
+                  <svg
+                    className="w-4 h-4"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M5 13l4 4L19 7"
+                    />
+                  </svg>
+                  Remove Waiver
                 </button>
               </div>
             ))

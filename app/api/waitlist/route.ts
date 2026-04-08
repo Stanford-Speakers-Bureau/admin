@@ -326,7 +326,12 @@ export async function POST(req: Request) {
       actor: auth.email!,
       eventId: eventId,
       eventName: event.name ?? null,
-      metadata: { totalEntries: waitlistEntries.length, emailsSent: successCount, errors: errorCount, skipped: skippedExistingCount },
+      metadata: {
+        totalEntries: waitlistEntries.length,
+        emailsSent: successCount,
+        errors: errorCount,
+        skipped: skippedExistingCount,
+      },
     });
 
     return NextResponse.json(

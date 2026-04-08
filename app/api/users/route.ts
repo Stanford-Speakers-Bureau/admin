@@ -14,7 +14,7 @@ export async function POST(req: Request) {
     const body = await req.json();
     const { email, id, type, action } = body;
 
-    if (!type || !["admin", "ban", "scanner"].includes(type)) {
+    if (!type || !["admin", "ban", "scanner", "fee_waiver"].includes(type)) {
       return NextResponse.json({ error: "Invalid type" }, { status: 400 });
     }
 
@@ -25,6 +25,7 @@ export async function POST(req: Request) {
     let roleName = "admin";
     if (type === "ban") roleName = "banned";
     if (type === "scanner") roleName = "scanner";
+    if (type === "fee_waiver") roleName = "fee_waiver";
 
     if (action === "add") {
       if (!email) {
@@ -52,7 +53,14 @@ export async function POST(req: Request) {
         if (currentRoles.includes(roleName)) {
           return NextResponse.json(
             {
-              error: `This email is already ${type === "admin" ? "an admin" : type === "scanner" ? "a scanner" : "banned"}`,
+              error:
+                type === "admin"
+                  ? "This email is already an admin"
+                  : type === "scanner"
+                    ? "This email is already a scanner"
+                    : type === "fee_waiver"
+                      ? "This email is already marked as Fee Waiver"
+                      : "This email is already banned",
             },
             { status: 400 },
           );
