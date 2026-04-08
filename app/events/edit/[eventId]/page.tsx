@@ -28,6 +28,9 @@ async function getAllEvents(): Promise<Event[]> {
           mobile_image_url: event.mobileImg
             ? await getSignedImageUrl(event.mobileImg, 60 * 60)
             : null,
+          apple_wallet_image_url: event.appleWalletImg
+            ? await getSignedImageUrl(event.appleWalletImg, 60 * 60)
+            : null,
         };
       }),
     );

@@ -18,6 +18,7 @@ import {
   isValidRoute,
   isValidCapacity,
   isValidImageExtension,
+  isValidAppleWalletImageExtension,
   isValidImageSize,
   isValidDateString,
   isValidLatitude,
@@ -28,6 +29,9 @@ import {
 async function uploadEventImage(
   adminClient: ReturnType<typeof getSupabaseClient>,
   imageFile: File | null,
+  options?: {
+    allowedType?: "default" | "apple-wallet";
+  },
 ): Promise<string | null> {
   if (!imageFile || imageFile.size === 0) {
     return null;
@@ -37,10 +41,22 @@ async function uploadEventImage(
     throw new Error("Image file too large. Maximum size is 5MB.");
   }
 
-  if (!isValidImageExtension(imageFile.name)) {
+  const isAppleWalletImage = options?.allowedType === "apple-wallet";
+
+  if (
+    isAppleWalletImage
+      ? !isValidAppleWalletImageExtension(imageFile.name)
+      : !isValidImageExtension(imageFile.name)
+  ) {
     throw new Error(
-      "Invalid image file type. Allowed types: JPG, PNG, GIF, WebP.",
+      isAppleWalletImage
+        ? "Invalid Apple Wallet image file type. Upload a PNG."
+        : "Invalid image file type. Allowed types: JPG, PNG, GIF, WebP.",
     );
+  }
+
+  if (isAppleWalletImage && imageFile.type && imageFile.type !== "image/png") {
+    throw new Error("Invalid Apple Wallet image file type. Upload a PNG.");
   }
 
   const fileExt = imageFile.name.split(".").pop();
@@ -61,15 +77,18 @@ async function uploadEventImage(
   return fileName;
 }
 
-async function serializeEventWithImages(event: InferSelectModel<typeof events>) {
+async function serializeEventWithImages(
+  event: InferSelectModel<typeof events>,
+) {
   const serialized = serializeEvent(event);
   return {
     ...serialized,
-    image_url: event.img
-      ? await getSignedImageUrl(event.img, 60 * 60)
-      : null,
+    image_url: event.img ? await getSignedImageUrl(event.img, 60 * 60) : null,
     mobile_image_url: event.mobileImg
       ? await getSignedImageUrl(event.mobileImg, 60 * 60)
+      : null,
+    apple_wallet_image_url: event.appleWalletImg
+      ? await getSignedImageUrl(event.appleWalletImg, 60 * 60)
       : null,
   };
 }
@@ -108,6 +127,9 @@ export async function POST(req: Request) {
     const address = formData.get("address") as string;
     const imageFile = formData.get("image") as File | null;
     const mobileImageFile = formData.get("mobile_image") as File | null;
+    const appleWalletImageFile = formData.get(
+      "apple_wallet_image",
+    ) as File | null;
 
     // Validate ID if provided
     if (id && !isValidUUID(id)) {
@@ -224,25 +246,44 @@ export async function POST(req: Request) {
     } | null = null;
 
     if (id) {
-      existingEvent = await db.query.events.findFirst({
-        where: eq(events.id, id),
-        columns: { capacity: true, reserved: true, tickets: true, imgVersion: true },
-      }) ?? null;
+      existingEvent =
+        (await db.query.events.findFirst({
+          where: eq(events.id, id),
+          columns: {
+            capacity: true,
+            reserved: true,
+            tickets: true,
+            imgVersion: true,
+          },
+        })) ?? null;
     }
 
     let imgName: string | null = null;
     let mobileImgName: string | null = null;
+    let appleWalletImgName: string | null = null;
 
     try {
       imgName = await uploadEventImage(adminClient, imageFile);
       mobileImgName = await uploadEventImage(adminClient, mobileImageFile);
+      appleWalletImgName = await uploadEventImage(
+        adminClient,
+        appleWalletImageFile,
+        {
+          allowedType: "apple-wallet",
+        },
+      );
     } catch (error) {
-      const message = error instanceof Error
-        ? error.message
-        : "Failed to upload image";
+      const message =
+        error instanceof Error ? error.message : "Failed to upload image";
       return NextResponse.json(
         { error: message },
-        { status: message.startsWith("Invalid") || message.startsWith("Image file too large") ? 400 : 500 },
+        {
+          status:
+            message.startsWith("Invalid") ||
+            message.startsWith("Image file too large")
+              ? 400
+              : 500,
+        },
       );
     }
 
@@ -304,8 +345,7 @@ export async function POST(req: Request) {
       if (ticketingMs < publishMs) {
         return NextResponse.json(
           {
-            error:
-              "Ticketing date must be on or after the release date.",
+            error: "Ticketing date must be on or after the release date.",
           },
           { status: 400 },
         );
@@ -324,8 +364,7 @@ export async function POST(req: Request) {
       if (endMs < startMs) {
         return NextResponse.json(
           {
-            error:
-              "End time must be on or after the event start time.",
+            error: "End time must be on or after the event start time.",
           },
           { status: 400 },
         );
@@ -340,26 +379,28 @@ export async function POST(req: Request) {
       eventData.mobileImg = mobileImgName;
     }
 
+    if (appleWalletImgName) {
+      eventData.appleWalletImg = appleWalletImgName;
+    }
+
     if (imgName || mobileImgName) {
-      eventData.imgVersion = id && existingEvent
-        ? existingEvent.imgVersion + 1
-        : 1;
+      eventData.imgVersion =
+        id && existingEvent ? existingEvent.imgVersion + 1 : 1;
     }
 
     let savedEvent: InferSelectModel<typeof events> | undefined;
 
     if (id) {
       // Update existing event
-      const [updated] = await db.update(events)
+      const [updated] = await db
+        .update(events)
         .set(eventData)
         .where(eq(events.id, id))
         .returning();
       savedEvent = updated;
     } else {
       // Create new event
-      const [created] = await db.insert(events)
-        .values(eventData)
-        .returning();
+      const [created] = await db.insert(events).values(eventData).returning();
       savedEvent = created;
     }
 
@@ -428,7 +469,8 @@ export async function PATCH(req: Request) {
     }
 
     if (typeof standbyEnabled === "boolean") {
-      const [updatedEvent] = await db.update(events)
+      const [updatedEvent] = await db
+        .update(events)
         .set({ standbyEnabled })
         .where(eq(events.id, id))
         .returning();
@@ -455,12 +497,11 @@ export async function PATCH(req: Request) {
 
     if (live) {
       // Set all events to not live first
-      await db.update(events)
-        .set({ live: false })
-        .where(ne(events.id, id));
+      await db.update(events).set({ live: false }).where(ne(events.id, id));
 
       // Set the specified event to live
-      const [updatedEvent] = await db.update(events)
+      const [updatedEvent] = await db
+        .update(events)
         .set({ live: true })
         .where(eq(events.id, id))
         .returning();
@@ -478,7 +519,8 @@ export async function PATCH(req: Request) {
       return NextResponse.json({ success: true, event: eventWithImage });
     } else {
       // Just set this event to not live
-      const [updatedEvent] = await db.update(events)
+      const [updatedEvent] = await db
+        .update(events)
         .set({ live: false })
         .where(eq(events.id, id))
         .returning();
@@ -532,11 +574,15 @@ export async function DELETE(req: Request) {
     // Get the event first to delete its image
     const event = await db.query.events.findFirst({
       where: eq(events.id, id),
-      columns: { name: true, img: true, mobileImg: true },
+      columns: { name: true, img: true, mobileImg: true, appleWalletImg: true },
     });
 
     // Delete the image from storage if it exists (Supabase Storage)
-    const imagesToDelete = [event?.img, event?.mobileImg].filter((value): value is string => !!value);
+    const imagesToDelete = [
+      event?.img,
+      event?.mobileImg,
+      event?.appleWalletImg,
+    ].filter((value): value is string => !!value);
     if (imagesToDelete.length > 0) {
       const adminClient = auth.adminClient!;
       await adminClient.storage.from("speakers").remove(imagesToDelete);

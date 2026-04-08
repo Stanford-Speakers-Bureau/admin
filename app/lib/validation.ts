@@ -56,9 +56,20 @@ export function isValidCapacity(capacity: string | null): boolean {
  */
 const ALLOWED_IMAGE_EXTENSIONS = ["jpg", "jpeg", "png", "gif", "webp"];
 
-export function isValidImageExtension(filename: string): boolean {
+function hasAllowedImageExtension(
+  filename: string,
+  allowedExtensions: string[],
+): boolean {
   const ext = filename.split(".").pop()?.toLowerCase();
-  return ext ? ALLOWED_IMAGE_EXTENSIONS.includes(ext) : false;
+  return ext ? allowedExtensions.includes(ext) : false;
+}
+
+export function isValidImageExtension(filename: string): boolean {
+  return hasAllowedImageExtension(filename, ALLOWED_IMAGE_EXTENSIONS);
+}
+
+export function isValidAppleWalletImageExtension(filename: string): boolean {
+  return hasAllowedImageExtension(filename, ["png"]);
 }
 
 /**

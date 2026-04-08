@@ -9,6 +9,11 @@ import { sortByStartDate } from "@/app/lib/formatting";
 import MarkdownEditor from "../MarkdownEditor";
 import { Event } from "../AdminEventsClient";
 
+const APPLE_WALLET_STRIP_RATIO = 375 / 98;
+const APPLE_WALLET_STRIP_RATIO_TOLERANCE = 0.02;
+const APPLE_WALLET_MIN_WIDTH = 1125;
+const APPLE_WALLET_MIN_HEIGHT = 294;
+
 function formatDateTimeForInput(dateString: string | null): string {
   if (!dateString) return "";
   const date = new Date(dateString);
@@ -110,7 +115,8 @@ function eventToFormData(event: Event): FormData {
     end_time_date: formatDateTimeForInput(event.end_time_date),
     doors_open: formatDateTimeForInput(event.doors_open),
     route: event.route || "",
-    priority: event.priority || "This event is only open to Stanford affiliates",
+    priority:
+      event.priority || "This event is only open to Stanford affiliates",
     hide_ticketing_date: event.hide_ticketing_date || false,
     referrals_enabled: event.referrals_enabled || false,
     standby_enabled: event.standby_enabled || false,
@@ -121,15 +127,69 @@ function eventToFormData(event: Event): FormData {
   };
 }
 
-function readFilePreview(
-  file: File,
-  onLoad: (result: string) => void,
-) {
+function readFilePreview(file: File, onLoad: (result: string) => void) {
   const reader = new FileReader();
   reader.onloadend = () => {
     onLoad(reader.result as string);
   };
   reader.readAsDataURL(file);
+}
+
+async function getImageDimensions(
+  file: File,
+): Promise<{ width: number; height: number }> {
+  const objectUrl = URL.createObjectURL(file);
+
+  try {
+    const dimensions = await new Promise<{ width: number; height: number }>(
+      (resolve, reject) => {
+        const image = new window.Image();
+        image.onload = () => {
+          resolve({
+            width: image.naturalWidth,
+            height: image.naturalHeight,
+          });
+        };
+        image.onerror = () => {
+          reject(new Error("Unable to read image dimensions."));
+        };
+        image.src = objectUrl;
+      },
+    );
+
+    return dimensions;
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+}
+
+async function validateAppleWalletImage(file: File): Promise<void> {
+  const lowerFileName = file.name.toLowerCase();
+  if (!lowerFileName.endsWith(".png")) {
+    throw new Error("Apple Wallet image must be a PNG.");
+  }
+
+  if (file.type && file.type !== "image/png") {
+    throw new Error("Apple Wallet image must be a PNG.");
+  }
+
+  const { width, height } = await getImageDimensions(file);
+  const aspectRatio = width / height;
+
+  if (
+    Math.abs(aspectRatio - APPLE_WALLET_STRIP_RATIO) >
+    APPLE_WALLET_STRIP_RATIO_TOLERANCE
+  ) {
+    throw new Error(
+      "Apple Wallet image must use the 375:98 strip ratio, such as 1125x294px.",
+    );
+  }
+
+  if (width < APPLE_WALLET_MIN_WIDTH || height < APPLE_WALLET_MIN_HEIGHT) {
+    throw new Error(
+      "Apple Wallet image must be at least 1125x294px for crisp Wallet rendering.",
+    );
+  }
 }
 
 type EditEventClientProps = {
@@ -139,7 +199,8 @@ type EditEventClientProps = {
 export default function EditEventClient({ allEvents }: EditEventClientProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { selectedEventId, setSelectedEventId, upsertEvent } = useEventContext();
+  const { selectedEventId, setSelectedEventId, upsertEvent } =
+    useEventContext();
   const [events, setEvents] = useState<Event[]>(allEvents);
   const isCreating = searchParams.get("create") === "1";
 
@@ -156,11 +217,18 @@ export default function EditEventClient({ allEvents }: EditEventClientProps) {
   const [mobileImagePreview, setMobileImagePreview] = useState<string | null>(
     currentEvent?.mobile_image_url || null,
   );
+  const [appleWalletImageFile, setAppleWalletImageFile] = useState<File | null>(
+    null,
+  );
+  const [appleWalletImagePreview, setAppleWalletImagePreview] = useState<
+    string | null
+  >(currentEvent?.apple_wallet_image_url || null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mobileFileInputRef = useRef<HTMLInputElement>(null);
+  const appleWalletFileInputRef = useRef<HTMLInputElement>(null);
   const lastSyncedViewKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -201,17 +269,21 @@ export default function EditEventClient({ allEvents }: EditEventClientProps) {
       setFormData(emptyForm);
       setImagePreview(null);
       setMobileImagePreview(null);
+      setAppleWalletImagePreview(null);
     } else if (currentEvent) {
       setFormData(eventToFormData(currentEvent));
       setImagePreview(currentEvent.image_url || null);
       setMobileImagePreview(currentEvent.mobile_image_url || null);
+      setAppleWalletImagePreview(currentEvent.apple_wallet_image_url || null);
     } else {
       setFormData(emptyForm);
       setImagePreview(null);
       setMobileImagePreview(null);
+      setAppleWalletImagePreview(null);
     }
     setImageFile(null);
     setMobileImageFile(null);
+    setAppleWalletImageFile(null);
     setError(null);
     setSuccess(null);
   }, [selectedEventId, isCreating, currentEvent]);
@@ -229,6 +301,28 @@ export default function EditEventClient({ allEvents }: EditEventClientProps) {
     if (file) {
       setMobileImageFile(file);
       readFilePreview(file, setMobileImagePreview);
+    }
+  }
+
+  async function handleAppleWalletImageChange(
+    e: React.ChangeEvent<HTMLInputElement>,
+  ) {
+    const file = e.target.files?.[0];
+    if (!file) {
+      return;
+    }
+
+    try {
+      await validateAppleWalletImage(file);
+      setAppleWalletImageFile(file);
+      readFilePreview(file, setAppleWalletImagePreview);
+      setError(null);
+    } catch (err) {
+      e.target.value = "";
+      setAppleWalletImageFile(null);
+      setError(
+        err instanceof Error ? err.message : "Apple Wallet image is invalid.",
+      );
     }
   }
 
@@ -255,7 +349,10 @@ export default function EditEventClient({ allEvents }: EditEventClientProps) {
       if (formData.release_date && formData.ticketing_date) {
         const publish = new Date(formData.release_date);
         const ticketing = new Date(formData.ticketing_date);
-        if (Number.isNaN(publish.getTime()) || Number.isNaN(ticketing.getTime())) {
+        if (
+          Number.isNaN(publish.getTime()) ||
+          Number.isNaN(ticketing.getTime())
+        ) {
           setError("Invalid date format");
           return;
         }
@@ -294,8 +391,14 @@ export default function EditEventClient({ allEvents }: EditEventClientProps) {
       submitData.append("doors_open", formData.doors_open);
       submitData.append("route", formData.route);
       submitData.append("priority", formData.priority);
-      submitData.append("hide_ticketing_date", formData.hide_ticketing_date.toString());
-      submitData.append("referrals_enabled", formData.referrals_enabled.toString());
+      submitData.append(
+        "hide_ticketing_date",
+        formData.hide_ticketing_date.toString(),
+      );
+      submitData.append(
+        "referrals_enabled",
+        formData.referrals_enabled.toString(),
+      );
       submitData.append("standby_enabled", formData.standby_enabled.toString());
       submitData.append("livestream", formData.livestream);
       submitData.append("latitude", formData.latitude);
@@ -307,6 +410,9 @@ export default function EditEventClient({ allEvents }: EditEventClientProps) {
       }
       if (mobileImageFile) {
         submitData.append("mobile_image", mobileImageFile);
+      }
+      if (appleWalletImageFile) {
+        submitData.append("apple_wallet_image", appleWalletImageFile);
       }
 
       if (!isCreating && currentEvent) {
@@ -329,9 +435,11 @@ export default function EditEventClient({ allEvents }: EditEventClientProps) {
       setEvents((prev) => {
         const exists = prev.some((event) => event.id === savedEvent.id);
         if (exists) {
-          return sortEvents(prev.map((event) => (
-            event.id === savedEvent.id ? savedEvent : event
-          )));
+          return sortEvents(
+            prev.map((event) =>
+              event.id === savedEvent.id ? savedEvent : event,
+            ),
+          );
         }
 
         return sortEvents([savedEvent, ...prev]);
@@ -340,8 +448,10 @@ export default function EditEventClient({ allEvents }: EditEventClientProps) {
       setFormData(eventToFormData(savedEvent));
       setImagePreview(savedEvent.image_url || null);
       setMobileImagePreview(savedEvent.mobile_image_url || null);
+      setAppleWalletImagePreview(savedEvent.apple_wallet_image_url || null);
       setImageFile(null);
       setMobileImageFile(null);
+      setAppleWalletImageFile(null);
       setSelectedEventId(savedEvent.id);
       setSuccess(isCreating ? "Event created!" : "Changes saved!");
 
@@ -370,7 +480,11 @@ export default function EditEventClient({ allEvents }: EditEventClientProps) {
       <div className="flex items-center justify-between mb-8">
         <div>
           <h1 className="text-2xl sm:text-3xl font-bold text-white font-serif mb-2">
-            {isCreating ? "Create New Event" : hasEvent ? "Edit Event" : "Edit Event"}
+            {isCreating
+              ? "Create New Event"
+              : hasEvent
+                ? "Edit Event"
+                : "Edit Event"}
           </h1>
           {hasEvent && !isCreating && (
             <p className="text-zinc-400">
@@ -383,8 +497,18 @@ export default function EditEventClient({ allEvents }: EditEventClientProps) {
             onClick={handleStartCreate}
             className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-emerald-500 to-teal-500 text-white rounded-xl font-medium hover:opacity-90 transition-opacity"
           >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+            <svg
+              className="w-5 h-5"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 6v6m0 0v6m0-6h6m-6 0H6"
+              />
             </svg>
             New Event
           </button>
@@ -393,8 +517,18 @@ export default function EditEventClient({ allEvents }: EditEventClientProps) {
 
       {error && (
         <div className="mb-6 p-4 bg-rose-500/10 border border-rose-500/30 rounded-xl flex items-center gap-3">
-          <svg className="w-5 h-5 text-rose-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          <svg
+            className="w-5 h-5 text-rose-400 shrink-0"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+            />
           </svg>
           <p className="text-rose-400 text-sm">{error}</p>
         </div>
@@ -403,8 +537,18 @@ export default function EditEventClient({ allEvents }: EditEventClientProps) {
       {!hasEvent && !isCreating ? (
         <div className="text-center py-16 bg-zinc-900/50 rounded-2xl border border-zinc-800">
           <div className="w-16 h-16 bg-zinc-800 rounded-full flex items-center justify-center mx-auto mb-4">
-            <svg className="w-8 h-8 text-zinc-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            <svg
+              className="w-8 h-8 text-zinc-600"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
+              />
             </svg>
           </div>
           <p className="text-zinc-400 text-lg mb-2">No event selected</p>
@@ -415,8 +559,18 @@ export default function EditEventClient({ allEvents }: EditEventClientProps) {
             onClick={handleStartCreate}
             className="inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-emerald-500 to-teal-500 text-white rounded-xl font-medium hover:opacity-90 transition-opacity"
           >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+            <svg
+              className="w-5 h-5"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 6v6m0 0v6m0-6h6m-6 0H6"
+              />
             </svg>
             Create Event
           </button>
@@ -430,8 +584,18 @@ export default function EditEventClient({ allEvents }: EditEventClientProps) {
                 onClick={handleCancelCreate}
                 className="text-zinc-400 hover:text-white transition-colors"
               >
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                <svg
+                  className="w-6 h-6"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M6 18L18 6M6 6l12 12"
+                  />
                 </svg>
               </button>
             </div>
@@ -440,162 +604,533 @@ export default function EditEventClient({ allEvents }: EditEventClientProps) {
           <form onSubmit={handleSubmit} className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
-                <label className="block text-sm font-medium text-zinc-300 mb-2">Speaker Name</label>
-                <input type="text" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} placeholder="e.g., John Doe" className="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50" />
+                <label className="block text-sm font-medium text-zinc-300 mb-2">
+                  Speaker Name
+                </label>
+                <input
+                  type="text"
+                  value={formData.name}
+                  onChange={(e) =>
+                    setFormData({ ...formData, name: e.target.value })
+                  }
+                  placeholder="e.g., John Doe"
+                  className="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50"
+                />
               </div>
               <div>
-                <label className="block text-sm font-medium text-zinc-300 mb-2">URL Route</label>
+                <label className="block text-sm font-medium text-zinc-300 mb-2">
+                  URL Route
+                </label>
                 <div className="flex items-center">
                   <span className="text-zinc-500 pr-2">/events/</span>
-                  <input type="text" value={formData.route} onChange={(e) => setFormData({ ...formData, route: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "-") })} placeholder="john-doe" className="flex-1 px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50" />
+                  <input
+                    type="text"
+                    value={formData.route}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        route: e.target.value
+                          .toLowerCase()
+                          .replace(/[^a-z0-9-]/g, "-"),
+                      })
+                    }
+                    placeholder="john-doe"
+                    className="flex-1 px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50"
+                  />
                 </div>
               </div>
               <div>
-                <label className="block text-sm font-medium text-zinc-300 mb-2">Capacity</label>
-                <input type="number" value={formData.capacity} onChange={(e) => setFormData({ ...formData, capacity: e.target.value })} placeholder="e.g., 500" className="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50" />
+                <label className="block text-sm font-medium text-zinc-300 mb-2">
+                  Capacity
+                </label>
+                <input
+                  type="number"
+                  value={formData.capacity}
+                  onChange={(e) =>
+                    setFormData({ ...formData, capacity: e.target.value })
+                  }
+                  placeholder="e.g., 500"
+                  className="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50"
+                />
               </div>
               <div>
-                <label className="block text-sm font-medium text-zinc-300 mb-2">Tickets Sold</label>
-                <input type="number" value={formData.tickets} disabled={true} placeholder="e.g., 250" className="w-full px-4 py-3 bg-zinc-900 border border-zinc-800 rounded-xl text-zinc-400 cursor-not-allowed" />
+                <label className="block text-sm font-medium text-zinc-300 mb-2">
+                  Tickets Sold
+                </label>
+                <input
+                  type="number"
+                  value={formData.tickets}
+                  disabled={true}
+                  placeholder="e.g., 250"
+                  className="w-full px-4 py-3 bg-zinc-900 border border-zinc-800 rounded-xl text-zinc-400 cursor-not-allowed"
+                />
               </div>
               <div>
-                <label className="block text-sm font-medium text-zinc-300 mb-2">Reserved Seats (optional)</label>
-                <input type="number" value={formData.reserved} onChange={(e) => setFormData({ ...formData, reserved: e.target.value })} placeholder="e.g., 50" className="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50" />
+                <label className="block text-sm font-medium text-zinc-300 mb-2">
+                  Reserved Seats (optional)
+                </label>
+                <input
+                  type="number"
+                  value={formData.reserved}
+                  onChange={(e) =>
+                    setFormData({ ...formData, reserved: e.target.value })
+                  }
+                  placeholder="e.g., 50"
+                  className="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50"
+                />
               </div>
               <div>
-                <label className="block text-sm font-medium text-zinc-300 mb-2">Venue</label>
-                <input type="text" value={formData.venue} onChange={(e) => setFormData({ ...formData, venue: e.target.value })} placeholder="e.g., Memorial Auditorium" className="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50" />
+                <label className="block text-sm font-medium text-zinc-300 mb-2">
+                  Venue
+                </label>
+                <input
+                  type="text"
+                  value={formData.venue}
+                  onChange={(e) =>
+                    setFormData({ ...formData, venue: e.target.value })
+                  }
+                  placeholder="e.g., Memorial Auditorium"
+                  className="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50"
+                />
               </div>
               <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-zinc-300 mb-2">Venue Link (Google Maps)</label>
-                <input type="url" value={formData.venue_link} onChange={(e) => setFormData({ ...formData, venue_link: e.target.value })} placeholder="https://maps.google.com/..." className="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50" />
+                <label className="block text-sm font-medium text-zinc-300 mb-2">
+                  Venue Link (Google Maps)
+                </label>
+                <input
+                  type="url"
+                  value={formData.venue_link}
+                  onChange={(e) =>
+                    setFormData({ ...formData, venue_link: e.target.value })
+                  }
+                  placeholder="https://maps.google.com/..."
+                  className="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50"
+                />
               </div>
               <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-zinc-300 mb-2">Address</label>
-                <input type="text" value={formData.address} onChange={(e) => setFormData({ ...formData, address: e.target.value })} placeholder="123 Main St, City, State 12345" className="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-zinc-300 mb-2">Latitude <span className="text-rose-400">*</span></label>
-                <input type="number" step="any" value={formData.latitude} onChange={(e) => setFormData({ ...formData, latitude: e.target.value })} placeholder="e.g., 37.7749" className="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50" required />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-zinc-300 mb-2">Longitude <span className="text-rose-400">*</span></label>
-                <input type="number" step="any" value={formData.longitude} onChange={(e) => setFormData({ ...formData, longitude: e.target.value })} placeholder="e.g., -122.4194" className="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50" required />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-zinc-300 mb-2">Release Date (when to reveal speaker) <span className="text-zinc-500 font-normal">(PT)</span></label>
-                <input type="datetime-local" value={formData.release_date} onChange={(e) => setFormData({ ...formData, release_date: e.target.value })} className="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-zinc-300 mb-2">Ticketing Date (when ticket sales open) <span className="text-zinc-500 font-normal">(PT)</span></label>
-                <input type="datetime-local" value={formData.ticketing_date} onChange={(e) => setFormData({ ...formData, ticketing_date: e.target.value })} className="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50" />
-                {formData.release_date && formData.ticketing_date && (() => {
-                  const publish = new Date(formData.release_date);
-                  const ticketing = new Date(formData.ticketing_date);
-                  if (Number.isNaN(publish.getTime()) || Number.isNaN(ticketing.getTime())) return null;
-                  if (ticketing.getTime() < publish.getTime()) {
-                    return <p className="mt-2 text-sm text-rose-400">Ticketing date must be on or after the release date.</p>;
+                <label className="block text-sm font-medium text-zinc-300 mb-2">
+                  Address
+                </label>
+                <input
+                  type="text"
+                  value={formData.address}
+                  onChange={(e) =>
+                    setFormData({ ...formData, address: e.target.value })
                   }
-                  return null;
-                })()}
+                  placeholder="123 Main St, City, State 12345"
+                  className="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50"
+                />
               </div>
               <div>
-                <label className="block text-sm font-medium text-zinc-300 mb-2">Event Start Date & Time <span className="text-zinc-500 font-normal">(PT)</span></label>
-                <input type="datetime-local" value={formData.start_time_date} onChange={(e) => setFormData({ ...formData, start_time_date: e.target.value })} className="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-zinc-300 mb-2">Event End Date & Time <span className="text-zinc-500 font-normal">(PT)</span></label>
-                <input type="datetime-local" value={formData.end_time_date} onChange={(e) => setFormData({ ...formData, end_time_date: e.target.value })} className="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50" />
-                {formData.start_time_date && formData.end_time_date && (() => {
-                  const start = new Date(formData.start_time_date);
-                  const end = new Date(formData.end_time_date);
-                  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return null;
-                  if (end.getTime() < start.getTime()) {
-                    return <p className="mt-2 text-sm text-rose-400">End time must be on or after the event start time.</p>;
+                <label className="block text-sm font-medium text-zinc-300 mb-2">
+                  Latitude <span className="text-rose-400">*</span>
+                </label>
+                <input
+                  type="number"
+                  step="any"
+                  value={formData.latitude}
+                  onChange={(e) =>
+                    setFormData({ ...formData, latitude: e.target.value })
                   }
-                  return null;
-                })()}
+                  placeholder="e.g., 37.7749"
+                  className="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50"
+                  required
+                />
               </div>
               <div>
-                <label className="block text-sm font-medium text-zinc-300 mb-2">Doors Open <span className="text-zinc-500 font-normal">(PT)</span></label>
-                <input type="datetime-local" value={formData.doors_open} onChange={(e) => setFormData({ ...formData, doors_open: e.target.value })} className="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50" />
+                <label className="block text-sm font-medium text-zinc-300 mb-2">
+                  Longitude <span className="text-rose-400">*</span>
+                </label>
+                <input
+                  type="number"
+                  step="any"
+                  value={formData.longitude}
+                  onChange={(e) =>
+                    setFormData({ ...formData, longitude: e.target.value })
+                  }
+                  placeholder="e.g., -122.4194"
+                  className="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-zinc-300 mb-2">
+                  Release Date (when to reveal speaker){" "}
+                  <span className="text-zinc-500 font-normal">(PT)</span>
+                </label>
+                <input
+                  type="datetime-local"
+                  value={formData.release_date}
+                  onChange={(e) =>
+                    setFormData({ ...formData, release_date: e.target.value })
+                  }
+                  className="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-zinc-300 mb-2">
+                  Ticketing Date (when ticket sales open){" "}
+                  <span className="text-zinc-500 font-normal">(PT)</span>
+                </label>
+                <input
+                  type="datetime-local"
+                  value={formData.ticketing_date}
+                  onChange={(e) =>
+                    setFormData({ ...formData, ticketing_date: e.target.value })
+                  }
+                  className="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50"
+                />
+                {formData.release_date &&
+                  formData.ticketing_date &&
+                  (() => {
+                    const publish = new Date(formData.release_date);
+                    const ticketing = new Date(formData.ticketing_date);
+                    if (
+                      Number.isNaN(publish.getTime()) ||
+                      Number.isNaN(ticketing.getTime())
+                    )
+                      return null;
+                    if (ticketing.getTime() < publish.getTime()) {
+                      return (
+                        <p className="mt-2 text-sm text-rose-400">
+                          Ticketing date must be on or after the release date.
+                        </p>
+                      );
+                    }
+                    return null;
+                  })()}
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-zinc-300 mb-2">
+                  Event Start Date & Time{" "}
+                  <span className="text-zinc-500 font-normal">(PT)</span>
+                </label>
+                <input
+                  type="datetime-local"
+                  value={formData.start_time_date}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      start_time_date: e.target.value,
+                    })
+                  }
+                  className="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-zinc-300 mb-2">
+                  Event End Date & Time{" "}
+                  <span className="text-zinc-500 font-normal">(PT)</span>
+                </label>
+                <input
+                  type="datetime-local"
+                  value={formData.end_time_date}
+                  onChange={(e) =>
+                    setFormData({ ...formData, end_time_date: e.target.value })
+                  }
+                  className="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50"
+                />
+                {formData.start_time_date &&
+                  formData.end_time_date &&
+                  (() => {
+                    const start = new Date(formData.start_time_date);
+                    const end = new Date(formData.end_time_date);
+                    if (
+                      Number.isNaN(start.getTime()) ||
+                      Number.isNaN(end.getTime())
+                    )
+                      return null;
+                    if (end.getTime() < start.getTime()) {
+                      return (
+                        <p className="mt-2 text-sm text-rose-400">
+                          End time must be on or after the event start time.
+                        </p>
+                      );
+                    }
+                    return null;
+                  })()}
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-zinc-300 mb-2">
+                  Doors Open{" "}
+                  <span className="text-zinc-500 font-normal">(PT)</span>
+                </label>
+                <input
+                  type="datetime-local"
+                  value={formData.doors_open}
+                  onChange={(e) =>
+                    setFormData({ ...formData, doors_open: e.target.value })
+                  }
+                  className="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50"
+                />
               </div>
 
-              <MarkdownEditor label="Priority Notice" value={formData.priority} onChange={(v) => setFormData({ ...formData, priority: v })} placeholder="e.g. This event is only open to Stanford affiliates" rows={2} />
+              <MarkdownEditor
+                label="Priority Notice"
+                value={formData.priority}
+                onChange={(v) => setFormData({ ...formData, priority: v })}
+                placeholder="e.g. This event is only open to Stanford affiliates"
+                rows={2}
+              />
 
               <div className="flex items-center gap-3">
-                <input type="checkbox" id="hide_ticketing_date" checked={formData.hide_ticketing_date} onChange={(e) => setFormData({ ...formData, hide_ticketing_date: e.target.checked })} className="w-5 h-5 rounded border-zinc-600 bg-zinc-800 text-emerald-500 focus:ring-emerald-500/50" />
-                <label htmlFor="hide_ticketing_date" className="text-sm font-medium text-zinc-300">Hide Ticketing Date</label>
+                <input
+                  type="checkbox"
+                  id="hide_ticketing_date"
+                  checked={formData.hide_ticketing_date}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      hide_ticketing_date: e.target.checked,
+                    })
+                  }
+                  className="w-5 h-5 rounded border-zinc-600 bg-zinc-800 text-emerald-500 focus:ring-emerald-500/50"
+                />
+                <label
+                  htmlFor="hide_ticketing_date"
+                  className="text-sm font-medium text-zinc-300"
+                >
+                  Hide Ticketing Date
+                </label>
               </div>
               <div className="flex items-center gap-3">
-                <input type="checkbox" id="standby_enabled" checked={formData.standby_enabled} onChange={(e) => setFormData({ ...formData, standby_enabled: e.target.checked })} className="w-5 h-5 rounded border-zinc-600 bg-zinc-800 text-emerald-500 focus:ring-emerald-500/50" />
-                <label htmlFor="standby_enabled" className="text-sm font-medium text-zinc-300">Enable Standby Line</label>
+                <input
+                  type="checkbox"
+                  id="standby_enabled"
+                  checked={formData.standby_enabled}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      standby_enabled: e.target.checked,
+                    })
+                  }
+                  className="w-5 h-5 rounded border-zinc-600 bg-zinc-800 text-emerald-500 focus:ring-emerald-500/50"
+                />
+                <label
+                  htmlFor="standby_enabled"
+                  className="text-sm font-medium text-zinc-300"
+                >
+                  Enable Standby Line
+                </label>
               </div>
               <div className="flex items-center gap-3">
-                <input type="checkbox" id="referrals_enabled" checked={formData.referrals_enabled} onChange={(e) => setFormData({ ...formData, referrals_enabled: e.target.checked })} className="w-5 h-5 rounded border-zinc-600 bg-zinc-800 text-emerald-500 focus:ring-emerald-500/50" />
-                <label htmlFor="referrals_enabled" className="text-sm font-medium text-zinc-300">Enable Referrals</label>
+                <input
+                  type="checkbox"
+                  id="referrals_enabled"
+                  checked={formData.referrals_enabled}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      referrals_enabled: e.target.checked,
+                    })
+                  }
+                  className="w-5 h-5 rounded border-zinc-600 bg-zinc-800 text-emerald-500 focus:ring-emerald-500/50"
+                />
+                <label
+                  htmlFor="referrals_enabled"
+                  className="text-sm font-medium text-zinc-300"
+                >
+                  Enable Referrals
+                </label>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-zinc-300 mb-2">Livestream URL</label>
-                <input type="text" value={formData.livestream} onChange={(e) => setFormData({ ...formData, livestream: e.target.value })} placeholder="https://youtube.com/..." className="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50" />
+                <label className="block text-sm font-medium text-zinc-300 mb-2">
+                  Livestream URL
+                </label>
+                <input
+                  type="text"
+                  value={formData.livestream}
+                  onChange={(e) =>
+                    setFormData({ ...formData, livestream: e.target.value })
+                  }
+                  placeholder="https://youtube.com/..."
+                  className="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50"
+                />
               </div>
             </div>
 
-            <MarkdownEditor label="Tagline" value={formData.tagline} onChange={(v) => setFormData({ ...formData, tagline: v })} placeholder="Short tagline for the speaker..." rows={2} />
-            <MarkdownEditor label="Description" value={formData.desc} onChange={(v) => setFormData({ ...formData, desc: v })} placeholder="Event description..." rows={4} />
+            <MarkdownEditor
+              label="Tagline"
+              value={formData.tagline}
+              onChange={(v) => setFormData({ ...formData, tagline: v })}
+              placeholder="Short tagline for the speaker..."
+              rows={2}
+            />
+            <MarkdownEditor
+              label="Description"
+              value={formData.desc}
+              onChange={(v) => setFormData({ ...formData, desc: v })}
+              placeholder="Event description..."
+              rows={4}
+            />
 
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
               <div>
-                <label className="block text-sm font-medium text-zinc-300 mb-2">Event Image</label>
+                <label className="block text-sm font-medium text-zinc-300 mb-2">
+                  Event Image
+                </label>
                 <div className="flex items-start gap-4">
                   <div
                     onClick={() => fileInputRef.current?.click()}
                     className="relative w-32 h-32 bg-zinc-800 border-2 border-dashed border-zinc-600 rounded-xl overflow-hidden cursor-pointer hover:border-zinc-500 transition-colors flex items-center justify-center"
                   >
                     {imagePreview ? (
-                      <Image src={imagePreview} alt="Event image preview" fill className="object-cover" unoptimized />
+                      <Image
+                        src={imagePreview}
+                        alt="Event image preview"
+                        fill
+                        className="object-cover"
+                        unoptimized
+                      />
                     ) : (
-                      <svg className="w-8 h-8 text-zinc-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                      <svg
+                        className="w-8 h-8 text-zinc-600"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M12 6v6m0 0v6m0-6h6m-6 0H6"
+                        />
                       </svg>
                     )}
                   </div>
-                  <input ref={fileInputRef} type="file" accept="image/*" onChange={handleImageChange} className="hidden" />
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleImageChange}
+                    className="hidden"
+                  />
                   <div className="text-sm text-zinc-500 space-y-1">
                     <p>Recommended: 800x800px or larger</p>
                     <p>Supported formats: JPG, PNG, WebP</p>
-                    {imageFile && <p className="text-emerald-400 pt-1">Selected: {imageFile.name}</p>}
+                    {imageFile && (
+                      <p className="text-emerald-400 pt-1">
+                        Selected: {imageFile.name}
+                      </p>
+                    )}
                   </div>
                 </div>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-zinc-300 mb-2">Mobile Event Image (optional)</label>
+                <label className="block text-sm font-medium text-zinc-300 mb-2">
+                  Mobile Event Image (optional)
+                </label>
                 <div className="flex items-start gap-4">
                   <div
                     onClick={() => mobileFileInputRef.current?.click()}
                     className="relative w-32 h-32 bg-zinc-800 border-2 border-dashed border-zinc-600 rounded-xl overflow-hidden cursor-pointer hover:border-zinc-500 transition-colors flex items-center justify-center"
                   >
                     {mobileImageDisplayPreview ? (
-                      <Image src={mobileImageDisplayPreview} alt="Mobile event image preview" fill className="object-cover" unoptimized />
+                      <Image
+                        src={mobileImageDisplayPreview}
+                        alt="Mobile event image preview"
+                        fill
+                        className="object-cover"
+                        unoptimized
+                      />
                     ) : (
-                      <svg className="w-8 h-8 text-zinc-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                      <svg
+                        className="w-8 h-8 text-zinc-600"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M12 6v6m0 0v6m0-6h6m-6 0H6"
+                        />
                       </svg>
                     )}
                   </div>
-                  <input ref={mobileFileInputRef} type="file" accept="image/*" onChange={handleMobileImageChange} className="hidden" />
+                  <input
+                    ref={mobileFileInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleMobileImageChange}
+                    className="hidden"
+                  />
                   <div className="text-sm text-zinc-500 space-y-1">
                     <p>Shown on mobile event pages only.</p>
                     <p>Leave extra space near the top for safe cropping.</p>
                     <p>Avoid placing faces or key text near the top edge.</p>
                     <p>Falls back to the regular event image when omitted.</p>
-                    {mobileImageFile && <p className="text-emerald-400 pt-1">Selected: {mobileImageFile.name}</p>}
-                    {!mobileImageFile && !mobileImagePreview && imagePreview && (
-                      <p className="text-zinc-400 pt-1">Currently previewing the regular event image as the fallback.</p>
+                    {mobileImageFile && (
+                      <p className="text-emerald-400 pt-1">
+                        Selected: {mobileImageFile.name}
+                      </p>
                     )}
+                    {!mobileImageFile &&
+                      !mobileImagePreview &&
+                      imagePreview && (
+                        <p className="text-zinc-400 pt-1">
+                          Currently previewing the regular event image as the
+                          fallback.
+                        </p>
+                      )}
                   </div>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-zinc-300 mb-2">
+                Apple Wallet Image
+              </label>
+              <div className="flex items-start gap-4">
+                <div
+                  onClick={() => appleWalletFileInputRef.current?.click()}
+                  className="relative w-56 h-[58px] bg-zinc-800 border-2 border-dashed border-zinc-600 rounded-xl overflow-hidden cursor-pointer hover:border-zinc-500 transition-colors flex items-center justify-center"
+                >
+                  {appleWalletImagePreview ? (
+                    <Image
+                      src={appleWalletImagePreview}
+                      alt="Apple Wallet image preview"
+                      fill
+                      className="object-cover"
+                      unoptimized
+                    />
+                  ) : (
+                    <svg
+                      className="w-8 h-8 text-zinc-600"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M12 6v6m0 0v6m0-6h6m-6 0H6"
+                      />
+                    </svg>
+                  )}
+                </div>
+                <input
+                  ref={appleWalletFileInputRef}
+                  type="file"
+                  accept="image/png"
+                  onChange={handleAppleWalletImageChange}
+                  className="hidden"
+                />
+                <div className="text-sm text-zinc-500 space-y-1">
+                  <p>Used for Apple Wallet passes only.</p>
+                  <p>Required format: PNG at the 375:98 strip ratio.</p>
+                  <p>Recommended size: 1125x294px or larger.</p>
+                  <p>Keep text, faces, and logos away from the edges.</p>
+                  {appleWalletImageFile && (
+                    <p className="text-emerald-400 pt-1">
+                      Selected: {appleWalletImageFile.name}
+                    </p>
+                  )}
                 </div>
               </div>
             </div>
@@ -609,14 +1144,28 @@ export default function EditEventClient({ allEvents }: EditEventClientProps) {
                 {isSubmitting ? (
                   <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
                 ) : (
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  <svg
+                    className="w-5 h-5"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M5 13l4 4L19 7"
+                    />
                   </svg>
                 )}
                 {editingEvent ? "Save Changes" : "Create Event"}
               </button>
               {isCreating && (
-                <button type="button" onClick={handleCancelCreate} className="px-6 py-3 text-zinc-400 hover:text-white transition-colors">
+                <button
+                  type="button"
+                  onClick={handleCancelCreate}
+                  className="px-6 py-3 text-zinc-400 hover:text-white transition-colors"
+                >
                   Cancel
                 </button>
               )}
@@ -632,8 +1181,18 @@ export default function EditEventClient({ allEvents }: EditEventClientProps) {
               <div className="h-5 w-5 rounded-full border-2 border-emerald-300/80 border-t-transparent animate-spin" />
             ) : (
               <div className="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500/20">
-                <svg className="h-3.5 w-3.5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                <svg
+                  className="h-3.5 w-3.5 text-emerald-400"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2.5}
+                    d="M5 13l4 4L19 7"
+                  />
                 </svg>
               </div>
             )}

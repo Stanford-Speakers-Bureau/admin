@@ -14,7 +14,9 @@ import { relations } from "drizzle-orm";
 // ── Events ──────────────────────────────────────────────────────────────────
 export const events = pgTable("events", {
   id: uuid("id").primaryKey().defaultRandom(),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
   name: text("name"),
   capacity: bigint("capacity", { mode: "number" }).notNull().default(0),
   venue: text("venue"),
@@ -27,6 +29,7 @@ export const events = pgTable("events", {
   desc: text("desc"),
   img: text("img"),
   mobileImg: text("mobile_img"),
+  appleWalletImg: text("apple_wallet_img"),
   route: text("route"),
   tagline: text("tagline"),
   tickets: bigint("tickets", { mode: "number" }).notNull().default(0),
@@ -51,9 +54,14 @@ export const tickets = pgTable(
   "tickets",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
     email: text("email").notNull(),
-    eventId: uuid("event_id").references(() => events.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    eventId: uuid("event_id").references(() => events.id, {
+      onDelete: "cascade",
+      onUpdate: "cascade",
+    }),
     referral: text("referral"),
     type: text("type").notNull().default("STANDARD"),
     scanned: boolean("scanned").notNull().default(false),
@@ -75,9 +83,14 @@ export const waitlist = pgTable(
   "waitlist",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
     referral: text("referral"),
-    eventId: uuid("event_id").references(() => events.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    eventId: uuid("event_id").references(() => events.id, {
+      onDelete: "cascade",
+      onUpdate: "cascade",
+    }),
     email: text("email").notNull(),
     position: bigint("position", { mode: "number" }).notNull(),
     name: text("name"),
@@ -95,7 +108,9 @@ export const suggest = pgTable(
   "suggest",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
     email: text("email"),
     speaker: text("speaker"),
     approved: boolean("approved").notNull().default(false),
@@ -116,8 +131,13 @@ export const votes = pgTable(
   "votes",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    speakerId: uuid("speaker_id").references(() => suggest.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    speakerId: uuid("speaker_id").references(() => suggest.id, {
+      onDelete: "cascade",
+      onUpdate: "cascade",
+    }),
     email: text("email"),
   },
   (t) => [
@@ -132,11 +152,16 @@ export const notify = pgTable(
   "notify",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
     email: text("email").notNull(),
     speakerId: uuid("speaker_id")
       .notNull()
-      .references(() => events.id, { onDelete: "cascade", onUpdate: "cascade" }),
+      .references(() => events.id, {
+        onDelete: "cascade",
+        onUpdate: "cascade",
+      }),
   },
   (t) => [
     uniqueIndex("notify_email_speaker_unique").on(t.email, t.speakerId),
@@ -149,11 +174,16 @@ export const referrals = pgTable(
   "referrals",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
     eventId: uuid("event_id")
       .notNull()
       .defaultRandom()
-      .references(() => events.id, { onDelete: "cascade", onUpdate: "cascade" }),
+      .references(() => events.id, {
+        onDelete: "cascade",
+        onUpdate: "cascade",
+      }),
     referralCode: text("referral_code"),
     count: bigint("count", { mode: "number" }).notNull().default(0),
   },
@@ -166,7 +196,9 @@ export const referrals = pgTable(
 // ── Roles ───────────────────────────────────────────────────────────────────
 export const roles = pgTable("roles", {
   id: uuid("id").primaryKey().defaultRandom(),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
   email: text("email"),
   roles: text("roles"),
 });
@@ -176,14 +208,26 @@ export const userProfiles = pgTable(
   "user_profiles",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-    lastSignInAt: timestamp("last_sign_in_at", { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    lastSignInAt: timestamp("last_sign_in_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
     email: text("email").notNull(),
     uid: text("uid"),
     displayName: text("display_name").notNull(),
-    eduPersonAffiliation: text("edu_person_affiliation").array().notNull().default([]),
-    eduPersonScopedAffiliation: text("edu_person_scoped_affiliation").array().notNull().default([]),
+    eduPersonAffiliation: text("edu_person_affiliation")
+      .array()
+      .notNull()
+      .default([]),
+    eduPersonScopedAffiliation: text("edu_person_scoped_affiliation")
+      .array()
+      .notNull()
+      .default([]),
   },
   (t) => [uniqueIndex("user_profiles_email_unique").on(t.email)],
 );
@@ -193,7 +237,9 @@ export const auditLogs = pgTable(
   "audit_logs",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
     action: text("action").notNull(),
     actor: text("actor").notNull(),
     source: text("source").notNull(),
@@ -233,7 +279,10 @@ export const suggestRelations = relations(suggest, ({ many }) => ({
 }));
 
 export const votesRelations = relations(votes, ({ one }) => ({
-  suggest: one(suggest, { fields: [votes.speakerId], references: [suggest.id] }),
+  suggest: one(suggest, {
+    fields: [votes.speakerId],
+    references: [suggest.id],
+  }),
 }));
 
 export const notifyRelations = relations(notify, ({ one }) => ({
