@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useMemo, useCallback, useRef } from "react";
+import { useRouter } from "next/navigation";
 import ReactECharts from "echarts-for-react";
 import { getAnalyticsCardGridStyle } from "@/app/lib/utils";
 
@@ -174,6 +175,7 @@ export default function TicketSalesGraph({
   eventId,
   capacity,
 }: TicketSalesGraphProps) {
+  const router = useRouter();
   const [salesData, setSalesData] = useState<SalesResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -584,7 +586,8 @@ export default function TicketSalesGraph({
           </h3>
           <p className="mt-1 text-[11px] text-zinc-500">
             Uses each ticket holder&apos;s highest profile affiliation. Tickets
-            without a matched profile are grouped as Unknown.
+            without a matched profile are grouped as Unknown. Click a segment to
+            view matching tickets.
           </p>
         </div>
         <div
@@ -596,9 +599,11 @@ export default function TicketSalesGraph({
             const share = totalTickets > 0 ? (soldCount / totalTickets) * 100 : 0;
 
             return (
-              <div
+              <button
                 key={key}
-                className={`rounded-xl border border-zinc-800 p-4 ${bg}`}
+                type="button"
+                onClick={() => router.push(`/tickets/${eventId}?affiliation=${key}`)}
+                className={`rounded-xl border border-zinc-800 p-4 text-left transition-colors hover:border-zinc-600 ${bg}`}
               >
                 <div className="mb-1 flex items-center justify-between">
                   <span
@@ -614,7 +619,7 @@ export default function TicketSalesGraph({
                   {soldCount.toLocaleString()} sold
                 </p>
                 <ProgressBar value={soldCount} max={totalTickets} color={color} />
-              </div>
+              </button>
             );
           })}
         </div>

@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useEffectEvent, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import BulkSendProgress from "@/app/components/BulkSendProgress";
 import { useEventContext } from "@/app/EventContext";
 import {
@@ -33,6 +34,16 @@ type TicketRow = { name: string; email: string };
 
 type ReminderRecipient = Pick<Ticket, "id" | "email">;
 
+type TicketAffiliationKey =
+  | "student"
+  | "faculty"
+  | "affiliate"
+  | "staff"
+  | "member"
+  | "unknown";
+
+type AffiliationCounts = Record<TicketAffiliationKey, number>;
+
 type TicketManagementClientProps = {
   initialTickets: Ticket[];
   initialTotal: number;
@@ -44,7 +55,33 @@ type TicketManagementClientProps = {
   initialVipCount: number;
   initialExternalCount: number;
   initialStandbyCount: number;
+  initialAffiliationCounts: AffiliationCounts;
 };
+
+const AFFILIATION_FILTER_ORDER: TicketAffiliationKey[] = [
+  "student",
+  "faculty",
+  "affiliate",
+  "staff",
+  "member",
+  "unknown",
+];
+
+function createEmptyAffiliationCounts(): AffiliationCounts {
+  return {
+    student: 0,
+    faculty: 0,
+    affiliate: 0,
+    staff: 0,
+    member: 0,
+    unknown: 0,
+  };
+}
+
+function formatAffiliationLabel(affiliation: TicketAffiliationKey): string {
+  if (affiliation === "unknown") return "Unknown";
+  return affiliation.charAt(0).toUpperCase() + affiliation.slice(1);
+}
 
 function parseSpreadsheetTicketRows(clipboardText: string): TicketRow[] {
   const rows = clipboardText
@@ -87,7 +124,11 @@ export default function TicketManagementClient({
   initialVipCount,
   initialExternalCount,
   initialStandbyCount,
+  initialAffiliationCounts,
 }: TicketManagementClientProps) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const { events, selectedEventId } = useEventContext();
   const [tickets, setTickets] = useState<Ticket[]>(initialTickets);
   const [total, setTotal] = useState(initialTotal);
@@ -99,6 +140,9 @@ export default function TicketManagementClient({
   const [vipCount, setVipCount] = useState(initialVipCount);
   const [externalCount, setExternalCount] = useState(initialExternalCount);
   const [standbyCount, setStandbyCount] = useState(initialStandbyCount);
+  const [affiliationCounts, setAffiliationCounts] = useState<AffiliationCounts>(
+    initialAffiliationCounts,
+  );
   const [search, setSearch] = useState("");
   const [ticketTypeFilter, setTicketTypeFilter] = useState<string>("");
   const [scannedFilter, setScannedFilter] = useState<string>("");
@@ -132,6 +176,12 @@ export default function TicketManagementClient({
   );
   const [editingNameId, setEditingNameId] = useState<string | null>(null);
   const [editingNameValue, setEditingNameValue] = useState("");
+  const rawAffiliationFilter = searchParams.get("affiliation");
+  const affiliationFilter = AFFILIATION_FILTER_ORDER.includes(
+    rawAffiliationFilter as TicketAffiliationKey,
+  )
+    ? (rawAffiliationFilter as TicketAffiliationKey)
+    : "";
 
   const REMINDER_CHUNK_SIZE = 50;
   const RECIPIENT_PAGE_SIZE = 500;
@@ -205,6 +255,23 @@ export default function TicketManagementClient({
     setFeeWaiverFilter("");
   }, [selectedEventId]);
 
+  useEffect(() => {
+    setOffset(0);
+  }, [selectedEventId, affiliationFilter]);
+
+  function handleAffiliationFilterChange(nextAffiliation: TicketAffiliationKey | "") {
+    const params = new URLSearchParams(searchParams.toString());
+
+    if (nextAffiliation) {
+      params.set("affiliation", nextAffiliation);
+    } else {
+      params.delete("affiliation");
+    }
+
+    setOffset(0);
+    router.replace(params.size > 0 ? `${pathname}?${params.toString()}` : pathname);
+  }
+
   async function fetchTickets() {
     // Don't fetch if no event is selected
     if (!selectedEventId) {
@@ -218,6 +285,7 @@ export default function TicketManagementClient({
       setVipCount(0);
       setExternalCount(0);
       setStandbyCount(0);
+      setAffiliationCounts(createEmptyAffiliationCounts());
       return;
     }
 
@@ -248,6 +316,9 @@ export default function TicketManagementClient({
       if (feeWaiverFilter) {
         params.append("feeWaiver", feeWaiverFilter);
       }
+      if (affiliationFilter) {
+        params.append("affiliation", affiliationFilter);
+      }
 
       const response = await fetch(`/api/tickets?${params}`);
 
@@ -267,6 +338,7 @@ export default function TicketManagementClient({
       setVipCount(data.vipCount || 0);
       setExternalCount(data.externalCount || 0);
       setStandbyCount(data.standbyCount || 0);
+      setAffiliationCounts(data.affiliationCounts || createEmptyAffiliationCounts());
     } catch (err) {
       console.error("Error fetching tickets:", err);
       setError(err instanceof Error ? err.message : "Failed to load tickets");
@@ -274,6 +346,10 @@ export default function TicketManagementClient({
       setIsLoading(false);
     }
   }
+
+  const fetchTicketsForEffect = useEffectEvent(() => {
+    void fetchTickets();
+  });
 
   async function fetchAllReminderRecipients(
     eventId: string,
@@ -360,14 +436,14 @@ export default function TicketManagementClient({
   }
 
   useEffect(() => {
-    fetchTickets();
-  }, [selectedEventId, offset, ticketTypeFilter, scannedFilter, feeWaiverFilter]);
+    fetchTicketsForEffect();
+  }, [selectedEventId, offset, ticketTypeFilter, scannedFilter, feeWaiverFilter, affiliationFilter]);
 
   // Debounced search
   useEffect(() => {
     const timer = setTimeout(() => {
       setOffset(0);
-      fetchTickets();
+      fetchTicketsForEffect();
     }, 300);
     return () => clearTimeout(timer);
   }, [search]);
@@ -415,35 +491,6 @@ export default function TicketManagementClient({
     } catch (err) {
       console.error("Error deleting ticket:", err);
       setError(err instanceof Error ? err.message : "Failed to delete ticket");
-    }
-  }
-
-  async function handleUnscan(id: string) {
-    if (!confirm("Are you sure you want to unscan this ticket?")) return;
-
-    try {
-      const response = await fetch("/api/tickets", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id, action: "unscan" }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || "Failed to unscan ticket");
-      }
-
-      const data = await response.json();
-      setTickets((prev) =>
-        prev.map((t) => (t.id === id ? (data.ticket as Ticket) : t)),
-      );
-      // Update counts: ticket was scanned, now unscanned
-      setScannedCount((prev) => prev - 1);
-      setUnscannedCount((prev) => prev + 1);
-      setSuccess("Ticket unscanned successfully!");
-    } catch (err) {
-      console.error("Error unscaning ticket:", err);
-      setError(err instanceof Error ? err.message : "Failed to unscan ticket");
     }
   }
 
@@ -879,6 +926,14 @@ export default function TicketManagementClient({
     setIsSubmitting(false);
   }
 
+  const visibleAffiliationStats = AFFILIATION_FILTER_ORDER
+    .filter((key) => affiliationCounts[key] > 0)
+    .map((key) => ({
+      key,
+      label: formatAffiliationLabel(key),
+      value: affiliationCounts[key],
+    }));
+
   return (
     <div className="px-4 sm:px-6 py-8">
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-8">
@@ -959,7 +1014,7 @@ export default function TicketManagementClient({
                 )}
               </>
             )}
-            {(search || ticketTypeFilter || scannedFilter || feeWaiverFilter) &&
+            {(search || ticketTypeFilter || scannedFilter || feeWaiverFilter || affiliationFilter) &&
               selectedEventId && (
                 <div className="flex items-center gap-2">
                   <span className="text-zinc-400">Matching Filters:</span>
@@ -1355,6 +1410,55 @@ export default function TicketManagementClient({
       )}
 
       {/* Filters */}
+      {selectedEventId && total > 0 && visibleAffiliationStats.length > 0 && (
+        <div className="mb-4 flex flex-wrap items-center gap-2">
+          {visibleAffiliationStats.map((stat) => {
+            const isActive = affiliationFilter === stat.key;
+            return (
+              <button
+                key={stat.key}
+                type="button"
+                onClick={() =>
+                  handleAffiliationFilterChange(isActive ? "" : stat.key)
+                }
+                className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
+                  isActive
+                    ? "border-rose-500/40 bg-rose-500/20 text-rose-400"
+                    : "border-zinc-700 bg-zinc-800 text-zinc-300 hover:border-zinc-500"
+                }`}
+              >
+                {stat.label}
+                <span className={isActive ? "text-rose-400/70" : "text-zinc-500"}>
+                  {stat.value}
+                </span>
+              </button>
+            );
+          })}
+          {affiliationFilter && (
+            <button
+              type="button"
+              onClick={() => handleAffiliationFilterChange("")}
+              className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium text-zinc-500 transition-colors hover:text-zinc-300"
+            >
+              <svg
+                className="h-3 w-3"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M6 18L18 6M6 6l12 12"
+                />
+              </svg>
+              Clear
+            </button>
+          )}
+        </div>
+      )}
+
       <div className="mb-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         <div>
           <label className="block text-sm font-medium text-zinc-300 mb-2">
@@ -1442,7 +1546,7 @@ export default function TicketManagementClient({
           <p className="text-zinc-600 text-sm">
             {!selectedEventId
               ? "Choose an event from the filter above"
-              : search || ticketTypeFilter || scannedFilter || feeWaiverFilter
+              : search || ticketTypeFilter || scannedFilter || feeWaiverFilter || affiliationFilter
                 ? "Try adjusting your filters"
                 : "Create your first ticket to get started"}
           </p>

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import {
   getAvailablePublicTickets,
 } from "@/app/lib/supabase";
+import { getHighestAffiliation } from "@/app/lib/affiliation";
 import {
   getFeeWaiverEmailSetForEmails,
   hasFeeWaiverForEmail,
@@ -30,9 +31,104 @@ import {
   sql,
   tickets,
   events,
+  userProfiles,
 } from "@ssb/db";
 import { isValidUUID } from "@/app/lib/validation";
 import { logAuditEvent } from "@/app/lib/audit";
+
+type TicketAffiliationKey =
+  | "student"
+  | "faculty"
+  | "affiliate"
+  | "staff"
+  | "member"
+  | "unknown";
+
+const AFFILIATION_PRIORITY: Exclude<TicketAffiliationKey, "unknown">[] = [
+  "student",
+  "faculty",
+  "affiliate",
+  "staff",
+  "member",
+];
+
+const TICKET_AFFILIATION_FILTERS = new Set<TicketAffiliationKey>([
+  "student",
+  "faculty",
+  "affiliate",
+  "staff",
+  "member",
+  "unknown",
+]);
+
+function createEmptyAffiliationCounts(): Record<TicketAffiliationKey, number> {
+  return {
+    student: 0,
+    faculty: 0,
+    affiliate: 0,
+    staff: 0,
+    member: 0,
+    unknown: 0,
+  };
+}
+
+async function getTicketAffiliationMap(
+  emails: string[],
+): Promise<Map<string, TicketAffiliationKey>> {
+  const normalizedEmails = [
+    ...new Set(emails.map((email) => normalizeEmail(email)).filter(Boolean)),
+  ];
+
+  if (normalizedEmails.length === 0) {
+    return new Map();
+  }
+
+  const profileRows = await db.query.userProfiles.findMany({
+    where: inArray(userProfiles.email, normalizedEmails),
+    columns: {
+      email: true,
+      eduPersonAffiliation: true,
+      eduPersonScopedAffiliation: true,
+    },
+  });
+
+  const affiliationByEmail = new Map<string, TicketAffiliationKey>();
+
+  for (const profile of profileRows) {
+    affiliationByEmail.set(
+      normalizeEmail(profile.email),
+      getHighestAffiliation(
+        [
+          ...profile.eduPersonAffiliation,
+          ...profile.eduPersonScopedAffiliation,
+        ],
+        AFFILIATION_PRIORITY,
+      ) ?? "unknown",
+    );
+  }
+
+  return affiliationByEmail;
+}
+
+function getTicketAffiliationForEmail(
+  email: string,
+  affiliationByEmail: Map<string, TicketAffiliationKey>,
+): TicketAffiliationKey {
+  return affiliationByEmail.get(normalizeEmail(email)) ?? "unknown";
+}
+
+function countTicketsByAffiliation<T extends { email: string }>(
+  rows: T[],
+  affiliationByEmail: Map<string, TicketAffiliationKey>,
+): Record<TicketAffiliationKey, number> {
+  const counts = createEmptyAffiliationCounts();
+
+  for (const row of rows) {
+    counts[getTicketAffiliationForEmail(row.email, affiliationByEmail)]++;
+  }
+
+  return counts;
+}
 
 /** Helper to serialize a ticket (with optional event relation) to snake_case for API response */
 function serializeTicket(ticket: {
@@ -264,10 +360,23 @@ export async function GET(req: Request) {
     const type = searchParams.get("type");
     const scanned = searchParams.get("scanned");
     const feeWaiver = searchParams.get("feeWaiver");
+    const rawAffiliation = searchParams.get("affiliation");
     const limit = parseInt(searchParams.get("limit") || "100");
     const offset = parseInt(searchParams.get("offset") || "0");
+    const affiliation =
+      rawAffiliation && TICKET_AFFILIATION_FILTERS.has(rawAffiliation as TicketAffiliationKey)
+        ? (rawAffiliation as TicketAffiliationKey)
+        : null;
+
+    if (rawAffiliation && !affiliation) {
+      return NextResponse.json(
+        { error: "Invalid affiliation filter" },
+        { status: 400 },
+      );
+    }
+
     const feeWaiverCondition = buildFeeWaiverTicketCondition();
-    const whereClause = and(
+    const nonAffiliationWhereClause = and(
       eventId ? eq(tickets.eventId, eventId) : undefined,
       search ? or(ilike(tickets.email, `%${search}%`), ilike(tickets.name, `%${search}%`)) : undefined,
       type ? eq(tickets.type, type) : undefined,
@@ -276,12 +385,64 @@ export async function GET(req: Request) {
         : undefined,
       feeWaiver === "true" ? feeWaiverCondition : undefined,
     );
+    const whereClause = nonAffiliationWhereClause;
 
     const baseWhereClause = eventId ? eq(tickets.eventId, eventId) : undefined;
 
-    // Run all queries in parallel
-    const [ticketResults, [totalResult], [scannedResult], [unscannedResult], [filteredResult], [standardResult], [vipResult], [externalResult], [waitlistResult], [feeWaiverResult]] =
-      await Promise.all([
+    const [
+      [totalResult],
+      [scannedResult],
+      [unscannedResult],
+      [filteredResult],
+      [standardResult],
+      [vipResult],
+      [externalResult],
+      [waitlistResult],
+      [feeWaiverResult],
+    ] = await Promise.all([
+      db.select({ count: dbCount() }).from(tickets).where(baseWhereClause),
+      db.select({ count: dbCount() }).from(tickets).where(baseWhereClause ? and(baseWhereClause, eq(tickets.scanned, true)) : eq(tickets.scanned, true)),
+      db.select({ count: dbCount() }).from(tickets).where(baseWhereClause ? and(baseWhereClause, eq(tickets.scanned, false)) : eq(tickets.scanned, false)),
+      db.select({ count: dbCount() }).from(tickets).where(whereClause),
+      db.select({ count: dbCount() }).from(tickets).where(baseWhereClause ? and(baseWhereClause, eq(tickets.type, "STANDARD")) : eq(tickets.type, "STANDARD")),
+      db.select({ count: dbCount() }).from(tickets).where(baseWhereClause ? and(baseWhereClause, eq(tickets.type, "VIP")) : eq(tickets.type, "VIP")),
+      db.select({ count: dbCount() }).from(tickets).where(baseWhereClause ? and(baseWhereClause, eq(tickets.type, "EXTERNAL")) : eq(tickets.type, "EXTERNAL")),
+      db.select({ count: dbCount() }).from(tickets).where(baseWhereClause ? and(baseWhereClause, eq(tickets.type, "STANDBY")) : eq(tickets.type, "STANDBY")),
+      db.select({ count: dbCount() })
+        .from(tickets)
+        .where(baseWhereClause ? and(baseWhereClause, feeWaiverCondition) : feeWaiverCondition),
+    ]);
+    let affiliationCounts = createEmptyAffiliationCounts();
+    let filteredCount = filteredResult?.count ?? 0;
+    let ticketResults: Array<Parameters<typeof serializeTicket>[0]> = [];
+
+    if (affiliation) {
+      const affiliationSourceRows = eventId
+        ? await db.query.tickets.findMany({
+            where: whereClause,
+            columns: TICKET_COLUMNS,
+            with: TICKET_WITH_EVENT,
+            orderBy: (t, { desc }) => [desc(t.createdAt)],
+          })
+        : [];
+      const affiliationByEmail = await getTicketAffiliationMap(
+        affiliationSourceRows.map((ticket) => ticket.email),
+      );
+
+      affiliationCounts = countTicketsByAffiliation(
+        affiliationSourceRows,
+        affiliationByEmail,
+      );
+
+      const filteredAffiliationRows = affiliationSourceRows.filter(
+        (ticket) =>
+          getTicketAffiliationForEmail(ticket.email, affiliationByEmail) === affiliation,
+      );
+
+      ticketResults = filteredAffiliationRows.slice(offset, offset + limit);
+      filteredCount = filteredAffiliationRows.length;
+    } else {
+      const [paginatedTicketResults, affiliationSourceRows] = await Promise.all([
         db.query.tickets.findMany({
           where: whereClause,
           columns: TICKET_COLUMNS,
@@ -290,18 +451,26 @@ export async function GET(req: Request) {
           offset,
           limit,
         }),
-        db.select({ count: dbCount() }).from(tickets).where(baseWhereClause),
-        db.select({ count: dbCount() }).from(tickets).where(baseWhereClause ? and(baseWhereClause, eq(tickets.scanned, true)) : eq(tickets.scanned, true)),
-        db.select({ count: dbCount() }).from(tickets).where(baseWhereClause ? and(baseWhereClause, eq(tickets.scanned, false)) : eq(tickets.scanned, false)),
-        db.select({ count: dbCount() }).from(tickets).where(whereClause),
-        db.select({ count: dbCount() }).from(tickets).where(baseWhereClause ? and(baseWhereClause, eq(tickets.type, "STANDARD")) : eq(tickets.type, "STANDARD")),
-        db.select({ count: dbCount() }).from(tickets).where(baseWhereClause ? and(baseWhereClause, eq(tickets.type, "VIP")) : eq(tickets.type, "VIP")),
-        db.select({ count: dbCount() }).from(tickets).where(baseWhereClause ? and(baseWhereClause, eq(tickets.type, "EXTERNAL")) : eq(tickets.type, "EXTERNAL")),
-        db.select({ count: dbCount() }).from(tickets).where(baseWhereClause ? and(baseWhereClause, eq(tickets.type, "STANDBY")) : eq(tickets.type, "STANDBY")),
-        db.select({ count: dbCount() })
-          .from(tickets)
-          .where(baseWhereClause ? and(baseWhereClause, feeWaiverCondition) : feeWaiverCondition),
+        eventId
+          ? db.query.tickets.findMany({
+              where: whereClause,
+              columns: {
+                email: true,
+              },
+            })
+          : Promise.resolve([]),
       ]);
+
+      const affiliationByEmail = await getTicketAffiliationMap(
+        affiliationSourceRows.map((ticket) => ticket.email),
+      );
+
+      affiliationCounts = countTicketsByAffiliation(
+        affiliationSourceRows,
+        affiliationByEmail,
+      );
+      ticketResults = paginatedTicketResults;
+    }
 
     const feeWaiverEmails = await getFeeWaiverEmailSetForEmails(
       ticketResults.map((ticket) => ticket.email),
@@ -315,11 +484,12 @@ export async function GET(req: Request) {
       scannedCount: scannedResult?.count ?? 0,
       unscannedCount: unscannedResult?.count ?? 0,
       feeWaiverCount: feeWaiverResult?.count ?? 0,
-      filteredCount: filteredResult?.count ?? 0,
+      filteredCount,
       standardCount: standardResult?.count ?? 0,
       vipCount: vipResult?.count ?? 0,
       externalCount: externalResult?.count ?? 0,
       standbyCount: waitlistResult?.count ?? 0,
+      affiliationCounts,
       limit,
       offset,
     });

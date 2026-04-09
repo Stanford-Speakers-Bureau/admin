@@ -23,6 +23,14 @@ export default async function TicketsEventPage({
         initialVipCount={0}
         initialExternalCount={0}
         initialStandbyCount={0}
+        initialAffiliationCounts={{
+          student: 0,
+          faculty: 0,
+          affiliate: 0,
+          staff: 0,
+          member: 0,
+          unknown: 0,
+        }}
       />
     </>
   );
