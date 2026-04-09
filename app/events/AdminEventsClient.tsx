@@ -6,6 +6,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { PACIFIC_TIMEZONE } from "@/app/lib/constants";
 import { useEventContext } from "@/app/EventContext";
+import type { TicketingRole } from "@/app/lib/ticketingRoles";
 
 function formatDisplayDate(dateString: string | null): string {
   if (!dateString) return "TBD";
@@ -56,6 +57,7 @@ export type Event = {
   livestream?: string | null;
   referrals_enabled?: boolean;
   standby_enabled?: boolean | null;
+  ticketing_roles?: TicketingRole[];
   tickets_sold?: number;
   waitlist_count?: number;
   standby_count?: number;

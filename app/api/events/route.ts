@@ -13,6 +13,10 @@ import { db, eq, ne, events } from "@ssb/db";
 import { logAuditEvent } from "@/app/lib/audit";
 import type { InferInsertModel, InferSelectModel } from "@ssb/db";
 import {
+  isTicketingRole,
+  resolveTicketingRoles,
+} from "@/app/lib/ticketingRoles";
+import {
   isValidUUID,
   isValidUrl,
   isValidRoute,
@@ -125,11 +129,17 @@ export async function POST(req: Request) {
     const latitude = formData.get("latitude") as string;
     const longitude = formData.get("longitude") as string;
     const address = formData.get("address") as string;
+    const rawTicketingRoles = formData
+      .getAll("ticketing_roles")
+      .filter((value): value is string => typeof value === "string");
     const imageFile = formData.get("image") as File | null;
     const mobileImageFile = formData.get("mobile_image") as File | null;
     const appleWalletImageFile = formData.get(
       "apple_wallet_image",
     ) as File | null;
+    const invalidTicketingRole = rawTicketingRoles.find(
+      (value) => !isTicketingRole(value),
+    );
 
     // Validate ID if provided
     if (id && !isValidUUID(id)) {
@@ -238,6 +248,13 @@ export async function POST(req: Request) {
       );
     }
 
+    if (invalidTicketingRole) {
+      return NextResponse.json(
+        { error: "Invalid ticketing role selection" },
+        { status: 400 },
+      );
+    }
+
     let existingEvent: {
       capacity: number;
       reserved: number;
@@ -305,6 +322,7 @@ export async function POST(req: Request) {
     const doorsOpenValue = doors_open
       ? fromZonedTime(doors_open, PACIFIC_TIMEZONE)
       : null;
+    const ticketingRoles = resolveTicketingRoles(rawTicketingRoles);
 
     // Build event data object
     const eventData: InferInsertModel<typeof events> = {
@@ -323,6 +341,7 @@ export async function POST(req: Request) {
       doorsOpen: doorsOpenValue,
       route: route || null,
       priority: priority?.trim() || null,
+      ticketingRoles,
       hideTicketingDate: hide_ticketing_date,
       referralsEnabled: referrals_enabled,
       standbyEnabled: standby_enabled,

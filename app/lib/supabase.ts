@@ -7,6 +7,7 @@ import {
   isEventUnderCapacity as _isEventUnderCapacity,
 } from "@ssb/db/queries";
 import { generateReferralCode } from "./utils";
+import { resolveTicketingRoles, type TicketingRole } from "./ticketingRoles";
 
 type DBEvent = InferSelectModel<typeof events>;
 
@@ -45,6 +46,7 @@ export type Event = {
   priority?: string | null;
   hide_ticketing_date?: boolean;
   referrals_enabled?: boolean;
+  ticketing_roles?: TicketingRole[];
 };
 
 /**
@@ -80,6 +82,7 @@ export function serializeEvent(e: DBEvent): Event {
     standby_enabled: e.standbyEnabled ?? null,
     livestream: e.livestream ?? null,
     priority: e.priority ?? null,
+    ticketing_roles: resolveTicketingRoles(e.ticketingRoles),
     hide_ticketing_date: e.hideTicketingDate ?? false,
     referrals_enabled: e.referralsEnabled ?? false,
   };
