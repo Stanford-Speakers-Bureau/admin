@@ -227,6 +227,39 @@ function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "";
 }
 
+function formatHeldFor(createdAt: Date | null | undefined): string | null {
+  if (!createdAt) {
+    return null;
+  }
+
+  const diffMs = Date.now() - createdAt.getTime();
+  if (!Number.isFinite(diffMs) || diffMs < 0) {
+    return null;
+  }
+
+  const totalMinutes = Math.floor(diffMs / (1000 * 60));
+  if (totalMinutes < 1) {
+    return "<1m";
+  }
+
+  const days = Math.floor(totalMinutes / (60 * 24));
+  const hours = Math.floor((totalMinutes % (60 * 24)) / 60);
+  const minutes = totalMinutes % 60;
+  const parts: string[] = [];
+
+  if (days > 0) {
+    parts.push(`${days}d`);
+  }
+  if (hours > 0) {
+    parts.push(`${hours}h`);
+  }
+  if (days === 0 && minutes > 0) {
+    parts.push(`${minutes}m`);
+  }
+
+  return parts.slice(0, 2).join(" ");
+}
+
 type TicketCancellationRpcResult = {
   success?: boolean;
   cancelled_ticket_id?: string | null;
@@ -526,7 +559,7 @@ export async function DELETE(req: Request) {
     // Fetch the ticket before deleting to get event_id and type
     const ticketToDelete = await db.query.tickets.findFirst({
       where: eq(tickets.id, id),
-      columns: { email: true, eventId: true, type: true },
+      columns: { email: true, eventId: true, type: true, createdAt: true },
       with: { event: { columns: { name: true } } },
     });
 
@@ -536,6 +569,8 @@ export async function DELETE(req: Request) {
 
     if (!ticketToDelete.eventId) {
       await db.delete(tickets).where(eq(tickets.id, id));
+      const gotTicketAt = ticketToDelete.createdAt?.toISOString() ?? null;
+      const heldFor = formatHeldFor(ticketToDelete.createdAt);
 
       await logAuditEvent({
         action: "ticket.delete",
@@ -543,7 +578,12 @@ export async function DELETE(req: Request) {
         eventId: null,
         eventName: null,
         targetEmail: ticketToDelete.email,
-        metadata: { ticketId: id, type: ticketToDelete.type },
+        metadata: {
+          ...(gotTicketAt ? { gotTicketAt } : {}),
+          ...(heldFor ? { heldFor } : {}),
+          ticketId: id,
+          type: ticketToDelete.type,
+        },
       });
 
       return NextResponse.json({ success: true });
@@ -596,6 +636,8 @@ export async function DELETE(req: Request) {
     }
 
     const cancelledTicketId = rpcData?.cancelled_ticket_id ?? null;
+    const gotTicketAt = ticketToDelete.createdAt?.toISOString() ?? null;
+    const heldFor = formatHeldFor(ticketToDelete.createdAt);
     if (!cancelledTicketId) {
       console.error(
         "Ticket cancellation RPC returned without a cancelled ticket id:",
@@ -613,7 +655,12 @@ export async function DELETE(req: Request) {
       eventId: ticketToDelete.eventId,
       eventName: ticketToDelete.event?.name ?? null,
       targetEmail: ticketToDelete.email,
-      metadata: { ticketId: cancelledTicketId, type: ticketToDelete.type },
+      metadata: {
+        ...(gotTicketAt ? { gotTicketAt } : {}),
+        ...(heldFor ? { heldFor } : {}),
+        ticketId: cancelledTicketId,
+        type: ticketToDelete.type,
+      },
     });
 
     if (rpcData?.promoted_ticket_id && rpcData.promoted_email) {
