@@ -56,6 +56,7 @@ export type Event = {
   livestream?: string | null;
   referrals_enabled?: boolean;
   standby_enabled?: boolean | null;
+  ticketing_roles?: string[];
   tickets_sold?: number;
   waitlist_count?: number;
   standby_count?: number;

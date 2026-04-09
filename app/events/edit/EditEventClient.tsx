@@ -6,6 +6,10 @@ import Image from "next/image";
 import { PACIFIC_TIMEZONE } from "@/app/lib/constants";
 import { useEventContext } from "@/app/EventContext";
 import { sortByStartDate } from "@/app/lib/formatting";
+import {
+  DEFAULT_TICKETING_ROLES,
+  TICKETING_ROLE_OPTIONS,
+} from "@/app/lib/ticketingRoles";
 import MarkdownEditor from "../MarkdownEditor";
 import { Event } from "../AdminEventsClient";
 
@@ -53,6 +57,7 @@ type FormData = {
   doors_open: string;
   route: string;
   priority: string;
+  ticketing_roles: string[];
   hide_ticketing_date: boolean;
   referrals_enabled: boolean;
   standby_enabled: boolean;
@@ -78,6 +83,7 @@ const emptyForm: FormData = {
   doors_open: "",
   route: "",
   priority: "This event is only open to Stanford affiliates",
+  ticketing_roles: [...DEFAULT_TICKETING_ROLES],
   hide_ticketing_date: false,
   referrals_enabled: false,
   standby_enabled: false,
@@ -117,6 +123,10 @@ function eventToFormData(event: Event): FormData {
     route: event.route || "",
     priority:
       event.priority || "This event is only open to Stanford affiliates",
+    ticketing_roles:
+      event.ticketing_roles && event.ticketing_roles.length > 0
+        ? [...event.ticketing_roles]
+        : [...DEFAULT_TICKETING_ROLES],
     hide_ticketing_date: event.hide_ticketing_date || false,
     referrals_enabled: event.referrals_enabled || false,
     standby_enabled: event.standby_enabled || false,
@@ -339,6 +349,17 @@ export default function EditEventClient({ allEvents }: EditEventClientProps) {
     router.push("/events/edit");
   }
 
+  function handleTicketingRoleToggle(role: string, checked: boolean) {
+    setFormData((prev) => ({
+      ...prev,
+      ticketing_roles: checked
+        ? prev.ticketing_roles.includes(role)
+          ? prev.ticketing_roles
+          : [...prev.ticketing_roles, role]
+        : prev.ticketing_roles.filter((value) => value !== role),
+    }));
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setIsSubmitting(true);
@@ -375,6 +396,11 @@ export default function EditEventClient({ allEvents }: EditEventClientProps) {
         }
       }
 
+      if (formData.ticketing_roles.length === 0) {
+        setError("Select at least one eligible role for ticketing.");
+        return;
+      }
+
       const submitData = new FormData();
       submitData.append("name", formData.name);
       submitData.append("desc", formData.desc);
@@ -404,6 +430,9 @@ export default function EditEventClient({ allEvents }: EditEventClientProps) {
       submitData.append("latitude", formData.latitude);
       submitData.append("longitude", formData.longitude);
       submitData.append("address", formData.address);
+      formData.ticketing_roles.forEach((role) => {
+        submitData.append("ticketing_roles", role);
+      });
 
       if (imageFile) {
         submitData.append("image", imageFile);
@@ -872,6 +901,49 @@ export default function EditEventClient({ allEvents }: EditEventClientProps) {
                 placeholder="e.g. This event is only open to Stanford affiliates"
                 rows={2}
               />
+
+              <div className="md:col-span-2 rounded-xl border border-zinc-800 bg-zinc-950/40 p-4">
+                <div className="mb-3">
+                  <label className="block text-sm font-medium text-zinc-300">
+                    Eligible Ticketing Roles
+                  </label>
+                  <p className="mt-1 text-sm text-zinc-500">
+                    Only signed-in users with one of these affiliations can get
+                    tickets or join the waitlist for this event.
+                  </p>
+                </div>
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
+                  {TICKETING_ROLE_OPTIONS.map((role) => {
+                    const checked = formData.ticketing_roles.includes(
+                      role.value,
+                    );
+
+                    return (
+                      <label
+                        key={role.value}
+                        className={`flex items-center gap-3 rounded-xl border px-3 py-3 text-sm transition-colors ${
+                          checked
+                            ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-100"
+                            : "border-zinc-800 bg-zinc-900/70 text-zinc-300 hover:border-zinc-700"
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={(e) =>
+                            handleTicketingRoleToggle(
+                              role.value,
+                              e.target.checked,
+                            )
+                          }
+                          className="h-4 w-4 rounded border-zinc-600 bg-zinc-800 text-emerald-500 focus:ring-emerald-500/50"
+                        />
+                        <span>{role.label}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
 
               <div className="flex items-center gap-3">
                 <input
