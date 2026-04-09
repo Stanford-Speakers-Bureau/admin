@@ -1,25 +1,22 @@
-export const DEFAULT_TICKETING_ROLES = [
-  "student",
-  "faculty",
-  "staff",
-] as const;
+import { normalizeAffiliation } from "@/app/lib/affiliation";
+import {
+  DEFAULT_TICKETING_ROLES,
+  TICKETING_ROLE_OPTIONS,
+  type TicketingRole,
+} from "@ssb/db/ticketingRoles";
 
-export const TICKETING_ROLE_OPTIONS = [
-  { value: "student", label: "Student" },
-  { value: "faculty", label: "Faculty" },
-  { value: "staff", label: "Staff" },
-  { value: "affiliate", label: "Affiliate" },
-  { value: "member", label: "Member" },
-] as const;
-
-export type TicketingRole = (typeof TICKETING_ROLE_OPTIONS)[number]["value"];
+export {
+  DEFAULT_TICKETING_ROLES,
+  TICKETING_ROLE_OPTIONS,
+  type TicketingRole,
+};
 
 const TICKETING_ROLE_SET = new Set<TicketingRole>(
   TICKETING_ROLE_OPTIONS.map(({ value }) => value),
 );
 
 export function normalizeTicketingRole(value: string): string {
-  return value.trim().toLowerCase().split("@")[0];
+  return normalizeAffiliation(value);
 }
 
 function toTicketingRole(value: string): TicketingRole | null {
