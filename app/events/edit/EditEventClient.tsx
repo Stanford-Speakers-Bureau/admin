@@ -9,6 +9,7 @@ import { sortByStartDate } from "@/app/lib/formatting";
 import {
   DEFAULT_TICKETING_ROLES,
   TICKETING_ROLE_OPTIONS,
+  type TicketingRole,
 } from "@/app/lib/ticketingRoles";
 import MarkdownEditor from "../MarkdownEditor";
 import { Event } from "../AdminEventsClient";
@@ -57,7 +58,7 @@ type FormData = {
   doors_open: string;
   route: string;
   priority: string;
-  ticketing_roles: string[];
+  ticketing_roles: TicketingRole[];
   hide_ticketing_date: boolean;
   referrals_enabled: boolean;
   standby_enabled: boolean;
@@ -349,7 +350,7 @@ export default function EditEventClient({ allEvents }: EditEventClientProps) {
     router.push("/events/edit");
   }
 
-  function handleTicketingRoleToggle(role: string, checked: boolean) {
+  function handleTicketingRoleToggle(role: TicketingRole, checked: boolean) {
     setFormData((prev) => ({
       ...prev,
       ticketing_roles: checked

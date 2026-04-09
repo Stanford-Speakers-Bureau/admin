@@ -7,7 +7,7 @@ import {
   isEventUnderCapacity as _isEventUnderCapacity,
 } from "@ssb/db/queries";
 import { generateReferralCode } from "./utils";
-import { resolveTicketingRoles } from "./ticketingRoles";
+import { resolveTicketingRoles, type TicketingRole } from "./ticketingRoles";
 
 type DBEvent = InferSelectModel<typeof events>;
 
@@ -46,7 +46,7 @@ export type Event = {
   priority?: string | null;
   hide_ticketing_date?: boolean;
   referrals_enabled?: boolean;
-  ticketing_roles?: string[];
+  ticketing_roles?: TicketingRole[];
 };
 
 /**
