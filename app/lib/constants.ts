@@ -30,6 +30,11 @@ export const BANNER_MESSAGES = {
 
 export const PACIFIC_TIMEZONE = "America/Los_Angeles";
 
+// Reminder sends are intentionally throttled to keep long-running admin requests
+// within a predictable throughput envelope.
+export const REMINDER_EMAIL_BATCH_SIZE = 50;
+export const REMINDER_EMAIL_MIN_BATCH_DURATION_MS = 1000;
+
 export const IMPORTANT_NOTICE_ITEMS = [
   { emoji: "🎒", text: "No bags allowed" },
   { emoji: "📵", text: "No electronics larger than a cell phone" },

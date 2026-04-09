@@ -169,6 +169,8 @@ async function sendRawEmailViaSES(rawMessage: string): Promise<void> {
     const errorText = await response.text();
     throw new Error(`SES API error (${response.status}): ${errorText}`);
   }
+
+  await response.body?.cancel();
 }
 
 const FROM_EMAIL =

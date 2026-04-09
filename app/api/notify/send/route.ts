@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
 import { verifyAdminRequest } from "@/app/lib/auth";
+import {
+  REMINDER_EMAIL_BATCH_SIZE,
+  REMINDER_EMAIL_MIN_BATCH_DURATION_MS,
+} from "@/app/lib/constants";
 import { isValidUUID } from "@/app/lib/validation";
 import {
   sendTicketsAvailableNowEmail,
@@ -131,10 +135,10 @@ export async function POST(req: Request) {
       );
     }
 
-    // Send emails in batches to avoid memory overflow
-    // Rate limit: max 14 emails per second (matches ticket reminder batching)
-    const BATCH_SIZE = 14;
-    const MIN_BATCH_DURATION_MS = 1000; // Ensure at least 1 second per batch
+    // Send emails in batches to avoid memory overflow.
+    // We reuse the reminder pacing constants to keep admin email bursts consistent.
+    const BATCH_SIZE = REMINDER_EMAIL_BATCH_SIZE;
+    const MIN_BATCH_DURATION_MS = REMINDER_EMAIL_MIN_BATCH_DURATION_MS;
     const results: PromiseSettledResult<{
       success: boolean;
       email: string;

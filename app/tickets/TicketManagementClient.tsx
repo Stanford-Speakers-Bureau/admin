@@ -4,6 +4,7 @@ import { useEffect, useEffectEvent, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import BulkSendProgress from "@/app/components/BulkSendProgress";
 import { useEventContext } from "@/app/EventContext";
+import { REMINDER_EMAIL_BATCH_SIZE } from "@/app/lib/constants";
 import {
   BulkSendProgressState,
   runChunkedSend,
@@ -183,7 +184,7 @@ export default function TicketManagementClient({
     ? (rawAffiliationFilter as TicketAffiliationKey)
     : "";
 
-  const REMINDER_CHUNK_SIZE = 50;
+  const REMINDER_CHUNK_SIZE = REMINDER_EMAIL_BATCH_SIZE;
   const RECIPIENT_PAGE_SIZE = 500;
 
   function resetNewTicketForm() {

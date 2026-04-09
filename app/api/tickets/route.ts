@@ -15,7 +15,11 @@ import {
   sendTicketEmail,
   sendStandbyLineEmail,
 } from "@/app/lib/email";
-import { PACIFIC_TIMEZONE } from "@/app/lib/constants";
+import {
+  PACIFIC_TIMEZONE,
+  REMINDER_EMAIL_BATCH_SIZE,
+  REMINDER_EMAIL_MIN_BATCH_DURATION_MS,
+} from "@/app/lib/constants";
 import {
   pullFromWaitlist,
   removeWaitlistEntryForEmail,
@@ -1037,9 +1041,12 @@ export async function PATCH(req: Request) {
         );
       }
 
-      if (normalizedTicketIds.length > 14) {
+      if (normalizedTicketIds.length > REMINDER_EMAIL_BATCH_SIZE) {
         return NextResponse.json(
-          { error: "Maximum 14 ticketIds per reminder request" },
+          {
+            error:
+              `Maximum ${REMINDER_EMAIL_BATCH_SIZE} ticketIds per reminder request`,
+          },
           { status: 400 },
         );
       }
@@ -1063,8 +1070,10 @@ export async function PATCH(req: Request) {
 
       const { sent, failed, errors } = await sendReminderBatch({
         recipients: eventTickets,
-        batchSize: hasTicketIdFilter ? normalizedTicketIds.length : 14,
-        minBatchDurationMs: hasTicketIdFilter ? 0 : 1000,
+        batchSize: hasTicketIdFilter
+          ? normalizedTicketIds.length
+          : REMINDER_EMAIL_BATCH_SIZE,
+        minBatchDurationMs: REMINDER_EMAIL_MIN_BATCH_DURATION_MS,
         sendEmail: (ticket) =>
           sendDayOfReminderEmail({
             email: ticket.email,
@@ -1226,9 +1235,12 @@ export async function PATCH(req: Request) {
         );
       }
 
-      if (normalizedTicketIds.length > 14) {
+      if (normalizedTicketIds.length > REMINDER_EMAIL_BATCH_SIZE) {
         return NextResponse.json(
-          { error: "Maximum 14 ticketIds per reminder request" },
+          {
+            error:
+              `Maximum ${REMINDER_EMAIL_BATCH_SIZE} ticketIds per reminder request`,
+          },
           { status: 400 },
         );
       }
@@ -1251,8 +1263,10 @@ export async function PATCH(req: Request) {
 
       const { sent, failed, errors } = await sendReminderBatch({
         recipients: eventTickets,
-        batchSize: hasTicketIdFilter ? normalizedTicketIds.length : 14,
-        minBatchDurationMs: hasTicketIdFilter ? 0 : 1000,
+        batchSize: hasTicketIdFilter
+          ? normalizedTicketIds.length
+          : REMINDER_EMAIL_BATCH_SIZE,
+        minBatchDurationMs: REMINDER_EMAIL_MIN_BATCH_DURATION_MS,
         sendEmail: (ticket) =>
           sendEarlyReminderEmail({
             email: ticket.email,
