@@ -12,6 +12,7 @@ import {
   waitlist,
 } from "@ssb/db";
 import { sendTicketEmail } from "@/app/lib/email";
+import { logAuditEvent } from "@/app/lib/audit";
 import {
   getFeeWaiverEmailSetForEmails,
   normalizeEmail,
@@ -25,6 +26,11 @@ type EligibleWaitlistEntry = {
   name: string | null;
   position: number;
   referral: string | null;
+};
+
+type PullFromWaitlistAuditContext = {
+  actor: string;
+  metadata?: Record<string, unknown>;
 };
 
 function getErrorMessage(error: unknown): string {
@@ -178,6 +184,7 @@ export async function pullFromWaitlist(
   _adminClient: unknown, // kept for backward compatibility during migration
   eventId: string,
   limit?: number,
+  auditContext?: PullFromWaitlistAuditContext,
 ): Promise<number> {
   const ticketInfo = await getAvailablePublicTickets(eventId);
   const maxAvailable = ticketInfo.available;
@@ -265,6 +272,22 @@ export async function pullFromWaitlist(
       }
 
       promotedCount++;
+
+      if (auditContext) {
+        await logAuditEvent({
+          action: "waitlist.pull",
+          actor: auditContext.actor,
+          eventId,
+          eventName: newTicket.event?.name ?? null,
+          targetEmail: newTicket.email,
+          metadata: {
+            ticketId: newTicket.id,
+            ticketType: newTicket.type ?? "STANDARD",
+            waitlistPosition: entry.position,
+            ...(auditContext.metadata ?? {}),
+          },
+        });
+      }
 
       try {
         await sendWithRetry(() =>

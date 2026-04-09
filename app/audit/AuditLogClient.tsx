@@ -56,6 +56,9 @@ const ACTION_LABELS: Record<string, string> = {
   "suggestion.edit": "Edited Suggestion",
   "suggestion.mark_duplicate": "Marked Duplicate",
   "suggestion.merge": "Merged Suggestions",
+  "waitlist.join": "Joined Waitlist",
+  "waitlist.leave": "Left Waitlist",
+  "waitlist.pull": "Pulled From Waitlist",
   "waitlist.issue_standby": "Issued Standby Tickets",
   "referral.toggle": "Toggled Referrals",
 };
@@ -66,7 +69,7 @@ const ACTION_OPTIONS = [
   { group: "Events", actions: ["event.create", "event.edit", "event.toggle_live", "event.toggle_standby", "event.delete"] },
   { group: "Users", actions: ["user.add_role", "user.remove_role"] },
   { group: "Suggestions", actions: ["suggestion.approve", "suggestion.reject", "suggestion.edit", "suggestion.mark_duplicate", "suggestion.merge"] },
-  { group: "Waitlist", actions: ["waitlist.issue_standby"] },
+  { group: "Waitlist", actions: ["waitlist.join", "waitlist.leave", "waitlist.pull", "waitlist.issue_standby"] },
   { group: "Referrals", actions: ["referral.toggle"] },
   { group: "Notify", actions: ["notify.signup"] },
 ];

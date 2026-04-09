@@ -623,6 +623,23 @@ export async function DELETE(req: Request) {
         with: TICKET_WITH_EVENT_DETAILS,
       });
 
+      await logAuditEvent({
+        action: "waitlist.pull",
+        actor: auth.email!,
+        eventId: ticketToDelete.eventId,
+        eventName: ticketToDelete.event?.name ?? null,
+        targetEmail: rpcData.promoted_email,
+        metadata: {
+          trigger: "ticket.cancel",
+          ticketId: rpcData.promoted_ticket_id,
+          ticketType:
+            rpcData.promoted_ticket_type
+            || promotedTicket?.type
+            || "STANDARD",
+          cancelledTicketId,
+        },
+      });
+
       if (promotedTicket) {
         try {
           await sendTicketEmail({
@@ -864,7 +881,15 @@ export async function PATCH(req: Request) {
       // Let the shared waitlist helper reconcile any newly available public capacity.
       if (typeChanged && ticket?.eventId) {
         try {
-          await pullFromWaitlist(null, ticket.eventId, 1);
+          await pullFromWaitlist(null, ticket.eventId, 1, {
+            actor: auth.email!,
+            metadata: {
+              trigger: "ticket.type_change",
+              sourceTicketId: ticket.id,
+              oldType: currentTicket.type,
+              newType: type,
+            },
+          });
         } catch (waitlistError) {
           console.error(
             "Waitlist conversion error (non-fatal):",
@@ -1528,7 +1553,16 @@ export async function POST(req: Request) {
       // Reconcile any capacity change created by the new ticket type.
       if (typeChanged && updatedTicket?.eventId) {
         try {
-          await pullFromWaitlist(null, updatedTicket.eventId, 1);
+          await pullFromWaitlist(null, updatedTicket.eventId, 1, {
+            actor: auth.email!,
+            metadata: {
+              trigger: "ticket.type_change",
+              sourceTicketId: updatedTicket.id,
+              oldType: existingTicket.type,
+              newType: updatedTicket.type,
+              updated: true,
+            },
+          });
         } catch (waitlistError) {
           console.error(
             "Waitlist conversion error (non-fatal):",

@@ -20,6 +20,7 @@ type AuditAction =
   | "suggestion.edit"
   | "suggestion.mark_duplicate"
   | "suggestion.merge"
+  | "waitlist.pull"
   | "waitlist.issue_standby"
   | "referral.toggle";
 

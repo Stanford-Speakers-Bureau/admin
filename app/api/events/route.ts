@@ -441,7 +441,23 @@ export async function POST(req: Request) {
 
       if (capacityIncreased || reservedDecreased) {
         try {
-          await pullFromWaitlist(adminClient, savedEvent.id);
+          const trigger =
+            capacityIncreased && reservedDecreased
+              ? "event.capacity_increase_and_reserved_decrease"
+              : capacityIncreased
+                ? "event.capacity_increase"
+                : "event.reserved_decrease";
+
+          await pullFromWaitlist(adminClient, savedEvent.id, undefined, {
+            actor: auth.email!,
+            metadata: {
+              trigger,
+              previousCapacity,
+              newCapacity,
+              previousReserved,
+              newReserved,
+            },
+          });
         } catch (waitlistError) {
           console.error(
             "Waitlist conversion error (non-fatal):",
