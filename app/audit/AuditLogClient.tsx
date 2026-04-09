@@ -866,7 +866,7 @@ export default function AuditLogClient() {
                         >
                           {timeAgo(log.created_at)}
                         </td>
-                        <td className="px-4 py-3">
+                        <td className="px-4 py-3 whitespace-nowrap">
                           <div className="space-y-1">
                             <span className={`inline-block border rounded-full px-2.5 py-0.5 text-xs font-medium ${getActionColor(log.action)}`}>
                               {ACTION_LABELS[log.action] || log.action}
@@ -892,7 +892,7 @@ export default function AuditLogClient() {
                             {log.source === "admin" ? "Admin" : "Web"}
                           </span>
                         </td>
-                        <td className="px-4 py-3">
+                        <td className="px-4 py-3 max-w-[260px]">
                           <button
                             type="button"
                             onClick={() => toggleExpandedItem(log.id)}
