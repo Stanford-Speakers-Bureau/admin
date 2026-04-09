@@ -110,7 +110,7 @@ export default function AdminLayoutClient({
         </div>
 
         {/* Nav links */}
-        <nav className="flex-1 overflow-y-auto py-4 px-2 space-y-1">
+        <nav className="flex-1 overflow-y-auto scrollbar-thin py-4 px-2 space-y-1">
           {topItems.map((item) => {
             const active = isNavActive(item);
             return (

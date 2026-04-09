@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState, useEffect } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import Image from "next/image";
 import { PACIFIC_TIMEZONE } from "@/app/lib/constants";
 import { useEventContext } from "@/app/EventContext";
@@ -209,6 +209,7 @@ type EditEventClientProps = {
 
 export default function EditEventClient({ allEvents }: EditEventClientProps) {
   const router = useRouter();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
   const { selectedEventId, setSelectedEventId, upsertEvent } =
     useEventContext();
@@ -259,6 +260,17 @@ export default function EditEventClient({ allEvents }: EditEventClientProps) {
       window.clearTimeout(timeoutId);
     };
   }, [success]);
+
+  useEffect(() => {
+    if (isCreating || !currentEvent) {
+      return;
+    }
+
+    const canonicalPath = `/events/edit/${currentEvent.id}`;
+    if (pathname !== canonicalPath) {
+      router.replace(canonicalPath);
+    }
+  }, [currentEvent, isCreating, pathname, router]);
 
   // Sync form when selected event changes
   useEffect(() => {
@@ -487,6 +499,8 @@ export default function EditEventClient({ allEvents }: EditEventClientProps) {
 
       if (isCreating) {
         router.push(`/events/edit/${savedEvent.id}`);
+      } else {
+        router.refresh();
       }
     } catch (err) {
       console.error("Failed to save event:", err);
