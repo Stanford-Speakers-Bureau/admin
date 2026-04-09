@@ -177,6 +177,8 @@ export default function TicketManagementClient({
   );
   const [editingNameId, setEditingNameId] = useState<string | null>(null);
   const [editingNameValue, setEditingNameValue] = useState("");
+  const [deleteModalTicket, setDeleteModalTicket] = useState<Ticket | null>(null);
+  const [shouldSendCancellationEmail, setShouldSendCancellationEmail] = useState(true);
   const rawAffiliationFilter = searchParams.get("affiliation");
   const affiliationFilter = AFFILIATION_FILTER_ORDER.includes(
     rawAffiliationFilter as TicketAffiliationKey,
@@ -449,17 +451,21 @@ export default function TicketManagementClient({
     return () => clearTimeout(timer);
   }, [search]);
 
-  async function handleDelete(id: string) {
-    if (!confirm("Are you sure you want to delete this ticket?")) return;
+  function openDeleteModal(ticket: Ticket) {
+    setDeleteModalTicket(ticket);
+    setShouldSendCancellationEmail(true);
+  }
 
-    // Find the ticket to check if it was scanned
-    const ticketToDelete = tickets.find((t) => t.id === id);
+  async function confirmDelete() {
+    if (!deleteModalTicket) return;
+    const id = deleteModalTicket.id;
+    const ticketToDelete = deleteModalTicket;
 
     try {
       const response = await fetch("/api/tickets", {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id }),
+        body: JSON.stringify({ id, sendCancellationEmail: shouldSendCancellationEmail }),
       });
 
       if (!response.ok) {
@@ -470,28 +476,34 @@ export default function TicketManagementClient({
       setTickets((prev) => prev.filter((t) => t.id !== id));
       setTotal((prev) => prev - 1);
       // Update scanned/unscanned counts
-      if (ticketToDelete?.scanned) {
+      if (ticketToDelete.scanned) {
         setScannedCount((prev) => prev - 1);
       } else {
         setUnscannedCount((prev) => prev - 1);
       }
-      if (ticketToDelete?.has_fee_waiver) {
+      if (ticketToDelete.has_fee_waiver) {
         setFeeWaiverCount((prev: number) => prev - 1);
       }
       // Update ticket type counts
-      if (ticketToDelete?.type === "STANDARD") {
+      if (ticketToDelete.type === "STANDARD") {
         setStandardCount((prev) => prev - 1);
-      } else if (ticketToDelete?.type === "EXTERNAL") {
+      } else if (ticketToDelete.type === "EXTERNAL") {
         setExternalCount((prev) => prev - 1);
-      } else if (ticketToDelete?.type === "STANDBY") {
+      } else if (ticketToDelete.type === "STANDBY") {
         setStandbyCount((prev) => prev - 1);
       } else {
         setVipCount((prev) => prev - 1);
       }
-      setSuccess("Ticket deleted successfully!");
+      setSuccess(
+        shouldSendCancellationEmail
+          ? "Ticket deleted and cancellation email sent!"
+          : "Ticket deleted successfully!",
+      );
     } catch (err) {
       console.error("Error deleting ticket:", err);
       setError(err instanceof Error ? err.message : "Failed to delete ticket");
+    } finally {
+      setDeleteModalTicket(null);
     }
   }
 
@@ -1748,7 +1760,7 @@ export default function TicketManagementClient({
                           )}
                         </button>
                         <button
-                          onClick={() => handleDelete(ticket.id)}
+                          onClick={() => openDeleteModal(ticket)}
                           className="text-rose-400 hover:text-rose-300 transition-colors"
                           title="Delete ticket"
                         >
@@ -1800,6 +1812,48 @@ export default function TicketManagementClient({
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Delete Ticket Modal */}
+      {deleteModalTicket && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 max-w-md w-full mx-4 shadow-2xl">
+            <h2 className="text-lg font-bold text-white mb-2">Delete Ticket</h2>
+            <p className="text-sm text-zinc-400 mb-4">
+              Are you sure you want to delete the ticket for{" "}
+              <span className="text-white font-semibold">{deleteModalTicket.email}</span>
+              {deleteModalTicket.name && (
+                <> ({deleteModalTicket.name})</>
+              )}
+              ?
+            </p>
+            <label className="flex items-center gap-3 cursor-pointer mb-6">
+              <input
+                type="checkbox"
+                checked={shouldSendCancellationEmail}
+                onChange={(e) => setShouldSendCancellationEmail(e.target.checked)}
+                className="rounded border-zinc-600 text-rose-500 focus:ring-rose-500"
+              />
+              <span className="text-sm text-zinc-300">
+                Send cancellation email to {deleteModalTicket.email}
+              </span>
+            </label>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setDeleteModalTicket(null)}
+                className="px-4 py-2 text-sm font-medium text-zinc-400 hover:text-white transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmDelete}
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-semibold rounded-lg transition-colors"
+              >
+                Delete Ticket
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

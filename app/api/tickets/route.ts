@@ -10,6 +10,7 @@ import {
   verifyAdminRequest,
 } from "@/app/lib/auth";
 import {
+  sendCancellationEmail,
   sendDayOfReminderEmail,
   sendEarlyReminderEmail,
   sendTicketEmail,
@@ -547,7 +548,7 @@ export async function DELETE(req: Request) {
     }
 
     const body = await req.json();
-    const { id } = body;
+    const { id, sendCancellationEmail: shouldSendCancellationEmail } = body;
 
     if (!id || typeof id !== "string") {
       return NextResponse.json(
@@ -556,11 +557,24 @@ export async function DELETE(req: Request) {
       );
     }
 
-    // Fetch the ticket before deleting to get event_id and type
+    // Fetch the ticket before deleting to get event_id, type, and event details for cancellation email
     const ticketToDelete = await db.query.tickets.findFirst({
       where: eq(tickets.id, id),
-      columns: { email: true, eventId: true, type: true, createdAt: true },
-      with: { event: { columns: { name: true } } },
+      columns: { email: true, eventId: true, type: true, name: true, createdAt: true },
+      with: {
+        event: {
+          columns: {
+            id: true,
+            name: true,
+            route: true,
+            startTimeDate: true,
+            venue: true,
+            venueLink: true,
+            tagline: true,
+            imgVersion: true,
+          },
+        },
+      },
     });
 
     if (!ticketToDelete) {
@@ -660,8 +674,29 @@ export async function DELETE(req: Request) {
         ...(heldFor ? { heldFor } : {}),
         ticketId: cancelledTicketId,
         type: ticketToDelete.type,
+        ...(shouldSendCancellationEmail ? { cancellationEmailSent: true } : {}),
       },
     });
+
+    if (shouldSendCancellationEmail && ticketToDelete.eventId && ticketToDelete.event) {
+      try {
+        await sendCancellationEmail({
+          email: ticketToDelete.email,
+          name: ticketToDelete.name ?? null,
+          eventName: ticketToDelete.event.name || "Event",
+          ticketType: ticketToDelete.type || "STANDARD",
+          eventStartTime: ticketToDelete.event.startTimeDate?.toISOString() || null,
+          eventVenue: ticketToDelete.event.venue || null,
+          eventVenueLink: ticketToDelete.event.venueLink || null,
+          eventRoute: ticketToDelete.event.route || null,
+          eventId: ticketToDelete.event.id,
+          imgVersion: ticketToDelete.event.imgVersion ?? null,
+          eventTagline: ticketToDelete.event.tagline || null,
+        });
+      } catch (emailError) {
+        console.error("Cancellation email error (non-fatal):", emailError);
+      }
+    }
 
     if (rpcData?.promoted_ticket_id && rpcData.promoted_email) {
       const promotedTicket = await db.query.tickets.findFirst({
