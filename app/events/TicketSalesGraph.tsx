@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import ReactECharts from "echarts-for-react";
+import { getAnalyticsCardGridStyle } from "@/app/lib/utils";
 
 // ── Types ────────────────────────────────────────────────────────────────
 
@@ -12,12 +13,21 @@ type Milestone = {
   reachedAt: string | null;
 };
 
+type SalesAffiliationKey =
+  | "student"
+  | "faculty"
+  | "affiliate"
+  | "staff"
+  | "member"
+  | "unknown";
+
 type SalesResponse = {
   timestamps: string[];
   totalTickets: number;
   capacity: number;
   vipCount: number;
   standardCount: number;
+  byAffiliation: Record<SalesAffiliationKey, number>;
   milestones: Milestone[];
 };
 
@@ -112,6 +122,51 @@ function ProgressBar({
     </div>
   );
 }
+
+const AFFILIATION_CONFIG = [
+  {
+    key: "student" as const,
+    label: "Student",
+    color: "#3b82f6",
+    bg: "bg-blue-500/10",
+    text: "text-blue-400",
+  },
+  {
+    key: "faculty" as const,
+    label: "Faculty",
+    color: "#8b5cf6",
+    bg: "bg-violet-500/10",
+    text: "text-violet-400",
+  },
+  {
+    key: "affiliate" as const,
+    label: "Affiliate",
+    color: "#06b6d4",
+    bg: "bg-cyan-500/10",
+    text: "text-cyan-400",
+  },
+  {
+    key: "staff" as const,
+    label: "Staff",
+    color: "#10b981",
+    bg: "bg-emerald-500/10",
+    text: "text-emerald-400",
+  },
+  {
+    key: "member" as const,
+    label: "Member",
+    color: "#f59e0b",
+    bg: "bg-amber-500/10",
+    text: "text-amber-400",
+  },
+  {
+    key: "unknown" as const,
+    label: "Unknown",
+    color: "#71717a",
+    bg: "bg-zinc-800/80",
+    text: "text-zinc-400",
+  },
+];
 
 // ── Main Component ───────────────────────────────────────────────────────
 
@@ -427,6 +482,7 @@ export default function TicketSalesGraph({
   const { totalTickets, vipCount, standardCount, milestones } = salesData;
   const effectiveCapacity = capacity > 0 ? capacity : salesData.capacity;
   const fillRate = effectiveCapacity > 0 ? (totalTickets / effectiveCapacity) * 100 : 0;
+  const affiliationCardCount = AFFILIATION_CONFIG.length;
 
   return (
     <div className="flex-1 flex flex-col min-h-0 space-y-5 overflow-y-auto pr-1">
@@ -518,6 +574,49 @@ export default function TicketSalesGraph({
               </span>
             </div>
           </div>
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
+        <div className="mb-4">
+          <h3 className="text-sm font-semibold text-zinc-300">
+            Sales by Affiliation
+          </h3>
+          <p className="mt-1 text-[11px] text-zinc-500">
+            Uses each ticket holder&apos;s highest profile affiliation. Tickets
+            without a matched profile are grouped as Unknown.
+          </p>
+        </div>
+        <div
+          className="grid grid-cols-2 gap-3 analytics-card-grid"
+          style={getAnalyticsCardGridStyle(affiliationCardCount)}
+        >
+          {AFFILIATION_CONFIG.map(({ key, label, color, bg, text }) => {
+            const soldCount = salesData.byAffiliation[key];
+            const share = totalTickets > 0 ? (soldCount / totalTickets) * 100 : 0;
+
+            return (
+              <div
+                key={key}
+                className={`rounded-xl border border-zinc-800 p-4 ${bg}`}
+              >
+                <div className="mb-1 flex items-center justify-between">
+                  <span
+                    className={`text-xs font-semibold uppercase tracking-wider ${text}`}
+                  >
+                    {label}
+                  </span>
+                  <span className={`text-lg font-bold ${text}`}>
+                    {share.toFixed(0)}%
+                  </span>
+                </div>
+                <p className="mb-2 text-sm font-medium text-zinc-300">
+                  {soldCount.toLocaleString()} sold
+                </p>
+                <ProgressBar value={soldCount} max={totalTickets} color={color} />
+              </div>
+            );
+          })}
         </div>
       </div>
 
