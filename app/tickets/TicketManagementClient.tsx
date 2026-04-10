@@ -1395,6 +1395,7 @@ export default function TicketManagementClient({
                           />
                         </td>
                         <td className="px-4 py-2">
+                          <div className="relative">
                           <input
                             type="email"
                             value={row.email}
@@ -1413,22 +1414,19 @@ export default function TicketManagementClient({
                             placeholder="email@example.com"
                             className="w-full px-3 py-2 bg-zinc-800 border border-zinc-600 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 text-sm"
                           />
-                          {emailLookups[index] !== undefined && (
-                            <div className="flex items-center gap-1.5 mt-1.5">
-                              {emailLookups[index] ? (
-                                <>
-                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-500/15 text-amber-300 border border-amber-500/20">
-                                    Existing ticket
-                                  </span>
-                                  {emailLookups[index]!.type !== newTicketType && (
-                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-blue-500/15 text-blue-300 border border-blue-500/20">
-                                      Currently {emailLookups[index]!.type}
-                                    </span>
-                                  )}
-                                </>
-                              ) : null}
+                          {emailLookups[index] ? (
+                            <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1 pointer-events-none">
+                              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-medium bg-amber-500/15 text-amber-400">
+                                Exists
+                              </span>
+                              {emailLookups[index]!.type !== newTicketType && (
+                                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-medium bg-blue-500/15 text-blue-400">
+                                  {emailLookups[index]!.type}
+                                </span>
+                              )}
                             </div>
-                          )}
+                          ) : null}
+                          </div>
                         </td>
                         <td className="px-2 py-2">
                           {newTicketRows.length > 1 ? (
