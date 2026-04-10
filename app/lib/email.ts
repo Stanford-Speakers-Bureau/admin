@@ -1,6 +1,8 @@
 import type { QRCodeToBufferOptions } from "qrcode";
 import QRCode from "qrcode";
+import { buildCancellationLink } from "./cancellation-links";
 import { IMPORTANT_NOTICE_ITEMS, PACIFIC_TIMEZONE } from "./constants";
+import { buildAppleWalletLink } from "./wallet-links";
 import { generateGoogleCalendarUrl } from "./utils";
 
 // emails are so stupid
@@ -704,6 +706,7 @@ function buildQRSection(opts: {
   qrImageSrc: string;
   ticketType: string;
   ticketId: string;
+  appleWalletUrl?: string | null;
   ticketValidTime?: string;
   ticketValidDate?: string;
   attendeeName?: string;
@@ -745,6 +748,8 @@ function buildQRSection(opts: {
         </p>
       ${gmailBlendEnd}`
     : "";
+  const appleWalletUrl = opts.appleWalletUrl
+    || `${baseUrl}/api/tickets/apple-wallet?ticket_id=${opts.ticketId}`;
 
   return `
     <div class="qr-section${opts.isVIP ? " vip-border vip-shadow" : opts.isExternal ? " external-border external-shadow" : ""}" style="background-color: #18181b; padding: 24px; margin-bottom: 24px; text-align: center; ${borderStyle}">
@@ -760,7 +765,7 @@ function buildQRSection(opts: {
       <table width="100%" border="0" cellspacing="0" cellpadding="0" role="presentation" style="margin-top: 16px;">
         <tr>
           <td align="center">
-            <a href="${baseUrl}/api/tickets/apple-wallet?ticket_id=${opts.ticketId}" target="_blank" rel="noopener noreferrer">
+            <a href="${appleWalletUrl}" target="_blank" rel="noopener noreferrer">
               <img src="${baseUrl}/images/add-to-apple-wallet.png" alt="Add to Apple Wallet" width="auto" height="48" style="display: inline-block; height: 48px; border: 0;" />
             </a>
           </td>
@@ -1000,6 +1005,8 @@ type TicketEmailData = {
   eventId?: string | null;
   imgVersion?: number | null;
   eventTagline?: string | null;
+  cancelTicketUrl?: string | null;
+  appleWalletUrl?: string | null;
 };
 
 async function generateTicketEmailHTML(
@@ -1019,7 +1026,8 @@ async function generateTicketEmailHTML(
 
   const baseUrl = getBaseUrl();
   const eventUrl = eventRoute ? `${baseUrl}/events/${eventRoute}` : null;
-  const cancelTicketUrl = ticketId ? `${baseUrl}/cancel/${ticketId}` : null;
+  const cancelTicketUrl = data.cancelTicketUrl ?? null;
+  const appleWalletUrl = data.appleWalletUrl ?? null;
   const isVIP = ticketType?.toUpperCase() === "VIP";
   const isExternal = ticketType?.toUpperCase() === "EXTERNAL";
 
@@ -1133,6 +1141,7 @@ async function generateTicketEmailHTML(
       qrImageSrc,
       ticketType: ticketType || "STANDARD",
       ticketId,
+      appleWalletUrl,
       ticketValidTime,
       ticketValidDate,
       attendeeName,
@@ -1173,7 +1182,7 @@ function generateTicketEmailText(data: TicketEmailData): string {
   const formattedDoorsOpen = doorsOpenTime ? formatPillTime(doorsOpenTime) : null;
   const baseUrl = getBaseUrl();
   const eventUrl = eventRoute ? `${baseUrl}/events/${eventRoute}` : null;
-  const cancelTicketUrl = ticketId ? `${baseUrl}/cancel/${ticketId}` : null;
+  const cancelTicketUrl = data.cancelTicketUrl ?? null;
 
   const isVIP = ticketType?.toUpperCase() === "VIP";
   const isExternal = ticketType?.toUpperCase() === "EXTERNAL";
@@ -1217,12 +1226,31 @@ export async function sendTicketEmail(data: TicketEmailData): Promise<void> {
   const subject = data.eventName
     ? `Your Ticket for ${data.eventName} is enclosed!`
     : "Your Ticket is enclosed!";
-  const textContent = generateTicketEmailText(data);
+  const cancelTicketUrl = await buildCancellationLink({
+    baseUrl: getBaseUrl(),
+    email: data.email,
+    ticketId: data.ticketId,
+    eventStartTime: data.eventStartTime,
+    eventEndTime: data.eventEndTime ?? null,
+  });
+  const appleWalletUrl = await buildAppleWalletLink({
+    baseUrl: getBaseUrl(),
+    email: data.email,
+    ticketId: data.ticketId,
+    eventStartTime: data.eventStartTime,
+    eventEndTime: data.eventEndTime ?? null,
+  });
+  const renderData: TicketEmailData = {
+    ...data,
+    cancelTicketUrl,
+    appleWalletUrl,
+  };
+  const textContent = generateTicketEmailText(renderData);
 
   // Generate QR and prepare cid
   const qrCid = `ticket-qr-${data.ticketId}@stanfordspeakersbureau`;
   const qrBuffer = await generateQRCodePngBuffer(data.ticketId);
-  const htmlContent = await generateTicketEmailHTML(data, {
+  const htmlContent = await generateTicketEmailHTML(renderData, {
     qrCid: qrBuffer ? qrCid : undefined,
   });
 
@@ -1328,7 +1356,7 @@ async function generateDayOfReminderEmailHTML(
 
   const baseUrl = getBaseUrl();
   const eventUrl = eventRoute ? `${baseUrl}/events/${eventRoute}` : null;
-  const cancelTicketUrl = ticketId ? `${baseUrl}/cancel/${ticketId}` : null;
+  const cancelTicketUrl = data.cancelTicketUrl ?? null;
   const isVIP = ticketType?.toUpperCase() === "VIP";
   const isExternal = ticketType?.toUpperCase() === "EXTERNAL";
 
@@ -1444,6 +1472,7 @@ async function generateDayOfReminderEmailHTML(
       qrImageSrc,
       ticketType: ticketType || "STANDARD",
       ticketId,
+      appleWalletUrl: data.appleWalletUrl ?? null,
       ticketValidTime,
       ticketValidDate,
       attendeeName,
@@ -1494,7 +1523,7 @@ function generateDayOfReminderEmailText(
 
   const baseUrl = getBaseUrl();
   const eventUrl = eventRoute ? `${baseUrl}/events/${eventRoute}` : null;
-  const cancelTicketUrl = ticketId ? `${baseUrl}/cancel/${ticketId}` : null;
+  const cancelTicketUrl = data.cancelTicketUrl ?? null;
 
   const isVIP = ticketType?.toUpperCase() === "VIP";
   const isExternal = ticketType?.toUpperCase() === "EXTERNAL";
@@ -1545,12 +1574,31 @@ export async function sendDayOfReminderEmail(
   const subject = data.eventName
     ? `[${formattedDoorsOpen ? `${formattedDoorsOpen} ` : ""}TODAY!] Come see ${data.eventName}${data.eventVenue ? ` @ ${data.eventVenue}` : ""}`
     : "Event Reminder - Today!";
-  const textContent = generateDayOfReminderEmailText(data);
+  const cancelTicketUrl = await buildCancellationLink({
+    baseUrl: getBaseUrl(),
+    email: data.email,
+    ticketId: data.ticketId,
+    eventStartTime: data.eventStartTime,
+    eventEndTime: data.eventEndTime ?? null,
+  });
+  const appleWalletUrl = await buildAppleWalletLink({
+    baseUrl: getBaseUrl(),
+    email: data.email,
+    ticketId: data.ticketId,
+    eventStartTime: data.eventStartTime,
+    eventEndTime: data.eventEndTime ?? null,
+  });
+  const renderData: DayOfReminderEmailData = {
+    ...data,
+    cancelTicketUrl,
+    appleWalletUrl,
+  };
+  const textContent = generateDayOfReminderEmailText(renderData);
 
   // Generate QR and prepare cid
   const qrCid = `ticket-qr-${data.ticketId}@stanfordspeakersbureau`;
   const qrBuffer = await generateQRCodePngBuffer(data.ticketId);
-  const htmlContent = await generateDayOfReminderEmailHTML(data, {
+  const htmlContent = await generateDayOfReminderEmailHTML(renderData, {
     qrCid: qrBuffer ? qrCid : undefined,
   });
 
@@ -1652,9 +1700,13 @@ export type CancellationEmailData = {
 async function generateCancellationEmailHTML(
   data: CancellationEmailData,
 ): Promise<string> {
-  const { eventName, eventStartTime, eventVenue, eventVenueLink } = data;
+  const { eventName, eventStartTime, eventRoute, eventVenue, eventVenueLink } = data;
 
+  const baseUrl = getBaseUrl();
+  const isVIP = data.ticketType?.toUpperCase() === "VIP";
+  const isExternal = data.ticketType?.toUpperCase() === "EXTERNAL";
   const formattedDate = formatFullDateTime(eventStartTime);
+  const eventUrl = eventRoute ? `${baseUrl}/events/${eventRoute}` : null;
 
   const heroCard = buildHeroCard({
     eventName,
@@ -1664,18 +1716,21 @@ async function generateCancellationEmailHTML(
     eventVenueLink,
     eventId: data.eventId,
     imgVersion: data.imgVersion,
+    isVIP,
+    isExternal,
   });
 
   const contentSections: string[] = [];
 
+  const greeting = data.name ? `Hi ${data.name}, your` : "Your";
   contentSections.push(buildParagraph(
-    `Your ticket for ${eventName} has been cancelled.`,
+    `${greeting} ticket for ${eventName} has been cancelled.`,
   ));
 
-  const detailRows: { label: string; value: string; isLink?: boolean; href?: string }[] = [
-    { label: "Event:", value: eventName },
-    { label: "Date & Time:", value: formattedDate },
-  ];
+  const detailRows: { label: string; value: string; isLink?: boolean; href?: string }[] = [];
+  if (data.name) detailRows.push({ label: "Name:", value: data.name });
+  detailRows.push({ label: "Event:", value: eventName });
+  detailRows.push({ label: "Date & Time:", value: formattedDate });
   if (eventVenue) {
     detailRows.push({
       label: "Location:",
@@ -1687,10 +1742,13 @@ async function generateCancellationEmailHTML(
   contentSections.push(buildDetailsCard({
     rows: detailRows,
     ticketTypeBadge: { type: data.ticketType || "STANDARD" },
+    actionButtonHref: eventUrl,
+    isVIP,
+    isExternal,
   }));
 
   contentSections.push(buildParagraph(
-    `If you did not request this cancellation, please contact us immediately at ${FROM_EMAIL}.`,
+    `If you did not request this cancellation, please contact us at ${FROM_EMAIL}.`,
     { color: "#a1a1aa", fontSize: "14px" },
   ));
 
@@ -1707,26 +1765,30 @@ async function generateCancellationEmailHTML(
 
   return buildEmailShell(
     "Ticket Cancellation",
-    buildEmailStyles(),
+    buildEmailStyles({ isVIP, isExternal }),
     bodyContent,
   );
 }
 
 function generateCancellationEmailText(data: CancellationEmailData): string {
-  const { eventName, eventStartTime, eventVenue } = data;
+  const { eventName, eventStartTime, eventRoute, eventVenue } = data;
   const formattedDate = formatFullDateTime(eventStartTime);
+  const baseUrl = getBaseUrl();
+  const eventUrl = eventRoute ? `${baseUrl}/events/${eventRoute}` : null;
+  const greeting = data.name ? `Hi ${data.name}, your` : "Your";
 
   return `
 Ticket Cancelled
 
-Your ticket for ${eventName} has been cancelled.
+${greeting} ticket for ${eventName} has been cancelled.
 
 Event Details:
-- Event: ${eventName}
+${data.name ? `- Name: ${data.name}\n` : ""}- Event: ${eventName}
 - Date & Time: ${formattedDate}
 ${eventVenue ? `- Location: ${eventVenue}\n` : ""}- Ticket Type: ${data.ticketType || "STANDARD"}
+${eventUrl ? `- Event Page: ${eventUrl}` : ""}
 
-If you did not request this cancellation, please contact us immediately at ${FROM_EMAIL}.
+If you did not request this cancellation, please contact us at ${FROM_EMAIL}.
 
 Stanford Speakers Bureau
 For ADA accommodations or other questions, please email ${FROM_EMAIL}
@@ -1805,7 +1867,7 @@ async function generateEarlyReminderEmailHTML(
 
   const baseUrl = getBaseUrl();
   const eventUrl = eventRoute ? `${baseUrl}/events/${eventRoute}` : null;
-  const cancelTicketUrl = ticketId ? `${baseUrl}/cancel/${ticketId}` : null;
+  const cancelTicketUrl = data.cancelTicketUrl ?? null;
   const isVIP = ticketType?.toUpperCase() === "VIP";
   const isExternal = ticketType?.toUpperCase() === "EXTERNAL";
 
@@ -1934,6 +1996,7 @@ async function generateEarlyReminderEmailHTML(
       qrImageSrc,
       ticketType: ticketType || "STANDARD",
       ticketId,
+      appleWalletUrl: data.appleWalletUrl ?? null,
       ticketValidTime,
       ticketValidDate,
       attendeeName,
@@ -1994,7 +2057,7 @@ function generateEarlyReminderEmailText(
 
   const baseUrl = getBaseUrl();
   const eventUrl = eventRoute ? `${baseUrl}/events/${eventRoute}` : null;
-  const cancelTicketUrl = ticketId ? `${baseUrl}/cancel/${ticketId}` : null;
+  const cancelTicketUrl = data.cancelTicketUrl ?? null;
 
   // Build promo section if present
   const promoSection = promo
@@ -2071,12 +2134,31 @@ export async function sendEarlyReminderEmail(
   const subject = data.eventName
     ? `Can you still make it ${isEventTomorrow ? "Tomorrow" : `This ${dayOfWeek}`} @ ${formattedDoorsOpen}? ${data.eventName}${data.eventVenue ? ` @ ${data.eventVenue}` : ""}`
     : "Event Reminder";
-  const textContent = generateEarlyReminderEmailText(data);
+  const cancelTicketUrl = await buildCancellationLink({
+    baseUrl: getBaseUrl(),
+    email: data.email,
+    ticketId: data.ticketId,
+    eventStartTime: data.eventStartTime,
+    eventEndTime: data.eventEndTime ?? null,
+  });
+  const appleWalletUrl = await buildAppleWalletLink({
+    baseUrl: getBaseUrl(),
+    email: data.email,
+    ticketId: data.ticketId,
+    eventStartTime: data.eventStartTime,
+    eventEndTime: data.eventEndTime ?? null,
+  });
+  const renderData: EarlyReminderEmailData = {
+    ...data,
+    cancelTicketUrl,
+    appleWalletUrl,
+  };
+  const textContent = generateEarlyReminderEmailText(renderData);
 
   // Generate QR and prepare cid
   const qrCid = `ticket-qr-${data.ticketId}@stanfordspeakersbureau`;
   const qrBuffer = await generateQRCodePngBuffer(data.ticketId);
-  const htmlContent = await generateEarlyReminderEmailHTML(data, {
+  const htmlContent = await generateEarlyReminderEmailHTML(renderData, {
     qrCid: qrBuffer ? qrCid : undefined,
   });
 
