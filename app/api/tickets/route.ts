@@ -1654,12 +1654,24 @@ export async function POST(req: Request) {
       }
 
       await logAuditEvent({
-        action: "ticket.create",
+        action: typeChanged ? "ticket.update_type" : "ticket.create",
         actor: auth.email!,
         eventId: eventId,
         eventName: updatedTicket!.event?.name ?? null,
         targetEmail: email,
-        metadata: { ticketId: updatedTicket!.id, type: updatedTicket!.type, updated: true },
+        metadata: typeChanged
+          ? {
+              ticketId: updatedTicket!.id,
+              oldType: existingTicket.type,
+              newType: updatedTicket!.type,
+              trigger: "ticket.create_existing_email",
+            }
+          : {
+              ticketId: updatedTicket!.id,
+              type: updatedTicket!.type,
+              updated: true,
+              trigger: "ticket.create_existing_email",
+            },
       });
 
       return NextResponse.json({
