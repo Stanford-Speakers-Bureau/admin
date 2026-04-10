@@ -1,5 +1,3 @@
-import "server-only";
-
 import { createHmac } from "crypto";
 
 const DEV_SECRET = "dev-secret-change-me-in-production-1234";
@@ -9,14 +7,12 @@ const TOKEN_PURPOSE = "ticket_apple_wallet";
 
 function getWalletLinkSecret(): string {
   const secret =
-    process.env.WALLET_LINK_SECRET
-    || process.env.CANCELLATION_LINK_SECRET
-    || process.env.SESSION_SECRET
+    process.env.SESSION_SECRET
     || (process.env.NODE_ENV === "production" ? null : DEV_SECRET);
 
   if (!secret) {
     throw new Error(
-      "WALLET_LINK_SECRET, CANCELLATION_LINK_SECRET, or SESSION_SECRET must be set in production.",
+      "SESSION_SECRET must be set in production.",
     );
   }
 
@@ -50,7 +46,9 @@ function resolveExpirationTimestamp(input: {
     : null;
 
   return Math.floor(
-    Math.max(defaultExpiry, eventBasedExpiry ?? 0) / 1000,
+    (eventBasedExpiry == null
+      ? defaultExpiry
+      : Math.min(defaultExpiry, eventBasedExpiry)) / 1000,
   );
 }
 

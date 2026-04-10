@@ -1,5 +1,3 @@
-import "server-only";
-
 import { createHmac } from "crypto";
 
 const DEV_SECRET = "dev-secret-change-me-in-production-1234";
@@ -49,7 +47,9 @@ function resolveExpirationTimestamp(input: {
     : null;
 
   return Math.floor(
-    Math.max(defaultExpiry, eventBasedExpiry ?? 0) / 1000,
+    (eventBasedExpiry == null
+      ? defaultExpiry
+      : Math.min(defaultExpiry, eventBasedExpiry)) / 1000,
   );
 }
 

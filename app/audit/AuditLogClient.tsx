@@ -82,7 +82,11 @@ const ACTION_FILTER_OPTIONS = ACTION_OPTIONS.flatMap((group) =>
   })),
 );
 const ACTION_VALUES = ACTION_FILTER_OPTIONS.map((option) => option.value);
-const DEFAULT_EXCLUDED_ACTIONS = new Set(["notify.signup", "ticket.get"]);
+const DEFAULT_EXCLUDED_ACTIONS = new Set([
+  "notify.signup",
+  "ticket.get",
+  "waitlist.join",
+]);
 const DEFAULT_ACTION_VALUES = ACTION_VALUES.filter(
   (action) => !DEFAULT_EXCLUDED_ACTIONS.has(action),
 );
@@ -571,7 +575,7 @@ export default function AuditLogClient() {
     selectedActions,
     DEFAULT_ACTION_VALUES,
   )
-    ? "All except Signed up for Notify and Got Ticket"
+    ? "All except Signed up for Notify, Got Ticket, and Joined Waitlist"
     : summarizeSelection(
         ACTION_FILTER_OPTIONS,
         selectedActions,
