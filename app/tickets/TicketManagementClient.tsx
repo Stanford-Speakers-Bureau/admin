@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useEffectEvent, useState } from "react";
+import { useCallback, useEffect, useEffectEvent, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import BulkSendProgress from "@/app/components/BulkSendProgress";
 import { useEventContext } from "@/app/EventContext";
@@ -32,6 +32,7 @@ export type Ticket = {
 };
 
 type TicketRow = { name: string; email: string };
+type EmailLookupResult = { type: string; name: string | null } | null;
 
 type ReminderRecipient = Pick<Ticket, "id" | "email">;
 
@@ -158,6 +159,9 @@ export default function TicketManagementClient({
   const [newTicketEventId, setNewTicketEventId] = useState(selectedEventId);
   const [newTicketType, setNewTicketType] = useState("VIP");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [emailLookups, setEmailLookups] = useState<Record<number, EmailLookupResult>>({});
+  const lookupTimers = useRef<Record<number, ReturnType<typeof setTimeout>>>({});
+  const lookupAbortControllers = useRef<Record<number, AbortController>>({});
   const [offset, setOffset] = useState(0);
   const limit = 50;
   const [resendingEmailId, setResendingEmailId] = useState<string | null>(null);
@@ -193,7 +197,55 @@ export default function TicketManagementClient({
     setNewTicketRows([{ name: "", email: "" }]);
     setNewTicketEventId(selectedEventId);
     setNewTicketType("VIP");
+    setEmailLookups({});
   }
+
+  const debouncedEmailLookup = useCallback(
+    (index: number, email: string, eventId: string) => {
+      // Clear any pending timer for this row
+      if (lookupTimers.current[index]) {
+        clearTimeout(lookupTimers.current[index]);
+      }
+      // Abort any in-flight request for this row
+      if (lookupAbortControllers.current[index]) {
+        lookupAbortControllers.current[index].abort();
+      }
+
+      const trimmed = email.trim().toLowerCase();
+      if (!trimmed || !isValidEmail(trimmed) || !eventId) {
+        setEmailLookups((prev) => {
+          const next = { ...prev };
+          delete next[index];
+          return next;
+        });
+        return;
+      }
+
+      lookupTimers.current[index] = setTimeout(async () => {
+        const controller = new AbortController();
+        lookupAbortControllers.current[index] = controller;
+        try {
+          const res = await fetch(
+            `/api/tickets/lookup?email=${encodeURIComponent(trimmed)}&eventId=${encodeURIComponent(eventId)}`,
+            { signal: controller.signal },
+          );
+          if (!res.ok) return;
+          const data = await res.json();
+          if (!controller.signal.aborted) {
+            setEmailLookups((prev) => ({
+              ...prev,
+              [index]: data.ticket
+                ? { type: data.ticket.type, name: data.ticket.name }
+                : null,
+            }));
+          }
+        } catch {
+          // Aborted or network error — silently ignore
+        }
+      }, 400);
+    },
+    [],
+  );
 
   function handleSpreadsheetPaste(
     index: number,
@@ -234,6 +286,11 @@ export default function TicketManagementClient({
     setSuccess(
       `Loaded ${parsedRows.length} attendee row${parsedRows.length === 1 ? "" : "s"} from pasted data.`,
     );
+
+    // Trigger lookups for all pasted rows
+    parsedRows.forEach((row, offset) => {
+      debouncedEmailLookup(index + offset, row.email, newTicketEventId);
+    });
   }
 
   useEffect(() => {
@@ -1245,7 +1302,14 @@ export default function TicketManagementClient({
                 </label>
                 <select
                   value={newTicketEventId}
-                  onChange={(e) => setNewTicketEventId(e.target.value)}
+                  onChange={(e) => {
+                    const eventId = e.target.value;
+                    setNewTicketEventId(eventId);
+                    setEmailLookups({});
+                    newTicketRows.forEach((row, i) => {
+                      debouncedEmailLookup(i, row.email, eventId);
+                    });
+                  }}
                   className="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50"
                   required
                 >
@@ -1338,25 +1402,52 @@ export default function TicketManagementClient({
                               handleSpreadsheetPaste(index, event)
                             }
                             onChange={(e) => {
+                              const value = e.target.value;
                               setNewTicketRows((prev) => {
                                 const next = [...prev];
-                                next[index] = { ...next[index], email: e.target.value };
+                                next[index] = { ...next[index], email: value };
                                 return next;
                               });
+                              debouncedEmailLookup(index, value, newTicketEventId);
                             }}
                             placeholder="email@example.com"
                             className="w-full px-3 py-2 bg-zinc-800 border border-zinc-600 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 text-sm"
                           />
+                          {emailLookups[index] !== undefined && (
+                            <div className="flex items-center gap-1.5 mt-1.5">
+                              {emailLookups[index] ? (
+                                <>
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-500/15 text-amber-300 border border-amber-500/20">
+                                    Existing ticket
+                                  </span>
+                                  {emailLookups[index]!.type !== newTicketType && (
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-blue-500/15 text-blue-300 border border-blue-500/20">
+                                      Currently {emailLookups[index]!.type}
+                                    </span>
+                                  )}
+                                </>
+                              ) : null}
+                            </div>
+                          )}
                         </td>
                         <td className="px-2 py-2">
                           {newTicketRows.length > 1 ? (
                             <button
                               type="button"
-                              onClick={() =>
+                              onClick={() => {
                                 setNewTicketRows((prev) =>
                                   prev.filter((_, i) => i !== index)
-                                )
-                              }
+                                );
+                                setEmailLookups((prev) => {
+                                  const next: Record<number, EmailLookupResult> = {};
+                                  for (const [k, v] of Object.entries(prev)) {
+                                    const ki = Number(k);
+                                    if (ki < index) next[ki] = v;
+                                    else if (ki > index) next[ki - 1] = v;
+                                  }
+                                  return next;
+                                });
+                              }}
                               className="p-1.5 text-zinc-400 hover:text-red-400 rounded-lg hover:bg-zinc-700 transition-colors"
                               title="Remove row"
                             >
