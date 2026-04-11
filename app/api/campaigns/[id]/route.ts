@@ -108,7 +108,7 @@ export async function PATCH(req: Request, { params }: Params) {
 
     const campaign = await db.query.emailCampaigns.findFirst({
       where: eq(emailCampaigns.id, id),
-      columns: { id: true, status: true },
+      columns: { id: true, status: true, eventId: true, includeHeroCard: true },
     });
 
     if (!campaign) {
@@ -197,6 +197,22 @@ export async function PATCH(req: Request, { params }: Params) {
     ) {
       return NextResponse.json(
         { error: "eventId must be a string or null when provided" },
+        { status: 400 },
+      );
+    }
+    const effectiveHeroEventId =
+      body.eventId !== undefined ? body.eventId : campaign.eventId;
+    const effectiveIncludeHeroCard =
+      body.includeHeroCard !== undefined
+        ? body.includeHeroCard
+        : campaign.includeHeroCard;
+
+    if (
+      effectiveIncludeHeroCard &&
+      (!effectiveHeroEventId || !isValidUUID(effectiveHeroEventId))
+    ) {
+      return NextResponse.json(
+        { error: "A valid hero card eventId is required when includeHeroCard is enabled" },
         { status: 400 },
       );
     }

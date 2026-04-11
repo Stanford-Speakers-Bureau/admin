@@ -111,3 +111,53 @@ export function needsTicketType(audienceType: string): boolean {
 export function isValidAudienceType(value: string): value is AudienceType {
   return Object.prototype.hasOwnProperty.call(AUDIENCE_TYPE_LABELS, value);
 }
+
+export function parseAudienceSegments(input: unknown): AudienceSegment[] {
+  if (!Array.isArray(input)) {
+    return [];
+  }
+
+  return input.flatMap((entry) => {
+    if (typeof entry !== "object" || entry === null || !("type" in entry)) {
+      return [];
+    }
+
+    const type = (entry as { type: unknown }).type;
+    if (typeof type !== "string" || !isValidAudienceType(type)) {
+      return [];
+    }
+
+    const rawEventIds = "eventIds" in entry
+      ? (entry as { eventIds?: unknown }).eventIds
+      : [];
+    if (!Array.isArray(rawEventIds)) {
+      return [];
+    }
+
+    const eventIds = rawEventIds
+      .filter((eventId): eventId is string => typeof eventId === "string")
+      .map((eventId) => eventId.trim())
+      .filter(Boolean);
+
+    if (isEventScoped(type) && eventIds.length === 0) {
+      return [];
+    }
+
+    const ticketType = "ticketType" in entry
+      ? (entry as { ticketType?: unknown }).ticketType
+      : undefined;
+
+    if (needsTicketType(type)) {
+      if (
+        typeof ticketType !== "string" ||
+        !(TICKET_TYPES as readonly string[]).includes(ticketType)
+      ) {
+        return [];
+      }
+
+      return [{ type, eventIds, ticketType }];
+    }
+
+    return [{ type, eventIds }];
+  });
+}

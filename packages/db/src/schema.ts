@@ -4,6 +4,7 @@ import {
   text,
   boolean,
   bigint,
+  integer,
   timestamp,
   numeric,
   uniqueIndex,
@@ -311,6 +312,9 @@ export const emailCampaigns = pgTable(
       .notNull()
       .default(0),
     sendBatchId: text("send_batch_id"),
+    lastProcessedChunkIndex: integer("last_processed_chunk_index")
+      .notNull()
+      .default(-1),
     createdBy: text("created_by").notNull(),
   },
   (t) => [

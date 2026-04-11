@@ -15,6 +15,7 @@ import {
 } from "@/app/lib/bulkSend";
 import {
   AUDIENCE_OPTIONS,
+  parseAudienceSegments,
   TICKET_TYPES,
   type AudienceSegment,
 } from "@/app/lib/campaignAudienceConfig";
@@ -131,10 +132,50 @@ export default function CampaignEditorClient({ campaignId }: CampaignEditorProps
   const isSending = status === "sending";
   const isLocked = status !== "draft";
 
-  // All event IDs referenced across segments
   const allReferencedEventIds = [
-    ...new Set(segments.flatMap((s) => s.eventIds)),
+    ...new Set(segments.flatMap((segment) => segment.eventIds)),
   ];
+
+  const applyCampaignState = useCallback((data: {
+    campaign: {
+      subject: string;
+      body: string;
+      audiences: string;
+      eventId: string | null;
+      includeHeroCard: boolean;
+      status: string;
+      sentAt: string | null;
+      recipientCount: number | null;
+      failedCount?: number | null;
+    };
+    audienceCount?: number | null;
+  }) => {
+    const c = data.campaign;
+    setSubject(c.subject);
+    setBody(c.body);
+    try {
+      setSegments(parseAudienceSegments(JSON.parse(c.audiences || "[]")));
+    } catch {
+      setSegments([]);
+    }
+    setHeroEventId(c.eventId ?? "");
+    setIncludeHeroCard(c.includeHeroCard);
+    setStatus(c.status);
+    setSentAt(c.sentAt);
+    setRecipientCount(c.recipientCount);
+    setFailedCount(c.failedCount ?? 0);
+    setAudienceCount(data.audienceCount ?? null);
+  }, []);
+
+  const refreshCampaign = useCallback(async (id: string) => {
+    const res = await fetch(`/api/campaigns/${id}`);
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.error || "Failed to refresh campaign");
+    }
+    applyCampaignState(data);
+    return data;
+  }, [applyCampaignState]);
 
   // Load existing campaign
   useEffect(() => {
@@ -147,24 +188,11 @@ export default function CampaignEditorClient({ campaignId }: CampaignEditorProps
           setError(data.error);
           return;
         }
-        const c = data.campaign;
-        setSubject(c.subject);
-        setBody(c.body);
-        try {
-          setSegments(JSON.parse(c.audiences || "[]"));
-        } catch {
-          setSegments([]);
-        }
-        setHeroEventId(c.eventId ?? "");
-        setIncludeHeroCard(c.includeHeroCard);
-        setStatus(c.status);
-        setSentAt(c.sentAt);
-        setRecipientCount(c.recipientCount);
-        setFailedCount(c.failedCount ?? 0);
+        applyCampaignState(data);
       })
       .catch(() => setError("Failed to load campaign"))
       .finally(() => setLoading(false));
-  }, [campaignId]);
+  }, [campaignId, applyCampaignState]);
 
   useEffect(() => {
     setAudienceCount(null);
@@ -222,6 +250,19 @@ export default function CampaignEditorClient({ campaignId }: CampaignEditorProps
       }
       if (opt?.needsTicketType && !seg.ticketType) {
         setError(`Select a ticket type for "${opt.label}"`);
+        return null;
+      }
+    }
+    if (includeHeroCard) {
+      const referencedEventIds = new Set(
+        segments.flatMap((segment) => segment.eventIds),
+      );
+      if (!heroEventId) {
+        setError("Select an event for the hero card");
+        return null;
+      }
+      if (!referencedEventIds.has(heroEventId)) {
+        setError("Hero card event must be one of the selected audience events");
         return null;
       }
     }
@@ -335,41 +376,61 @@ export default function CampaignEditorClient({ campaignId }: CampaignEditorProps
 
     setStatus("sending");
 
-    const finalState = await runChunkedSend({
-      items: emails,
-      chunkSize: EMAIL_CHUNK_SIZE,
-      label: `Sending "${subject}"`,
-      onProgress: setSendState,
-      sendChunk: async (chunk, context) => {
-        const res = await fetch(`/api/campaigns/${id}/send`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            emails: chunk,
-            auditBatchId: context.batchId,
-            chunkIndex: context.chunkIndex,
-            chunkCount: context.chunkCount,
-          }),
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || "Send failed");
-        return data;
-      },
-    });
+    try {
+      const finalState = await runChunkedSend({
+        items: emails,
+        chunkSize: EMAIL_CHUNK_SIZE,
+        label: `Sending "${subject}"`,
+        onProgress: setSendState,
+        shouldAbortOnError: (error) =>
+          typeof error === "object" &&
+          error !== null &&
+          "fatal" in error &&
+          error.fatal === true,
+        sendChunk: async (chunk, context) => {
+          const res = await fetch(`/api/campaigns/${id}/send`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              emails: chunk,
+              auditBatchId: context.batchId,
+              chunkIndex: context.chunkIndex,
+              chunkCount: context.chunkCount,
+            }),
+          });
+          const data = await res.json();
+          if (!res.ok) {
+            const error = new Error(data.error || "Send failed") as Error & {
+              fatal?: boolean;
+              status?: number;
+            };
+            error.status = res.status;
+            error.fatal = res.status >= 400 && res.status < 500;
+            throw error;
+          }
+          return data;
+        },
+      });
 
-    const completedAt = new Date().toISOString();
-    setStatus(finalState.failed > 0 ? "partial" : "sent");
-    setSentAt(completedAt);
-    setRecipientCount(finalState.sent);
-    setFailedCount(finalState.failed);
-    if (finalState.failed > 0) {
-      setError(
-        `Campaign finished with ${finalState.failed} failed email${finalState.failed === 1 ? "" : "s"}. Successful deliveries have been recorded.`,
-      );
-    } else {
-      setSuccess("Campaign sent successfully");
+      const refreshed = await refreshCampaign(id);
+      const refreshedCampaign = refreshed.campaign;
+      if (refreshedCampaign.status === "partial") {
+        const failed = refreshedCampaign.failedCount ?? finalState.failed;
+        setError(
+          `Campaign finished with ${failed} failed email${failed === 1 ? "" : "s"}. Successful deliveries have been recorded.`,
+        );
+      } else {
+        setSuccess("Campaign sent successfully");
+      }
+    } catch (err) {
+      try {
+        await refreshCampaign(id);
+      } catch {
+        // best effort
+      }
+      setError(err instanceof Error ? err.message : "Send failed");
     }
-  }, [saveDraft, subject]);
+  }, [refreshCampaign, saveDraft, subject]);
 
   const handleDelete = useCallback(async () => {
     if (!savedId) return;

@@ -96,6 +96,28 @@ export async function POST(req: Request) {
         { status: 400 },
       );
     }
+    if (includeHeroCard !== undefined && typeof includeHeroCard !== "boolean") {
+      return NextResponse.json(
+        { error: "includeHeroCard must be a boolean when provided" },
+        { status: 400 },
+      );
+    }
+    if (
+      eventId !== undefined &&
+      eventId !== null &&
+      typeof eventId !== "string"
+    ) {
+      return NextResponse.json(
+        { error: "eventId must be a string or null when provided" },
+        { status: 400 },
+      );
+    }
+    if (includeHeroCard && (!eventId || !isValidUUID(eventId))) {
+      return NextResponse.json(
+        { error: "A valid hero card eventId is required when includeHeroCard is enabled" },
+        { status: 400 },
+      );
+    }
 
     const [campaign] = await db
       .insert(emailCampaigns)

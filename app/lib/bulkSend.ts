@@ -25,6 +25,7 @@ type RunChunkedSendOptions<T> = {
   chunkSize: number;
   label: string;
   onProgress: (state: BulkSendProgressState) => void;
+  shouldAbortOnError?: (error: unknown) => boolean;
   sendChunk: (
     chunk: T[],
     context: BulkSendChunkContext,
@@ -40,6 +41,7 @@ export async function runChunkedSend<T>({
   chunkSize,
   label,
   onProgress,
+  shouldAbortOnError,
   sendChunk,
 }: RunChunkedSendOptions<T>): Promise<BulkSendProgressState> {
   const batchId = globalThis.crypto?.randomUUID?.() ??
@@ -73,7 +75,17 @@ export async function runChunkedSend<T>({
         failed: state.failed + (result.failed ?? 0),
         skipped: state.skipped + (result.skipped ?? 0),
       };
-    } catch {
+    } catch (error) {
+      if (shouldAbortOnError?.(error)) {
+        state = {
+          ...state,
+          active: false,
+          done: true,
+        };
+        onProgress(state);
+        throw error;
+      }
+
       state = {
         ...state,
         failed: state.failed + chunk.length,

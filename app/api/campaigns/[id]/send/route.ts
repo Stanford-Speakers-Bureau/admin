@@ -155,6 +155,7 @@ export async function POST(req: Request, { params }: Params) {
           sentAt: null,
           recipientCount: 0,
           failedCount: 0,
+          lastProcessedChunkIndex: -1,
           updatedAt: new Date(),
         })
         .where(
@@ -219,6 +220,19 @@ export async function POST(req: Request, { params }: Params) {
       );
     }
 
+    const expectedChunkIndex = (activeCampaign.lastProcessedChunkIndex ?? -1) + 1;
+    if (chunkIndex !== expectedChunkIndex) {
+      return NextResponse.json(
+        {
+          error:
+            chunkIndex <= (activeCampaign.lastProcessedChunkIndex ?? -1)
+              ? "This send chunk was already processed"
+              : "Send chunks must be processed in order",
+        },
+        { status: 409 },
+      );
+    }
+
     const allowedEmails = await resolveSegments(
       parseAudiences(activeCampaign.audiences),
     );
@@ -268,6 +282,7 @@ export async function POST(req: Request, { params }: Params) {
       .set({
         recipientCount: sql`coalesce(${emailCampaigns.recipientCount}, 0) + ${sent}`,
         failedCount: sql`coalesce(${emailCampaigns.failedCount}, 0) + ${failed}`,
+        lastProcessedChunkIndex: chunkIndex,
         status: isFinalChunk
           ? sql`case when coalesce(${emailCampaigns.failedCount}, 0) + ${failed} > 0 then 'partial' else 'sent' end`
           : "sending",
@@ -279,12 +294,14 @@ export async function POST(req: Request, { params }: Params) {
         and(
           eq(emailCampaigns.id, id),
           eq(emailCampaigns.sendBatchId, normalizedAuditBatchId),
+          eq(emailCampaigns.lastProcessedChunkIndex, chunkIndex - 1),
         ),
       )
       .returning({
         status: emailCampaigns.status,
         recipientCount: emailCampaigns.recipientCount,
         failedCount: emailCampaigns.failedCount,
+        lastProcessedChunkIndex: emailCampaigns.lastProcessedChunkIndex,
       });
 
     if (!updatedCampaign) {

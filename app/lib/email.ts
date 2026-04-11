@@ -2,6 +2,7 @@ import type { QRCodeToBufferOptions } from "qrcode";
 import QRCode from "qrcode";
 import { buildCancellationLink } from "./cancellation-links";
 import { IMPORTANT_NOTICE_ITEMS, PACIFIC_TIMEZONE } from "./constants";
+import { hasUnsafeHeaderChars, isValidEmail } from "./validation";
 import { buildAppleWalletLink } from "./wallet-links";
 import { generateGoogleCalendarUrl } from "./utils";
 
@@ -3105,6 +3106,13 @@ function generateCampaignEmailHTML(data: CampaignEmailData): string {
 export async function sendCampaignEmail(
   data: CampaignEmailData,
 ): Promise<void> {
+  if (!isValidEmail(data.email) || hasUnsafeHeaderChars(data.email)) {
+    throw new Error("Invalid campaign email recipient");
+  }
+  if (hasUnsafeHeaderChars(data.subject)) {
+    throw new Error("Invalid campaign email subject");
+  }
+
   if (process.env.DISABLE_EMAIL?.toLowerCase().trim() === "true") {
     console.log(`Email disabled. Skipping campaign email to ${data.email}`);
     return;
