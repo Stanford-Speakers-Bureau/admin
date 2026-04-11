@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 import { verifyAdminRequest } from "@/app/lib/auth";
 import { db, eq, emailCampaigns } from "@ssb/db";
-import { isValidUUID } from "@/app/lib/validation";
+import {
+  hasUnsafeHeaderChars,
+  isValidUUID,
+} from "@/app/lib/validation";
 import {
   validateSegments,
   parseAudiences,
@@ -10,6 +13,15 @@ import {
 } from "@/app/lib/campaignAudience";
 
 type Params = { params: Promise<{ id: string }> };
+
+function validateCampaignSubject(subject: unknown): string | null {
+  if (typeof subject !== "string") return null;
+  const trimmedSubject = subject.trim();
+  if (!trimmedSubject) return null;
+  if (trimmedSubject.length > 200) return null;
+  if (hasUnsafeHeaderChars(trimmedSubject)) return null;
+  return trimmedSubject;
+}
 
 export async function GET(_req: Request, { params }: Params) {
   try {
@@ -62,6 +74,7 @@ export async function GET(_req: Request, { params }: Params) {
         sentAt: campaign.sentAt?.toISOString() ?? null,
         sentBy: campaign.sentBy,
         recipientCount: campaign.recipientCount,
+        failedCount: campaign.failedCount,
         createdBy: campaign.createdBy,
         createdAt: campaign.createdAt.toISOString(),
         updatedAt: campaign.updatedAt.toISOString(),
@@ -105,10 +118,6 @@ export async function PATCH(req: Request, { params }: Params) {
       audiences?: AudienceSegment[];
       eventId?: string | null;
       includeHeroCard?: boolean;
-      status?: string;
-      sentAt?: string;
-      sentBy?: string;
-      recipientCount?: number;
     };
     try {
       body = await req.json();
@@ -116,20 +125,30 @@ export async function PATCH(req: Request, { params }: Params) {
       return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
     }
 
-    // Only allow status transitions: draft->sending, sending->sent
-    if (body.status) {
-      const allowed =
-        (campaign.status === "draft" && (body.status === "sending" || body.status === "sent")) ||
-        (campaign.status === "sending" && body.status === "sent");
-      if (!allowed && body.status !== campaign.status) {
-        return NextResponse.json(
-          { error: `Cannot change status from ${campaign.status} to ${body.status}` },
-          { status: 400 },
-        );
-      }
-    } else if (campaign.status !== "draft") {
+    if (campaign.status !== "draft") {
       return NextResponse.json(
         { error: "Can only edit draft campaigns" },
+        { status: 400 },
+      );
+    }
+
+    const unexpectedFields = [
+      "status",
+      "sentAt",
+      "sentBy",
+      "recipientCount",
+      "failedCount",
+      "sendBatchId",
+    ].filter((field) =>
+      Object.prototype.hasOwnProperty.call(
+        body as Record<string, unknown>,
+        field,
+      )
+    );
+
+    if (unexpectedFields.length > 0) {
+      return NextResponse.json(
+        { error: `Cannot update server-managed fields: ${unexpectedFields.join(", ")}` },
         { status: 400 },
       );
     }
@@ -141,24 +160,25 @@ export async function PATCH(req: Request, { params }: Params) {
       );
     }
 
-    if (body.subject !== undefined && body.subject.length > 200) {
+    if (body.subject !== undefined && !validateCampaignSubject(body.subject)) {
       return NextResponse.json(
-        { error: "subject must be 200 characters or less" },
+        {
+          error:
+            "subject must be non-empty, 200 characters or less, and cannot contain line breaks",
+        },
         { status: 400 },
       );
     }
 
     const updates: Record<string, unknown> = { updatedAt: new Date() };
-    if (body.subject !== undefined) updates.subject = body.subject.trim();
+    if (body.subject !== undefined) {
+      updates.subject = validateCampaignSubject(body.subject)!;
+    }
     if (body.body !== undefined) updates.body = body.body;
     if (body.audiences !== undefined) updates.audiences = JSON.stringify(body.audiences);
     if (body.eventId !== undefined)
       updates.eventId = body.eventId && isValidUUID(body.eventId) ? body.eventId : null;
     if (body.includeHeroCard !== undefined) updates.includeHeroCard = body.includeHeroCard;
-    if (body.status !== undefined) updates.status = body.status;
-    if (body.sentAt !== undefined) updates.sentAt = new Date(body.sentAt);
-    if (body.sentBy !== undefined) updates.sentBy = body.sentBy;
-    if (body.recipientCount !== undefined) updates.recipientCount = body.recipientCount;
 
     const [updated] = await db
       .update(emailCampaigns)

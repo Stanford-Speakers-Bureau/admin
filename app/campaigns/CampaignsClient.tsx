@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { AUDIENCE_TYPE_LABELS } from "@/app/lib/campaignAudienceConfig";
 
 type Campaign = {
   id: string;
@@ -14,27 +15,18 @@ type Campaign = {
   sentAt: string | null;
   sentBy: string | null;
   recipientCount: number | null;
+  failedCount: number;
   createdBy: string;
   createdAt: string;
   updatedAt: string;
-};
-
-const AUDIENCE_LABELS: Record<string, string> = {
-  event_ticketholders: "All ticket holders",
-  event_ticket_type: "Ticket holders by type",
-  event_notify_no_ticket: "Notify list (no ticket)",
-  event_notify: "Notify list (all)",
-  event_not_checked_in: "Not checked in",
-  event_waitlist: "On waitlist",
-  event_past_attendees: "Checked-in attendees",
-  all_users: "All users",
-  past_attendees: "Past attendees",
 };
 
 function StatusBadge({ status }: { status: string }) {
   const styles =
     status === "sent"
       ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30"
+      : status === "partial"
+        ? "bg-amber-500/10 text-amber-300 border-amber-500/30"
       : status === "sending"
         ? "bg-amber-500/10 text-amber-400 border-amber-500/30"
         : "bg-zinc-700/30 text-zinc-400 border-zinc-600/30";
@@ -218,13 +210,15 @@ export default function CampaignsClient() {
                       {(() => {
                         try {
                           const entries = JSON.parse(c.audiences || "[]") as { type: string }[];
-                          return entries.map((e) => AUDIENCE_LABELS[e.type] || e.type).join(", ") || "\u2014";
+                          return entries
+                            .map((e) => AUDIENCE_TYPE_LABELS[e.type as keyof typeof AUDIENCE_TYPE_LABELS] || e.type)
+                            .join(", ") || "\u2014";
                         } catch { return "\u2014"; }
                       })()}
                     </td>
                     <td className="px-6 py-4 text-sm text-zinc-400">
-                      {c.status === "sent" && c.recipientCount != null
-                        ? c.recipientCount.toLocaleString()
+                      {(c.status === "sent" || c.status === "partial") && c.recipientCount != null
+                        ? `${c.recipientCount.toLocaleString()}${c.failedCount > 0 ? ` sent, ${c.failedCount.toLocaleString()} failed` : ""}`
                         : "\u2014"}
                     </td>
                     <td className="px-6 py-4 text-sm text-zinc-500 whitespace-nowrap">

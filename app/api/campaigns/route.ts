@@ -2,11 +2,20 @@ import { NextResponse } from "next/server";
 import { verifyAdminRequest } from "@/app/lib/auth";
 import { db, desc, emailCampaigns } from "@ssb/db";
 import { logAuditEvent } from "@/app/lib/audit";
-import { isValidUUID } from "@/app/lib/validation";
+import { hasUnsafeHeaderChars, isValidUUID } from "@/app/lib/validation";
 import {
   validateSegments,
   type AudienceSegment,
 } from "@/app/lib/campaignAudience";
+
+function validateCampaignSubject(subject: unknown): string | null {
+  if (typeof subject !== "string") return null;
+  const trimmedSubject = subject.trim();
+  if (!trimmedSubject) return null;
+  if (trimmedSubject.length > 200) return null;
+  if (hasUnsafeHeaderChars(trimmedSubject)) return null;
+  return trimmedSubject;
+}
 
 export async function GET() {
   try {
@@ -34,6 +43,7 @@ export async function GET() {
         sentAt: c.sentAt?.toISOString() ?? null,
         sentBy: c.sentBy,
         recipientCount: c.recipientCount,
+        failedCount: c.failedCount,
         createdBy: c.createdBy,
         createdAt: c.createdAt.toISOString(),
         updatedAt: c.updatedAt.toISOString(),
@@ -70,15 +80,13 @@ export async function POST(req: Request) {
 
     const { subject, body: emailBody, audiences, eventId, includeHeroCard } = body;
 
-    if (!subject || typeof subject !== "string" || !subject.trim()) {
+    const validatedSubject = validateCampaignSubject(subject);
+    if (!validatedSubject) {
       return NextResponse.json(
-        { error: "subject is required" },
-        { status: 400 },
-      );
-    }
-    if (subject.length > 200) {
-      return NextResponse.json(
-        { error: "subject must be 200 characters or less" },
+        {
+          error:
+            "subject is required, must be 200 characters or less, and cannot contain line breaks",
+        },
         { status: 400 },
       );
     }
@@ -92,7 +100,7 @@ export async function POST(req: Request) {
     const [campaign] = await db
       .insert(emailCampaigns)
       .values({
-        subject: subject.trim(),
+        subject: validatedSubject,
         body: typeof emailBody === "string" ? emailBody : "",
         audiences: JSON.stringify(audiences),
         eventId: eventId && isValidUUID(eventId) ? eventId : null,
@@ -104,7 +112,7 @@ export async function POST(req: Request) {
     await logAuditEvent({
       action: "campaign.create",
       actor: auth.email!,
-      metadata: { campaignId: campaign.id, subject: subject.trim() },
+      metadata: { campaignId: campaign.id, subject: validatedSubject },
     });
 
     return NextResponse.json({ campaign }, { status: 201 });

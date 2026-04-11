@@ -307,6 +307,10 @@ export const emailCampaigns = pgTable(
     sentAt: timestamp("sent_at", { withTimezone: true }),
     sentBy: text("sent_by"),
     recipientCount: bigint("recipient_count", { mode: "number" }),
+    failedCount: bigint("failed_count", { mode: "number" })
+      .notNull()
+      .default(0),
+    sendBatchId: text("send_batch_id"),
     createdBy: text("created_by").notNull(),
   },
   (t) => [

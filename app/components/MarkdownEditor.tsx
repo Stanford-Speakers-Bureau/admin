@@ -1,28 +1,35 @@
 "use client";
 
-import { useRef, useState, useCallback } from "react";
+import { useRef, useState, useCallback, useId } from "react";
 import ReactMarkdown from "react-markdown";
 import rehypeRaw from "rehype-raw";
 import rehypeSanitize from "rehype-sanitize";
 import { sanitizeSchema } from "@/app/lib/sanitize";
 
 type MarkdownEditorProps = {
+  id?: string;
   value: string;
   onChange: (value: string) => void;
   placeholder?: string;
   rows?: number;
   label: string;
+  ariaLabel?: string;
 };
 
 export default function MarkdownEditor({
+  id,
   value,
   onChange,
   placeholder,
   rows = 4,
   label,
+  ariaLabel,
 }: MarkdownEditorProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [showPreview, setShowPreview] = useState(false);
+  const generatedId = useId();
+  const textareaId = id ?? generatedId;
+  const accessibleLabel = (ariaLabel ?? label) || "Markdown editor";
 
   const wrapSelection = useCallback(
     (prefix: string, suffix: string, placeholder_text?: string) => {
@@ -100,9 +107,14 @@ export default function MarkdownEditor({
   return (
     <div>
       <div className="flex items-center justify-between mb-2">
-        <label className="block text-sm font-medium text-zinc-300">
-          {label}
-        </label>
+        {label ? (
+          <label
+            htmlFor={textareaId}
+            className="block text-sm font-medium text-zinc-300"
+          >
+            {label}
+          </label>
+        ) : <span />}
         <button
           type="button"
           onClick={() => setShowPreview(!showPreview)}
@@ -160,6 +172,8 @@ export default function MarkdownEditor({
             </button>
           </div>
           <textarea
+            id={textareaId}
+            aria-label={accessibleLabel}
             ref={textareaRef}
             value={value}
             onChange={(e) => onChange(e.target.value)}

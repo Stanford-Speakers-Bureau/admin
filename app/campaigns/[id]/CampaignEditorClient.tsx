@@ -13,39 +13,13 @@ import {
   BulkSendProgressState,
   runChunkedSend,
 } from "@/app/lib/bulkSend";
+import {
+  AUDIENCE_OPTIONS,
+  TICKET_TYPES,
+  type AudienceSegment,
+} from "@/app/lib/campaignAudienceConfig";
 
 const EMAIL_CHUNK_SIZE = 50;
-
-type AudienceType =
-  | "event_ticketholders"
-  | "event_ticket_type"
-  | "event_notify_no_ticket"
-  | "event_notify"
-  | "event_not_checked_in"
-  | "event_waitlist"
-  | "event_past_attendees"
-  | "all_users"
-  | "past_attendees";
-
-type AudienceSegment = {
-  type: AudienceType;
-  eventIds: string[];
-  ticketType?: string;
-};
-
-const TICKET_TYPES = ["STANDARD", "VIP", "EXTERNAL", "STANDBY"] as const;
-
-const AUDIENCE_OPTIONS: { value: AudienceType; label: string; needsEvent: boolean; needsTicketType?: boolean }[] = [
-  { value: "event_ticketholders", label: "All ticket holders", needsEvent: true },
-  { value: "event_ticket_type", label: "Ticket holders by type", needsEvent: true, needsTicketType: true },
-  { value: "event_notify", label: "Notify list (all)", needsEvent: true },
-  { value: "event_notify_no_ticket", label: "Notify list (no ticket)", needsEvent: true },
-  { value: "event_not_checked_in", label: "Not checked in", needsEvent: true },
-  { value: "event_waitlist", label: "On waitlist", needsEvent: true },
-  { value: "event_past_attendees", label: "Checked-in attendees", needsEvent: true },
-  { value: "all_users", label: "All registered users", needsEvent: false },
-  { value: "past_attendees", label: "All past event attendees", needsEvent: false },
-];
 
 // ── Multi-event picker with tags ────────────────────────────────────────────
 
@@ -135,6 +109,7 @@ export default function CampaignEditorClient({ campaignId }: CampaignEditorProps
   const [status, setStatus] = useState<string>("draft");
   const [sentAt, setSentAt] = useState<string | null>(null);
   const [recipientCount, setRecipientCount] = useState<number | null>(null);
+  const [failedCount, setFailedCount] = useState<number>(0);
 
   // UI state
   const [loading, setLoading] = useState(!!campaignId);
@@ -152,6 +127,9 @@ export default function CampaignEditorClient({ campaignId }: CampaignEditorProps
   const [deleting, setDeleting] = useState(false);
 
   const isSent = status === "sent";
+  const isPartial = status === "partial";
+  const isSending = status === "sending";
+  const isLocked = status !== "draft";
 
   // All event IDs referenced across segments
   const allReferencedEventIds = [
@@ -182,6 +160,7 @@ export default function CampaignEditorClient({ campaignId }: CampaignEditorProps
         setStatus(c.status);
         setSentAt(c.sentAt);
         setRecipientCount(c.recipientCount);
+        setFailedCount(c.failedCount ?? 0);
         setAudienceCount(data.audienceCount ?? null);
       })
       .catch(() => setError("Failed to load campaign"))
@@ -209,7 +188,7 @@ export default function CampaignEditorClient({ campaignId }: CampaignEditorProps
     setSegments((prev) => prev.filter((_, i) => i !== index));
   }, []);
 
-  const updateSegmentType = useCallback((index: number, type: AudienceType) => {
+  const updateSegmentType = useCallback((index: number, type: AudienceSegment["type"]) => {
     setSegments((prev) =>
       prev.map((s, i) => (i === index ? { ...s, type, eventIds: [], ticketType: undefined } : s)),
     );
@@ -366,7 +345,12 @@ export default function CampaignEditorClient({ campaignId }: CampaignEditorProps
         const res = await fetch(`/api/campaigns/${id}/send`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ emails: chunk, auditBatchId: context.batchId }),
+          body: JSON.stringify({
+            emails: chunk,
+            auditBatchId: context.batchId,
+            chunkIndex: context.chunkIndex,
+            chunkCount: context.chunkCount,
+          }),
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "Send failed");
@@ -374,21 +358,18 @@ export default function CampaignEditorClient({ campaignId }: CampaignEditorProps
       },
     });
 
-    try {
-      await fetch(`/api/campaigns/${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          status: "sent",
-          sentAt: new Date().toISOString(),
-          sentBy: "admin",
-          recipientCount: finalState.sent,
-        }),
-      });
-      setStatus("sent");
-      setSentAt(new Date().toISOString());
-      setRecipientCount(finalState.sent);
-    } catch { /* sent even if finalize fails */ }
+    const completedAt = new Date().toISOString();
+    setStatus(finalState.failed > 0 ? "partial" : "sent");
+    setSentAt(completedAt);
+    setRecipientCount(finalState.sent);
+    setFailedCount(finalState.failed);
+    if (finalState.failed > 0) {
+      setError(
+        `Campaign finished with ${finalState.failed} failed email${finalState.failed === 1 ? "" : "s"}. Successful deliveries have been recorded.`,
+      );
+    } else {
+      setSuccess("Campaign sent successfully");
+    }
   }, [saveDraft, subject]);
 
   const handleDelete = useCallback(async () => {
@@ -428,7 +409,7 @@ export default function CampaignEditorClient({ campaignId }: CampaignEditorProps
             </svg>
           </button>
           <h1 className="text-2xl font-bold text-white font-serif">
-            {isSent ? "Campaign Details" : savedId ? "Edit Campaign" : "New Campaign"}
+            {isLocked ? "Campaign Details" : savedId ? "Edit Campaign" : "New Campaign"}
           </h1>
         </div>
         <button onClick={() => setShowPreview(!showPreview)} className="lg:hidden px-3 py-2 text-sm text-zinc-400 hover:text-white bg-zinc-800 rounded-lg transition-colors">
@@ -436,14 +417,28 @@ export default function CampaignEditorClient({ campaignId }: CampaignEditorProps
         </button>
       </div>
 
-      {isSent && (
+      {(isSent || isPartial) && (
         <div className="mb-6 px-4 py-3 bg-emerald-500/10 border border-emerald-500/30 rounded-xl flex items-center gap-3">
           <svg className="w-5 h-5 text-emerald-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
           <p className="text-emerald-400 text-sm">
-            Sent to {recipientCount?.toLocaleString() ?? "?"} recipients
+            {isPartial ? "Partially sent" : "Sent"} to {recipientCount?.toLocaleString() ?? "?"} recipients
+            {isPartial && failedCount > 0
+              ? ` with ${failedCount.toLocaleString()} failed`
+              : ""}
             {sentAt && ` on ${new Date(sentAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit", timeZone: "America/Los_Angeles" })}`}
+          </p>
+        </div>
+      )}
+
+      {isSending && !sendState?.active && (
+        <div className="mb-6 px-4 py-3 bg-amber-500/10 border border-amber-500/30 rounded-xl flex items-center gap-3">
+          <svg className="w-5 h-5 text-amber-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <p className="text-amber-300 text-sm">
+            This campaign is marked as sending and is locked from further edits.
           </p>
         </div>
       )}
@@ -485,7 +480,7 @@ export default function CampaignEditorClient({ campaignId }: CampaignEditorProps
               value={subject}
               onChange={(e) => setSubject(e.target.value)}
               placeholder="Enter email subject..."
-              disabled={isSent}
+              disabled={isLocked}
               maxLength={200}
               className="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 disabled:opacity-50 disabled:cursor-not-allowed"
             />
@@ -510,15 +505,19 @@ export default function CampaignEditorClient({ campaignId }: CampaignEditorProps
                       <span className="text-xs text-zinc-500 font-medium shrink-0">#{idx + 1}</span>
                       <select
                         value={seg.type}
-                        onChange={(e) => updateSegmentType(idx, e.target.value as AudienceType)}
-                        disabled={isSent}
+                        onChange={(e) =>
+                          updateSegmentType(
+                            idx,
+                            e.target.value as AudienceSegment["type"],
+                          )}
+                        disabled={isLocked}
                         className="flex-1 px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-white focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 disabled:opacity-50"
                       >
                         {AUDIENCE_OPTIONS.map((o) => (
                           <option key={o.value} value={o.value}>{o.label}</option>
                         ))}
                       </select>
-                      {!isSent && (
+                      {!isLocked && (
                         <button
                           onClick={() => removeSegment(idx)}
                           className="text-zinc-500 hover:text-rose-400 transition-colors shrink-0"
@@ -535,7 +534,7 @@ export default function CampaignEditorClient({ campaignId }: CampaignEditorProps
                       <select
                         value={seg.ticketType ?? ""}
                         onChange={(e) => updateSegmentTicketType(idx, e.target.value)}
-                        disabled={isSent}
+                        disabled={isLocked}
                         className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-white focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 disabled:opacity-50"
                       >
                         <option value="">Select ticket type...</option>
@@ -549,7 +548,7 @@ export default function CampaignEditorClient({ campaignId }: CampaignEditorProps
                       <EventTagPicker
                         selectedIds={seg.eventIds}
                         onChange={(ids) => updateSegmentEvents(idx, ids)}
-                        disabled={isSent}
+                        disabled={isLocked}
                         events={events.map((e) => ({ id: e.id, name: e.name }))}
                       />
                     )}
@@ -558,7 +557,7 @@ export default function CampaignEditorClient({ campaignId }: CampaignEditorProps
               })}
             </div>
 
-            {!isSent && (
+            {!isLocked && (
               <button
                 onClick={addSegment}
                 className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-zinc-300 bg-zinc-800 border border-zinc-700 border-dashed rounded-xl hover:bg-zinc-700 hover:text-white transition-colors w-full justify-center"
@@ -571,7 +570,7 @@ export default function CampaignEditorClient({ campaignId }: CampaignEditorProps
             )}
 
             {/* Preview recipients */}
-            {!isSent && segments.length > 0 && (
+            {!isLocked && segments.length > 0 && (
               <button
                 onClick={handlePreviewRecipients}
                 disabled={resolving || saving}
@@ -634,7 +633,7 @@ export default function CampaignEditorClient({ campaignId }: CampaignEditorProps
                   type="checkbox"
                   checked={includeHeroCard}
                   onChange={(e) => setIncludeHeroCard(e.target.checked)}
-                  disabled={isSent}
+                  disabled={isLocked}
                   className="w-4 h-4 rounded border-zinc-600 bg-zinc-800 text-emerald-500 focus:ring-emerald-500/50 focus:ring-offset-0"
                 />
                 <span className="text-sm font-medium text-zinc-300">Include event hero card</span>
@@ -643,7 +642,7 @@ export default function CampaignEditorClient({ campaignId }: CampaignEditorProps
                 <select
                   value={heroEventId}
                   onChange={(e) => setHeroEventId(e.target.value)}
-                  disabled={isSent}
+                  disabled={isLocked}
                   className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-white focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 disabled:opacity-50"
                 >
                   <option value="">Select hero card event...</option>
@@ -665,7 +664,7 @@ export default function CampaignEditorClient({ campaignId }: CampaignEditorProps
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
               </svg>
             </div>
-            {isSent ? (
+            {isLocked ? (
               <div className="px-4 py-3 bg-zinc-800 border border-zinc-700 text-white text-sm">
                 <div className="prose prose-sm prose-invert prose-p:text-zinc-300 prose-a:text-emerald-400 max-w-none">
                   <ReactMarkdown rehypePlugins={[rehypeRaw, [rehypeSanitize, sanitizeSchema]]}>{body}</ReactMarkdown>
@@ -673,7 +672,15 @@ export default function CampaignEditorClient({ campaignId }: CampaignEditorProps
               </div>
             ) : (
               <div className="-mt-px">
-                <MarkdownEditor value={body} onChange={setBody} placeholder="Write your email content here... Supports **bold**, *italic*, and [links](url)" rows={12} label="" />
+                <MarkdownEditor
+                  id="campaign-body"
+                  value={body}
+                  onChange={setBody}
+                  placeholder="Write your email content here... Supports **bold**, *italic*, and [links](url)"
+                  rows={12}
+                  label=""
+                  ariaLabel="Campaign email body"
+                />
               </div>
             )}
             <div className="px-4 py-3 bg-zinc-800/50 border border-dashed border-zinc-700 rounded-b-xl -mt-px">
@@ -682,7 +689,7 @@ export default function CampaignEditorClient({ campaignId }: CampaignEditorProps
           </div>
 
           {/* Action buttons */}
-          {!isSent && (
+          {!isLocked && (
             <div className="flex flex-wrap items-center gap-3">
               <button onClick={saveDraft} disabled={saving || !!sendState?.active} className="px-5 py-2.5 rounded-xl text-sm font-medium bg-zinc-800 text-white hover:bg-zinc-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
                 {saving ? "Saving..." : "Save Draft"}
