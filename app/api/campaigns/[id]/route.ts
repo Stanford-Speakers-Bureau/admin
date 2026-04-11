@@ -170,6 +170,34 @@ export async function PATCH(req: Request, { params }: Params) {
       );
     }
 
+    if (body.body !== undefined && typeof body.body !== "string") {
+      return NextResponse.json(
+        { error: "body must be a string when provided" },
+        { status: 400 },
+      );
+    }
+
+    if (
+      body.includeHeroCard !== undefined &&
+      typeof body.includeHeroCard !== "boolean"
+    ) {
+      return NextResponse.json(
+        { error: "includeHeroCard must be a boolean when provided" },
+        { status: 400 },
+      );
+    }
+
+    if (
+      body.eventId !== undefined &&
+      body.eventId !== null &&
+      typeof body.eventId !== "string"
+    ) {
+      return NextResponse.json(
+        { error: "eventId must be a string or null when provided" },
+        { status: 400 },
+      );
+    }
+
     const updates: Record<string, unknown> = { updatedAt: new Date() };
     if (body.subject !== undefined) {
       updates.subject = validateCampaignSubject(body.subject)!;

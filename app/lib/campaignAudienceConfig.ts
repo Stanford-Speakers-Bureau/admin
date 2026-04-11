@@ -109,5 +109,5 @@ export function needsTicketType(audienceType: string): boolean {
 }
 
 export function isValidAudienceType(value: string): value is AudienceType {
-  return value in AUDIENCE_TYPE_LABELS;
+  return Object.prototype.hasOwnProperty.call(AUDIENCE_TYPE_LABELS, value);
 }

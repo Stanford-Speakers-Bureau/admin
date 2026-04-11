@@ -15,5 +15,22 @@ CREATE TABLE IF NOT EXISTS "public"."email_campaigns" (
   "created_by" text NOT NULL
 );
 
+ALTER TABLE "public"."email_campaigns" ENABLE ROW LEVEL SECURITY;
+
+REVOKE ALL ON TABLE "public"."email_campaigns" FROM PUBLIC;
+REVOKE ALL ON TABLE "public"."email_campaigns" FROM "anon";
+REVOKE ALL ON TABLE "public"."email_campaigns" FROM "authenticated";
+
+GRANT ALL ON TABLE "public"."email_campaigns" TO "service_role";
+
+DROP POLICY IF EXISTS "service_role_can_manage_email_campaigns" ON "public"."email_campaigns";
+
+CREATE POLICY "service_role_can_manage_email_campaigns"
+ON "public"."email_campaigns"
+FOR ALL
+TO "service_role"
+USING (true)
+WITH CHECK (true);
+
 CREATE INDEX IF NOT EXISTS "email_campaigns_status_idx" ON "public"."email_campaigns" ("status");
 CREATE INDEX IF NOT EXISTS "email_campaigns_created_at_idx" ON "public"."email_campaigns" ("created_at");
