@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { verifyAdminRequest } from "@/app/lib/auth";
-import { and, db, eq, emailCampaigns } from "@ssb/db";
+import { and, db, eq, emailCampaigns, sql } from "@ssb/db";
+import {
+  REMINDER_EMAIL_BATCH_SIZE,
+  REMINDER_EMAIL_MIN_BATCH_DURATION_MS,
+} from "@/app/lib/constants";
 import {
   isValidEmail,
   isValidUUID,
@@ -10,12 +14,13 @@ import { sendCampaignEmail } from "@/app/lib/email";
 import { logAuditEvent } from "@/app/lib/audit";
 import { parseAudiences, resolveSegments } from "@/app/lib/campaignAudience";
 
-const MAX_EMAILS_PER_REQUEST = 50;
+const MAX_EMAILS_PER_REQUEST = REMINDER_EMAIL_BATCH_SIZE;
 
 type Params = { params: Promise<{ id: string }> };
 
 export async function POST(req: Request, { params }: Params) {
   try {
+    const batchStartTime = Date.now();
     const auth = await verifyAdminRequest();
     if (!auth.authorized) {
       return NextResponse.json({ error: auth.error }, { status: 401 });
@@ -256,27 +261,38 @@ export async function POST(req: Request, { params }: Params) {
       }
     }
 
-    const previousSentCount = activeCampaign.recipientCount ?? 0;
-    const previousFailedCount = activeCampaign.failedCount ?? 0;
-    const nextSentCount = previousSentCount + sent;
-    const nextFailedCount = previousFailedCount + failed;
     const isFinalChunk = chunkIndex === chunkCount - 1;
 
-    await db
+    const [updatedCampaign] = await db
       .update(emailCampaigns)
       .set({
-        recipientCount: nextSentCount,
-        failedCount: nextFailedCount,
+        recipientCount: sql`coalesce(${emailCampaigns.recipientCount}, 0) + ${sent}`,
+        failedCount: sql`coalesce(${emailCampaigns.failedCount}, 0) + ${failed}`,
         status: isFinalChunk
-          ? nextFailedCount > 0
-            ? "partial"
-            : "sent"
+          ? sql`case when coalesce(${emailCampaigns.failedCount}, 0) + ${failed} > 0 then 'partial' else 'sent' end`
           : "sending",
-        sentAt: isFinalChunk ? new Date() : activeCampaign.sentAt,
+        sentAt: isFinalChunk ? new Date() : sql`${emailCampaigns.sentAt}`,
         sendBatchId: isFinalChunk ? null : normalizedAuditBatchId,
         updatedAt: new Date(),
       })
-      .where(eq(emailCampaigns.id, id));
+      .where(
+        and(
+          eq(emailCampaigns.id, id),
+          eq(emailCampaigns.sendBatchId, normalizedAuditBatchId),
+        ),
+      )
+      .returning({
+        status: emailCampaigns.status,
+        recipientCount: emailCampaigns.recipientCount,
+        failedCount: emailCampaigns.failedCount,
+      });
+
+    if (!updatedCampaign) {
+      return NextResponse.json(
+        { error: "Campaign send state changed while processing this batch" },
+        { status: 409 },
+      );
+    }
 
     await logAuditEvent({
       action: "campaign.send",
@@ -292,16 +308,22 @@ export async function POST(req: Request, { params }: Params) {
       },
     });
 
+    const batchDuration = Date.now() - batchStartTime;
+    if (
+      batchDuration < REMINDER_EMAIL_MIN_BATCH_DURATION_MS &&
+      !isFinalChunk
+    ) {
+      await new Promise((resolve) =>
+        setTimeout(resolve, REMINDER_EMAIL_MIN_BATCH_DURATION_MS - batchDuration),
+      );
+    }
+
     return NextResponse.json({
       sent,
       failed,
-      status: isFinalChunk
-        ? nextFailedCount > 0
-          ? "partial"
-          : "sent"
-        : "sending",
-      recipientCount: nextSentCount,
-      failedCount: nextFailedCount,
+      status: updatedCampaign.status,
+      recipientCount: updatedCampaign.recipientCount,
+      failedCount: updatedCampaign.failedCount,
     });
   } catch (err) {
     console.error("Campaign send error:", err);

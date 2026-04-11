@@ -44,14 +44,18 @@ export async function GET(_req: Request, { params }: Params) {
       return NextResponse.json({ error: "Campaign not found" }, { status: 404 });
     }
 
-    const entries = parseAudiences(campaign.audiences);
     let audienceCount = 0;
-    let audienceEmails: string[] = [];
-    try {
-      audienceEmails = await resolveSegments(entries);
-      audienceCount = audienceEmails.length;
-    } catch {
-      // non-fatal
+    let audienceEmails: string[] | undefined;
+    const includeAudience = new URL(_req.url).searchParams.get("includeAudience") === "true";
+
+    if (includeAudience) {
+      const entries = parseAudiences(campaign.audiences);
+      try {
+        audienceEmails = await resolveSegments(entries);
+        audienceCount = audienceEmails.length;
+      } catch {
+        // non-fatal
+      }
     }
 
     return NextResponse.json({
@@ -79,8 +83,7 @@ export async function GET(_req: Request, { params }: Params) {
         createdAt: campaign.createdAt.toISOString(),
         updatedAt: campaign.updatedAt.toISOString(),
       },
-      audienceCount,
-      audienceEmails,
+      ...(includeAudience ? { audienceCount, audienceEmails: audienceEmails ?? [] } : {}),
     });
   } catch (err) {
     console.error("Campaign get error:", err);

@@ -21,19 +21,57 @@ export {
   type AudienceType,
 } from "@/app/lib/campaignAudienceConfig";
 
+function coerceAudienceSegment(input: unknown): AudienceSegment | null {
+  if (typeof input !== "object" || input === null || !("type" in input)) {
+    return null;
+  }
+
+  const type = (input as { type: unknown }).type;
+  if (typeof type !== "string" || !isValidAudienceType(type)) {
+    return null;
+  }
+
+  const rawEventIds = "eventIds" in input
+    ? (input as { eventIds?: unknown }).eventIds
+    : [];
+  if (!Array.isArray(rawEventIds)) {
+    return null;
+  }
+
+  const eventIds = rawEventIds
+    .filter((eventId): eventId is string => typeof eventId === "string")
+    .map((eventId) => eventId.trim())
+    .filter(Boolean);
+
+  if (isEventScoped(type) && eventIds.length === 0) {
+    return null;
+  }
+
+  const ticketType = "ticketType" in input
+    ? (input as { ticketType?: unknown }).ticketType
+    : undefined;
+
+  if (needsTicketType(type)) {
+    if (
+      typeof ticketType !== "string" ||
+      !(TICKET_TYPES as readonly string[]).includes(ticketType)
+    ) {
+      return null;
+    }
+
+    return { type, eventIds, ticketType };
+  }
+
+  return { type, eventIds };
+}
+
 export function parseAudiences(json: string): AudienceSegment[] {
   try {
     const arr = JSON.parse(json);
     if (!Array.isArray(arr)) return [];
-    return arr.filter(
-      (e: unknown): e is AudienceSegment =>
-        typeof e === "object" &&
-        e !== null &&
-        "type" in e &&
-        isValidAudienceType((e as { type: string }).type) &&
-        "eventIds" in e &&
-        Array.isArray((e as { eventIds: unknown }).eventIds),
-    );
+    return arr
+      .map((entry) => coerceAudienceSegment(entry))
+      .filter((entry): entry is AudienceSegment => entry !== null);
   } catch {
     return [];
   }

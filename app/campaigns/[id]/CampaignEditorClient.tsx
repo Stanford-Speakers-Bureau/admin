@@ -161,7 +161,6 @@ export default function CampaignEditorClient({ campaignId }: CampaignEditorProps
         setSentAt(c.sentAt);
         setRecipientCount(c.recipientCount);
         setFailedCount(c.failedCount ?? 0);
-        setAudienceCount(data.audienceCount ?? null);
       })
       .catch(() => setError("Failed to load campaign"))
       .finally(() => setLoading(false));
@@ -277,7 +276,7 @@ export default function CampaignEditorClient({ campaignId }: CampaignEditorProps
     setResolving(true);
     setError(null);
     try {
-      const res = await fetch(`/api/campaigns/${id}`);
+      const res = await fetch(`/api/campaigns/${id}?includeAudience=true`);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to resolve audience");
       const emails: string[] = data.audienceEmails ?? [];
@@ -319,7 +318,7 @@ export default function CampaignEditorClient({ campaignId }: CampaignEditorProps
     setError(null);
     let emails: string[];
     try {
-      const res = await fetch(`/api/campaigns/${id}`);
+      const res = await fetch(`/api/campaigns/${id}?includeAudience=true`);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to resolve audience");
       emails = data.audienceEmails ?? [];
