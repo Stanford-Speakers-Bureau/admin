@@ -19,6 +19,14 @@ export function isValidEmail(email: string): boolean {
   return emailRegex.test(email) && email.length <= 254; // RFC 5321 max length
 }
 
+export function normalizeEmail(email: string): string {
+  return email.trim().toLowerCase();
+}
+
+export function hasUnsafeHeaderChars(value: string): boolean {
+  return /[\r\n]/.test(value);
+}
+
 /**
  * Validate URL format and ensure it's HTTP/HTTPS
  */

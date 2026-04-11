@@ -2,6 +2,7 @@ import type { QRCodeToBufferOptions } from "qrcode";
 import QRCode from "qrcode";
 import { buildCancellationLink } from "./cancellation-links";
 import { IMPORTANT_NOTICE_ITEMS, PACIFIC_TIMEZONE } from "./constants";
+import { hasUnsafeHeaderChars, isValidEmail } from "./validation";
 import { buildAppleWalletLink } from "./wallet-links";
 import { generateGoogleCalendarUrl } from "./utils";
 
@@ -3024,4 +3025,115 @@ export async function sendEventAnnouncedEmail(
   ];
   await sendRawEmailViaSES(lines.join("\r\n"));
   console.log(`Event announced email sent to ${data.email}`);
+}
+
+// ============================================================================
+// Campaign email
+// ============================================================================
+
+export type CampaignEmailData = {
+  email: string;
+  subject: string;
+  bodyMarkdown: string;
+  includeHeroCard: boolean;
+  eventName?: string | null;
+  eventTagline?: string | null;
+  eventStartTime?: string | null;
+  doorsOpenTime?: string | null;
+  eventVenue?: string | null;
+  eventVenueLink?: string | null;
+  eventId?: string | null;
+  imgVersion?: number | null;
+};
+
+function generateCampaignEmailText(data: CampaignEmailData): string {
+  const body = data.bodyMarkdown
+    .replace(/\*\*(.+?)\*\*/g, "$1")
+    .replace(/\*(.+?)\*/g, "$1")
+    .replace(/<u>(.+?)<\/u>/g, "$1")
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, "$1 ($2)");
+
+  return `
+${body}
+
+Stanford Speakers Bureau
+For questions, please email ${FROM_EMAIL}
+  `.trim();
+}
+
+function generateCampaignEmailHTML(data: CampaignEmailData): string {
+  const contentSections: string[] = [];
+
+  contentSections.push(`
+    <div style="color: #d4d4d8; font-size: 16px; line-height: 1.7; margin-bottom: 24px;">
+      ${gmailBlendStart}
+        <div style="color: #f4f4f5; font-size: 16px; line-height: 1.7;">${markdownToEmailHTML(data.bodyMarkdown)}</div>
+      ${gmailBlendEnd}
+    </div>`);
+
+  let heroCard = "";
+  if (data.includeHeroCard && data.eventName) {
+    heroCard = buildHeroCard({
+      eventName: data.eventName,
+      eventTagline: data.eventTagline,
+      eventStartTime: data.eventStartTime,
+      doorsOpenTime: data.doorsOpenTime,
+      eventVenue: data.eventVenue,
+      eventVenueLink: data.eventVenueLink,
+      eventId: data.eventId,
+      imgVersion: data.imgVersion,
+    });
+  }
+
+  const bodyContent = `
+    ${heroCard}
+    <tr>
+      <td align="center" class="email-container" style="background-color: #27272a; padding: 32px 20px; max-width: 900px; width: 100%;">
+        <div style="padding: 0; max-width: 600px; margin: 0 auto;">
+          ${contentSections.join("\n")}
+        </div>
+      </td>
+    </tr>
+    ${buildFooter()}`;
+
+  return buildEmailShell(
+    data.subject,
+    buildEmailStyles(),
+    bodyContent,
+  );
+}
+
+export async function sendCampaignEmail(
+  data: CampaignEmailData,
+): Promise<void> {
+  if (!isValidEmail(data.email) || hasUnsafeHeaderChars(data.email)) {
+    throw new Error("Invalid campaign email recipient");
+  }
+  if (hasUnsafeHeaderChars(data.subject)) {
+    throw new Error("Invalid campaign email subject");
+  }
+
+  if (process.env.DISABLE_EMAIL?.toLowerCase().trim() === "true") {
+    console.log(`Email disabled. Skipping campaign email to ${data.email}`);
+    return;
+  }
+
+  const textContent = generateCampaignEmailText(data);
+  const htmlContent = generateCampaignEmailHTML(data);
+  const altBoundary = `alt_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+  const lines: string[] = [
+    `From: ${FROM_EMAIL}`,
+    `To: ${data.email}`,
+    `Subject: ${data.subject}`,
+    `MIME-Version: 1.0`,
+    `Content-Type: multipart/alternative; boundary="${altBoundary}"`,
+    "",
+    `--${altBoundary}`,
+    ...buildUtf8MimeBodyPart("text/plain", textContent),
+    `--${altBoundary}`,
+    ...buildUtf8MimeBodyPart("text/html", htmlContent),
+    `--${altBoundary}--`,
+    "",
+  ];
+  await sendRawEmailViaSES(lines.join("\r\n"));
 }

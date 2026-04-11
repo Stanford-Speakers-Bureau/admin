@@ -50,3 +50,6 @@ packages/db/node_modules
 
 # supabase
 supabase/.temp/
+
+# local AI tooling
+.claude/settings.local.json

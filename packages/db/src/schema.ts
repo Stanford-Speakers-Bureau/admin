@@ -4,6 +4,7 @@ import {
   text,
   boolean,
   bigint,
+  integer,
   timestamp,
   numeric,
   uniqueIndex,
@@ -284,6 +285,44 @@ export const auditLogs = pgTable(
   ],
 );
 
+// ── Email Campaigns ────────────────────────────────────────────────────────
+export const emailCampaigns = pgTable(
+  "email_campaigns",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    subject: text("subject").notNull(),
+    body: text("body").notNull().default(""),
+    status: text("status").notNull().default("draft"),
+    audiences: text("audiences").notNull().default("[]"),
+    eventId: uuid("event_id").references(() => events.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    includeHeroCard: boolean("include_hero_card").notNull().default(false),
+    sentAt: timestamp("sent_at", { withTimezone: true }),
+    sentBy: text("sent_by"),
+    recipientCount: bigint("recipient_count", { mode: "number" }),
+    failedCount: bigint("failed_count", { mode: "number" })
+      .notNull()
+      .default(0),
+    sendBatchId: text("send_batch_id"),
+    lastProcessedChunkIndex: integer("last_processed_chunk_index")
+      .notNull()
+      .default(-1),
+    createdBy: text("created_by").notNull(),
+  },
+  (t) => [
+    index("email_campaigns_status_idx").on(t.status),
+    index("email_campaigns_created_at_idx").on(t.createdAt),
+  ],
+);
+
 // ── Relations ───────────────────────────────────────────────────────────────
 
 export const eventsRelations = relations(events, ({ many }) => ({
@@ -291,6 +330,7 @@ export const eventsRelations = relations(events, ({ many }) => ({
   waitlistList: many(waitlist),
   referralList: many(referrals),
   notifyList: many(notify),
+  campaignList: many(emailCampaigns),
 }));
 
 export const ticketsRelations = relations(tickets, ({ one }) => ({
@@ -318,4 +358,11 @@ export const notifyRelations = relations(notify, ({ one }) => ({
 
 export const referralsRelations = relations(referrals, ({ one }) => ({
   event: one(events, { fields: [referrals.eventId], references: [events.id] }),
+}));
+
+export const emailCampaignsRelations = relations(emailCampaigns, ({ one }) => ({
+  event: one(events, {
+    fields: [emailCampaigns.eventId],
+    references: [events.id],
+  }),
 }));

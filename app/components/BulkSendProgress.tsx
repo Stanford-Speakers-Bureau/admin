@@ -65,7 +65,7 @@ export default function BulkSendProgress({
       </p>
       {state.active && (
         <p className="mt-2 text-xs text-amber-400">
-          Please don't close or navigate away from this tab while emails are sending.
+          Please don&apos;t close or navigate away from this tab while emails are sending.
         </p>
       )}
     </div>

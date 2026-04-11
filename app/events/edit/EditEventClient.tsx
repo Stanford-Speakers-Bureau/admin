@@ -11,7 +11,7 @@ import {
   TICKETING_ROLE_OPTIONS,
   type TicketingRole,
 } from "@/app/lib/ticketingRoles";
-import MarkdownEditor from "../MarkdownEditor";
+import MarkdownEditor from "@/app/components/MarkdownEditor";
 import { Event } from "../AdminEventsClient";
 
 const APPLE_WALLET_STRIP_RATIO = 375 / 98;

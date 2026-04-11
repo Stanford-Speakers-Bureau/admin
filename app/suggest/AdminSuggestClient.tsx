@@ -883,7 +883,7 @@ export default function AdminSuggestClient({
                       Merge Duplicate
                     </h3>
                     <p className="text-sm text-zinc-400">
-                      Move votes from "{duplicateSuggestion.speaker}" to an
+                      Move votes from &ldquo;{duplicateSuggestion.speaker}&rdquo; to an
                       approved duplicate
                     </p>
                   </div>
