@@ -89,21 +89,7 @@ export default function AdminLayoutClient({
 
         {/* Branding */}
         <div className="h-16 flex items-center gap-3 px-4 border-b border-zinc-800 shrink-0">
-          <div className="w-8 h-8 bg-gradient-to-br from-rose-500 to-orange-500 rounded flex items-center justify-center shrink-0">
-            <svg
-              className="w-5 h-5 text-white"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M13 10V3L4 14h7v7l9-11h-7z"
-              />
-            </svg>
-          </div>
+          <img src="/favicon.ico" alt="SSB" className="w-8 h-8 rounded shrink-0" />
           <span className="text-white font-bold text-lg font-serif hidden lg:block">
             SSB Admin
           </span>

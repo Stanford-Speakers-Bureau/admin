@@ -22,7 +22,9 @@ type AuditAction =
   | "suggestion.merge"
   | "waitlist.pull"
   | "waitlist.issue_standby"
-  | "referral.toggle";
+  | "referral.toggle"
+  | "campaign.create"
+  | "campaign.send";
 
 type AuditLogParams = {
   action: AuditAction;

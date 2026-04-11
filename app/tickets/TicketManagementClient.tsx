@@ -159,6 +159,7 @@ export default function TicketManagementClient({
   const [newTicketEventId, setNewTicketEventId] = useState(selectedEventId);
   const [newTicketType, setNewTicketType] = useState("VIP");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitProgress, setSubmitProgress] = useState({ completed: 0, total: 0 });
   const [emailLookups, setEmailLookups] = useState<Record<number, EmailLookupResult>>({});
   const lookupTimers = useRef<Record<number, ReturnType<typeof setTimeout>>>({});
   const lookupAbortControllers = useRef<Record<number, AbortController>>({});
@@ -922,6 +923,7 @@ export default function TicketManagementClient({
     }
 
     setIsSubmitting(true);
+    setSubmitProgress({ completed: 0, total: rowsToSubmit.length });
     setError(null);
     setSuccess(null);
 
@@ -948,6 +950,7 @@ export default function TicketManagementClient({
 
         if (!response.ok) {
           errors.push(`${email}: ${data.error || "Failed to create ticket"}`);
+          setSubmitProgress((prev) => ({ ...prev, completed: prev.completed + 1 }));
           continue;
         }
 
@@ -959,6 +962,7 @@ export default function TicketManagementClient({
           `${email}: ${err instanceof Error ? err.message : "Failed to create ticket"}`,
         );
       }
+      setSubmitProgress((prev) => ({ ...prev, completed: prev.completed + 1 }));
     }
 
     if (successCount > 0) {
@@ -1463,19 +1467,28 @@ export default function TicketManagementClient({
             </div>
 
             <div className="flex items-center gap-4 pt-4 border-t border-zinc-800">
+              {isSubmitting ? (
+                <div className="flex items-center gap-3 px-6 py-3">
+                  <div className="w-40 h-2 bg-zinc-700 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-gradient-to-r from-emerald-500 to-teal-500 rounded-full transition-all duration-300"
+                      style={{ width: `${submitProgress.total ? (submitProgress.completed / submitProgress.total) * 100 : 0}%` }}
+                    />
+                  </div>
+                  <span className="text-sm text-zinc-300 tabular-nums">
+                    {submitProgress.completed}/{submitProgress.total}
+                  </span>
+                </div>
+              ) : (
               <button
                 type="submit"
                 disabled={
-                  isSubmitting ||
                   !newTicketRows.some(
                     (r) => r.email.trim() && r.name.trim()
                   )
                 }
                 className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-emerald-500 to-teal-500 text-white rounded-xl font-medium hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {isSubmitting ? (
-                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                ) : (
                   <svg
                     className="w-5 h-5"
                     fill="none"
@@ -1489,13 +1502,13 @@ export default function TicketManagementClient({
                       d="M5 13l4 4L19 7"
                     />
                   </svg>
-                )}
                 Create{" "}
                 {newTicketRows.filter(
                   (r) => r.email.trim() && r.name.trim()
                 ).length || 0}{" "}
                 ticket(s)
               </button>
+              )}
               <button
                 type="button"
                 onClick={() => {

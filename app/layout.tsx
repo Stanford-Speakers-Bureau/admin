@@ -112,6 +112,12 @@ const navItems = [
     icon: "M17 20h5v-1a4 4 0 00-5.874-3.57M17 20H2v-1a4 4 0 014-4h7a4 4 0 014 4zm-5-9a3 3 0 110-6 3 3 0 010 6zm6-1a2 2 0 110-4 2 2 0 010 4z",
   },
   {
+    href: "/campaigns",
+    label: "Campaigns",
+    group: "admin" as const,
+    icon: "M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z",
+  },
+  {
     href: "/attendance",
     label: "Attendance",
     group: "admin" as const,
