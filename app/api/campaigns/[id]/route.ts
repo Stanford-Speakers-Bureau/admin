@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { verifyAdminRequest } from "@/app/lib/auth";
-import { db, eq, emailCampaigns } from "@ssb/db";
+import { db, eq, emailCampaigns, events } from "@ssb/db";
 import {
   hasUnsafeHeaderChars,
   isValidUUID,
@@ -44,6 +44,19 @@ export async function GET(_req: Request, { params }: Params) {
       return NextResponse.json({ error: "Campaign not found" }, { status: 404 });
     }
 
+    const feedbackEvent = campaign?.feedbackEventId
+      ? await db.query.events.findFirst({
+          where: eq(events.id, campaign.feedbackEventId),
+          columns: {
+            id: true,
+            name: true,
+            route: true,
+            startTimeDate: true,
+            endTimeDate: true,
+          },
+        })
+      : null;
+
     let audienceCount = 0;
     let audienceEmails: string[] | undefined;
     const includeAudience = new URL(_req.url).searchParams.get("includeAudience") === "true";
@@ -66,6 +79,7 @@ export async function GET(_req: Request, { params }: Params) {
         status: campaign.status,
         audiences: campaign.audiences,
         eventId: campaign.eventId,
+        feedbackEventId: campaign.feedbackEventId,
         eventName: campaign.event?.name ?? null,
         eventRoute: campaign.event?.route ?? null,
         eventStartTime: campaign.event?.startTimeDate?.toISOString() ?? null,
@@ -75,6 +89,11 @@ export async function GET(_req: Request, { params }: Params) {
         eventVenueLink: campaign.event?.venueLink ?? null,
         eventDoorsOpen: campaign.event?.doorsOpen?.toISOString() ?? null,
         includeHeroCard: campaign.includeHeroCard,
+        includeFeedbackPrompt: campaign.includeFeedbackPrompt,
+        feedbackEventName: feedbackEvent?.name ?? null,
+        feedbackEventRoute: feedbackEvent?.route ?? null,
+        feedbackEventStartTime: feedbackEvent?.startTimeDate?.toISOString() ?? null,
+        feedbackEventEndTime: feedbackEvent?.endTimeDate?.toISOString() ?? null,
         sentAt: campaign.sentAt?.toISOString() ?? null,
         sentBy: campaign.sentBy,
         recipientCount: campaign.recipientCount,
@@ -108,7 +127,14 @@ export async function PATCH(req: Request, { params }: Params) {
 
     const campaign = await db.query.emailCampaigns.findFirst({
       where: eq(emailCampaigns.id, id),
-      columns: { id: true, status: true, eventId: true, includeHeroCard: true },
+      columns: {
+        id: true,
+        status: true,
+        eventId: true,
+        includeHeroCard: true,
+        feedbackEventId: true,
+        includeFeedbackPrompt: true,
+      },
     });
 
     if (!campaign) {
@@ -121,6 +147,8 @@ export async function PATCH(req: Request, { params }: Params) {
       audiences?: AudienceSegment[];
       eventId?: string | null;
       includeHeroCard?: boolean;
+      feedbackEventId?: string | null;
+      includeFeedbackPrompt?: boolean;
     };
     try {
       body = await req.json();
@@ -189,6 +217,15 @@ export async function PATCH(req: Request, { params }: Params) {
         { status: 400 },
       );
     }
+    if (
+      body.includeFeedbackPrompt !== undefined &&
+      typeof body.includeFeedbackPrompt !== "boolean"
+    ) {
+      return NextResponse.json(
+        { error: "includeFeedbackPrompt must be a boolean when provided" },
+        { status: 400 },
+      );
+    }
 
     if (
       body.eventId !== undefined &&
@@ -200,12 +237,30 @@ export async function PATCH(req: Request, { params }: Params) {
         { status: 400 },
       );
     }
+    if (
+      body.feedbackEventId !== undefined &&
+      body.feedbackEventId !== null &&
+      typeof body.feedbackEventId !== "string"
+    ) {
+      return NextResponse.json(
+        { error: "feedbackEventId must be a string or null when provided" },
+        { status: 400 },
+      );
+    }
     const effectiveHeroEventId =
       body.eventId !== undefined ? body.eventId : campaign.eventId;
     const effectiveIncludeHeroCard =
       body.includeHeroCard !== undefined
         ? body.includeHeroCard
         : campaign.includeHeroCard;
+    const effectiveFeedbackEventId =
+      body.feedbackEventId !== undefined
+        ? body.feedbackEventId
+        : campaign.feedbackEventId;
+    const effectiveIncludeFeedbackPrompt =
+      body.includeFeedbackPrompt !== undefined
+        ? body.includeFeedbackPrompt
+        : campaign.includeFeedbackPrompt;
 
     if (
       effectiveIncludeHeroCard &&
@@ -213,6 +268,18 @@ export async function PATCH(req: Request, { params }: Params) {
     ) {
       return NextResponse.json(
         { error: "A valid hero card eventId is required when includeHeroCard is enabled" },
+        { status: 400 },
+      );
+    }
+    if (
+      effectiveIncludeFeedbackPrompt &&
+      (!effectiveFeedbackEventId || !isValidUUID(effectiveFeedbackEventId))
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "A valid feedbackEventId is required when includeFeedbackPrompt is enabled",
+        },
         { status: 400 },
       );
     }
@@ -226,6 +293,15 @@ export async function PATCH(req: Request, { params }: Params) {
     if (body.eventId !== undefined)
       updates.eventId = body.eventId && isValidUUID(body.eventId) ? body.eventId : null;
     if (body.includeHeroCard !== undefined) updates.includeHeroCard = body.includeHeroCard;
+    if (body.feedbackEventId !== undefined) {
+      updates.feedbackEventId =
+        body.feedbackEventId && isValidUUID(body.feedbackEventId)
+          ? body.feedbackEventId
+          : null;
+    }
+    if (body.includeFeedbackPrompt !== undefined) {
+      updates.includeFeedbackPrompt = body.includeFeedbackPrompt;
+    }
 
     const [updated] = await db
       .update(emailCampaigns)

@@ -1,4 +1,13 @@
-import { db, eq, notify, tickets, waitlist } from "@ssb/db";
+import {
+  and,
+  db,
+  eq,
+  eventFeedback,
+  isNull,
+  notify,
+  tickets,
+  waitlist,
+} from "@ssb/db";
 import { normalizeEmail } from "@/app/lib/validation";
 import {
   isEventScoped,
@@ -132,6 +141,22 @@ async function resolveAudience(
         columns: { email: true },
       });
       return rows.map((r) => r.email);
+    }
+
+    case "event_feedback_pending": {
+      if (!eventId) return [];
+      const rows = await db
+        .select({ email: tickets.email })
+        .from(tickets)
+        .leftJoin(eventFeedback, eq(eventFeedback.ticketId, tickets.id))
+        .where(
+          and(
+            eq(tickets.eventId, eventId),
+            eq(tickets.scanned, true),
+            isNull(eventFeedback.id),
+          ),
+        );
+      return rows.map((row) => row.email);
     }
 
     case "event_waitlist": {

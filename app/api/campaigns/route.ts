@@ -38,8 +38,10 @@ export async function GET() {
         status: c.status,
         audiences: c.audiences,
         eventId: c.eventId,
+        feedbackEventId: c.feedbackEventId,
         eventName: c.event?.name ?? null,
         includeHeroCard: c.includeHeroCard,
+        includeFeedbackPrompt: c.includeFeedbackPrompt,
         sentAt: c.sentAt?.toISOString() ?? null,
         sentBy: c.sentBy,
         recipientCount: c.recipientCount,
@@ -71,6 +73,8 @@ export async function POST(req: Request) {
       audiences?: AudienceSegment[];
       eventId?: string | null;
       includeHeroCard?: boolean;
+      feedbackEventId?: string | null;
+      includeFeedbackPrompt?: boolean;
     };
     try {
       body = await req.json();
@@ -78,7 +82,15 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
     }
 
-    const { subject, body: emailBody, audiences, eventId, includeHeroCard } = body;
+    const {
+      subject,
+      body: emailBody,
+      audiences,
+      eventId,
+      includeHeroCard,
+      feedbackEventId,
+      includeFeedbackPrompt,
+    } = body;
 
     const validatedSubject = validateCampaignSubject(subject);
     if (!validatedSubject) {
@@ -103,6 +115,15 @@ export async function POST(req: Request) {
       );
     }
     if (
+      includeFeedbackPrompt !== undefined
+      && typeof includeFeedbackPrompt !== "boolean"
+    ) {
+      return NextResponse.json(
+        { error: "includeFeedbackPrompt must be a boolean when provided" },
+        { status: 400 },
+      );
+    }
+    if (
       eventId !== undefined &&
       eventId !== null &&
       typeof eventId !== "string"
@@ -112,9 +133,31 @@ export async function POST(req: Request) {
         { status: 400 },
       );
     }
+    if (
+      feedbackEventId !== undefined &&
+      feedbackEventId !== null &&
+      typeof feedbackEventId !== "string"
+    ) {
+      return NextResponse.json(
+        { error: "feedbackEventId must be a string or null when provided" },
+        { status: 400 },
+      );
+    }
     if (includeHeroCard && (!eventId || !isValidUUID(eventId))) {
       return NextResponse.json(
         { error: "A valid hero card eventId is required when includeHeroCard is enabled" },
+        { status: 400 },
+      );
+    }
+    if (
+      includeFeedbackPrompt
+      && (!feedbackEventId || !isValidUUID(feedbackEventId))
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "A valid feedbackEventId is required when includeFeedbackPrompt is enabled",
+        },
         { status: 400 },
       );
     }
@@ -127,6 +170,11 @@ export async function POST(req: Request) {
         audiences: JSON.stringify(audiences),
         eventId: eventId && isValidUUID(eventId) ? eventId : null,
         includeHeroCard: includeHeroCard ?? false,
+        feedbackEventId:
+          feedbackEventId && isValidUUID(feedbackEventId)
+            ? feedbackEventId
+            : null,
+        includeFeedbackPrompt: includeFeedbackPrompt ?? false,
         createdBy: auth.email!,
       })
       .returning();

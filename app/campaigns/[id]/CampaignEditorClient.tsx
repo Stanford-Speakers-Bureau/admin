@@ -104,6 +104,8 @@ export default function CampaignEditorClient({ campaignId }: CampaignEditorProps
   const [segments, setSegments] = useState<AudienceSegment[]>([]);
   const [heroEventId, setHeroEventId] = useState<string>("");
   const [includeHeroCard, setIncludeHeroCard] = useState(false);
+  const [feedbackEventId, setFeedbackEventId] = useState<string>("");
+  const [includeFeedbackPrompt, setIncludeFeedbackPrompt] = useState(false);
 
   // Campaign metadata
   const [savedId, setSavedId] = useState<string | null>(campaignId);
@@ -143,6 +145,8 @@ export default function CampaignEditorClient({ campaignId }: CampaignEditorProps
       audiences: string;
       eventId: string | null;
       includeHeroCard: boolean;
+      feedbackEventId: string | null;
+      includeFeedbackPrompt: boolean;
       status: string;
       sentAt: string | null;
       recipientCount: number | null;
@@ -160,6 +164,8 @@ export default function CampaignEditorClient({ campaignId }: CampaignEditorProps
     }
     setHeroEventId(c.eventId ?? "");
     setIncludeHeroCard(c.includeHeroCard);
+    setFeedbackEventId(c.feedbackEventId ?? "");
+    setIncludeFeedbackPrompt(c.includeFeedbackPrompt);
     setStatus(c.status);
     setSentAt(c.sentAt);
     setRecipientCount(c.recipientCount);
@@ -266,6 +272,21 @@ export default function CampaignEditorClient({ campaignId }: CampaignEditorProps
         return null;
       }
     }
+    if (includeFeedbackPrompt) {
+      const referencedEventIds = new Set(
+        segments.flatMap((segment) => segment.eventIds),
+      );
+      if (!feedbackEventId) {
+        setError("Select an event for the feedback prompt");
+        return null;
+      }
+      if (!referencedEventIds.has(feedbackEventId)) {
+        setError(
+          "Feedback prompt event must be one of the selected audience events",
+        );
+        return null;
+      }
+    }
 
     setSaving(true);
     setError(null);
@@ -277,6 +298,8 @@ export default function CampaignEditorClient({ campaignId }: CampaignEditorProps
         audiences: segments,
         eventId: includeHeroCard ? heroEventId || null : null,
         includeHeroCard,
+        feedbackEventId: includeFeedbackPrompt ? feedbackEventId || null : null,
+        includeFeedbackPrompt,
       };
 
       if (savedId) {
@@ -309,7 +332,16 @@ export default function CampaignEditorClient({ campaignId }: CampaignEditorProps
     } finally {
       setSaving(false);
     }
-  }, [subject, body, segments, heroEventId, includeHeroCard, savedId]);
+  }, [
+    subject,
+    body,
+    segments,
+    heroEventId,
+    includeHeroCard,
+    feedbackEventId,
+    includeFeedbackPrompt,
+    savedId,
+  ]);
 
   const handlePreviewRecipients = useCallback(async () => {
     const id = await saveDraft();
@@ -715,6 +747,44 @@ export default function CampaignEditorClient({ campaignId }: CampaignEditorProps
             </div>
           )}
 
+          {allReferencedEventIds.length > 0 && (
+            <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5 space-y-3">
+              <label className="flex items-center gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={includeFeedbackPrompt}
+                  onChange={(e) => setIncludeFeedbackPrompt(e.target.checked)}
+                  disabled={isLocked}
+                  className="w-4 h-4 rounded border-zinc-600 bg-zinc-800 text-emerald-500 focus:ring-emerald-500/50 focus:ring-offset-0"
+                />
+                <span className="text-sm font-medium text-zinc-300">
+                  Include post-event feedback prompt
+                </span>
+              </label>
+              <p className="text-xs text-zinc-500">
+                Recipients can click 1-10 directly in the email, then land on the event page with that score preselected and an optional comment box.
+              </p>
+              {includeFeedbackPrompt && (
+                <select
+                  value={feedbackEventId}
+                  onChange={(e) => setFeedbackEventId(e.target.value)}
+                  disabled={isLocked}
+                  className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-white focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 disabled:opacity-50"
+                >
+                  <option value="">Select feedback event...</option>
+                  {allReferencedEventIds.map((eid) => {
+                    const ev = events.find((e) => e.id === eid);
+                    return (
+                      <option key={eid} value={eid}>
+                        {ev?.name || "Unnamed Event"}
+                      </option>
+                    );
+                  })}
+                </select>
+              )}
+            </div>
+          )}
+
           {/* Email body */}
           <div>
             <div className="px-4 py-3 bg-zinc-800/50 border border-dashed border-zinc-700 rounded-t-xl flex items-center gap-3">
@@ -798,6 +868,35 @@ export default function CampaignEditorClient({ campaignId }: CampaignEditorProps
                   ) : (
                     <p style={{ color: "#71717a", fontSize: 14, fontStyle: "italic" }}>Start typing to see a preview...</p>
                   )}
+                  {includeFeedbackPrompt && feedbackEventId && (() => {
+                    const ev = events.find((event) => event.id === feedbackEventId);
+                    return ev ? (
+                      <div
+                        className="mt-7 rounded-[20px] border border-zinc-700 bg-zinc-950/80 p-5"
+                      >
+                        <h4 className="text-xl font-semibold text-white leading-snug mb-2">
+                          How likely are you to recommend Stanford Speakers Bureau events to a friend?
+                        </h4>
+                        <p className="text-sm text-[#d4d4d8] leading-relaxed mb-4">
+                          It takes just one click to share your feedback!
+                        </p>
+                        <div className="grid grid-cols-5 gap-2">
+                          {Array.from({ length: 10 }, (_, index) => (
+                            <div
+                              key={index}
+                              className="rounded-[10px] border border-[#8a0a09] bg-[#A80D0C] py-3 text-center text-base font-bold text-white shadow-[0_1px_0_rgba(0,0,0,0.25)]"
+                            >
+                              {index + 1}
+                            </div>
+                          ))}
+                        </div>
+                        <div className="mt-3 flex items-center justify-between text-xs text-zinc-500">
+                          <span>Not likely</span>
+                          <span>Extremely likely</span>
+                        </div>
+                      </div>
+                    ) : null;
+                  })()}
                 </div>
                 <div className="text-center py-6 border-t" style={{ backgroundColor: "#18181b", borderColor: "#3f3f46" }}>
                   <p style={{ color: "#71717a", fontSize: 12, margin: "0 0 6px 0" }}>Stanford Speakers Bureau</p>

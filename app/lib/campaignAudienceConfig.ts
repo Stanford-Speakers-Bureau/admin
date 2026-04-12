@@ -4,6 +4,7 @@ export type AudienceType =
   | "event_notify_no_ticket"
   | "event_notify"
   | "event_not_checked_in"
+  | "event_feedback_pending"
   | "event_waitlist"
   | "event_past_attendees"
   | "all_users"
@@ -21,6 +22,7 @@ export const AUDIENCE_TYPE_LABELS: Record<AudienceType, string> = {
   event_notify_no_ticket: "Notify list (no ticket)",
   event_notify: "Notify list (all)",
   event_not_checked_in: "Not checked in",
+  event_feedback_pending: "Checked in, no feedback yet",
   event_waitlist: "On waitlist",
   event_past_attendees: "Checked-in attendees",
   all_users: "All registered users",
@@ -69,6 +71,11 @@ export const AUDIENCE_OPTIONS: AudienceOption[] = [
     needsEvent: true,
   },
   {
+    value: "event_feedback_pending",
+    label: AUDIENCE_TYPE_LABELS.event_feedback_pending,
+    needsEvent: true,
+  },
+  {
     value: "event_waitlist",
     label: AUDIENCE_TYPE_LABELS.event_waitlist,
     needsEvent: true,
@@ -96,6 +103,7 @@ const EVENT_SCOPED_TYPES: AudienceType[] = [
   "event_notify_no_ticket",
   "event_notify",
   "event_not_checked_in",
+  "event_feedback_pending",
   "event_waitlist",
   "event_past_attendees",
 ];
