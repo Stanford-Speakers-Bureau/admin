@@ -878,7 +878,7 @@ export default function CampaignEditorClient({ campaignId }: CampaignEditorProps
                           How likely are you to recommend Stanford Speakers Bureau events to a friend?
                         </h4>
                         <p className="text-sm text-[#d4d4d8] leading-relaxed mb-4">
-                          One-tap feedback greatly helps us with improving our events!
+                          It takes just one click to share your feedback!
                         </p>
                         <div className="grid grid-cols-5 gap-2">
                           {Array.from({ length: 10 }, (_, index) => (

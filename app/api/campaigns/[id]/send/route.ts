@@ -6,7 +6,6 @@ import {
   eq,
   emailCampaigns,
   events,
-  inArray,
   sql,
   tickets,
 } from "@ssb/db";
@@ -27,6 +26,18 @@ import { parseAudiences, resolveSegments } from "@/app/lib/campaignAudience";
 const MAX_EMAILS_PER_REQUEST = REMINDER_EMAIL_BATCH_SIZE;
 
 type Params = { params: Promise<{ id: string }> };
+
+function normalizedTicketEmailIn(emails: string[]) {
+  const normalizedEmails = emails.map((email) => normalizeEmail(email)).filter(Boolean);
+
+  if (normalizedEmails.length === 0) {
+    return sql<boolean>`false`;
+  }
+
+  return sql<boolean>`lower(trim(${tickets.email})) in (${
+    sql.join(normalizedEmails.map((email) => sql`${email}`), sql`, `)
+  })`;
+}
 
 export async function POST(req: Request, { params }: Params) {
   try {
@@ -276,7 +287,7 @@ export async function POST(req: Request, { params }: Params) {
           where: and(
             eq(tickets.eventId, feedbackEvent.id),
             eq(tickets.scanned, true),
-            inArray(tickets.email, emails),
+            normalizedTicketEmailIn(emails),
           ),
           columns: {
             id: true,

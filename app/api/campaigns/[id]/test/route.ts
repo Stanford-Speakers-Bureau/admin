@@ -1,11 +1,15 @@
 import { NextResponse } from "next/server";
 import { verifyAdminRequest } from "@/app/lib/auth";
-import { and, db, eq, emailCampaigns, events, tickets } from "@ssb/db";
+import { and, db, eq, emailCampaigns, events, sql, tickets } from "@ssb/db";
 import { buildEventFeedbackLink } from "@/app/lib/feedback-links";
-import { isValidUUID } from "@/app/lib/validation";
+import { isValidUUID, normalizeEmail } from "@/app/lib/validation";
 import { sendCampaignEmail } from "@/app/lib/email";
 
 type Params = { params: Promise<{ id: string }> };
+
+function normalizedTicketEmailEquals(email: string) {
+  return sql<boolean>`lower(trim(${tickets.email})) = ${normalizeEmail(email)}`;
+}
 
 function buildPreviewFeedbackPrompt(baseUrl: string, eventRoute: string, eventName: string | null) {
   const formUrl = new URL(`/events/${eventRoute}`, baseUrl);
@@ -77,7 +81,7 @@ export async function POST(_req: Request, { params }: Params) {
       ? await db.query.tickets.findFirst({
           where: and(
             eq(tickets.eventId, feedbackEvent.id),
-            eq(tickets.email, auth.email!),
+            normalizedTicketEmailEquals(auth.email!),
             eq(tickets.scanned, true),
           ),
           columns: {

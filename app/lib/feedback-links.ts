@@ -1,4 +1,5 @@
 import { createHmac } from "crypto";
+import { normalizeEmail } from "@/app/lib/validation";
 
 const DEV_SECRET = "dev-secret-change-me-in-production-1234";
 const DEFAULT_TOKEN_TTL_MS = 120 * 24 * 60 * 60 * 1000;
@@ -18,10 +19,6 @@ function getFeedbackLinkSecret(): string {
   }
 
   return secret;
-}
-
-function normalizeEmail(email: string): string {
-  return email.trim().toLowerCase();
 }
 
 function toTimestamp(value: string | null | undefined): number | null {

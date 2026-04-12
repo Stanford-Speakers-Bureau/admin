@@ -1,7 +1,18 @@
 import { NextResponse } from "next/server";
 import { verifyAdminRequest } from "@/app/lib/auth";
 import { isValidUUID } from "@/app/lib/validation";
-import { count, db, eq, eventFeedback, events, tickets, waitlist } from "@ssb/db";
+import {
+  and,
+  count,
+  db,
+  desc,
+  eq,
+  eventFeedback,
+  events,
+  sql,
+  tickets,
+  waitlist,
+} from "@ssb/db";
 
 export async function GET(
   req: Request,
@@ -22,7 +33,7 @@ export async function GET(
       );
     }
 
-    const [event, ticketResults, waitlistResult, feedbackResults] = await Promise.all([
+    const [event, ticketResults, waitlistResult, feedbackAggregateRows, recentFeedbackComments] = await Promise.all([
       db.query.events.findFirst({
         where: eq(events.id, eventId),
         columns: {
@@ -52,24 +63,38 @@ export async function GET(
         .select({ value: count() })
         .from(waitlist)
         .where(eq(waitlist.eventId, eventId)),
-      db.query.eventFeedback.findMany({
-        where: eq(eventFeedback.eventId, eventId),
-        columns: {
-          id: true,
-          score: true,
-          comment: true,
-          updatedAt: true,
-        },
-        with: {
-          ticket: {
-            columns: {
-              name: true,
-              email: true,
-            },
-          },
-        },
-        orderBy: (feedback, { desc }) => [desc(feedback.updatedAt)],
-      }),
+      db.select({
+        responseCount: sql<number>`count(*)`,
+        commentCount:
+          sql<number>`count(*) filter (where length(trim(coalesce(${eventFeedback.comment}, ''))) > 0)`,
+        promoterCount:
+          sql<number>`count(*) filter (where ${eventFeedback.score} >= 9)`,
+        passiveCount:
+          sql<number>`count(*) filter (where ${eventFeedback.score} between 7 and 8)`,
+        detractorCount:
+          sql<number>`count(*) filter (where ${eventFeedback.score} <= 6)`,
+        averageScore: sql<number | null>`avg(${eventFeedback.score})::float`,
+      })
+        .from(eventFeedback)
+        .where(eq(eventFeedback.eventId, eventId)),
+      db.select({
+        id: eventFeedback.id,
+        score: eventFeedback.score,
+        comment: eventFeedback.comment,
+        updatedAt: eventFeedback.updatedAt,
+        attendeeName: tickets.name,
+        attendeeEmail: tickets.email,
+      })
+        .from(eventFeedback)
+        .leftJoin(tickets, eq(eventFeedback.ticketId, tickets.id))
+        .where(
+          and(
+            eq(eventFeedback.eventId, eventId),
+            sql<boolean>`length(trim(coalesce(${eventFeedback.comment}, ''))) > 0`,
+          ),
+        )
+        .orderBy(desc(eventFeedback.updatedAt))
+        .limit(8),
     ]);
 
     if (!event) {
@@ -246,19 +271,16 @@ export async function GET(
       }
     }
 
-    const feedbackResponseCount = feedbackResults.length;
-    const feedbackCommentRows = feedbackResults.filter(
-      (entry) => entry.comment && entry.comment.trim().length > 0,
-    );
-    const promoterCount = feedbackResults.filter((entry) => entry.score >= 9).length;
-    const passiveCount = feedbackResults.filter(
-      (entry) => entry.score >= 7 && entry.score <= 8,
-    ).length;
-    const detractorCount = feedbackResults.filter((entry) => entry.score <= 6).length;
-    const feedbackAverageScore = feedbackResponseCount > 0
-      ? feedbackResults.reduce((sum, entry) => sum + entry.score, 0)
-        / feedbackResponseCount
-      : null;
+    const feedbackAggregate = feedbackAggregateRows[0];
+    const feedbackResponseCount = Number(feedbackAggregate?.responseCount ?? 0);
+    const commentCount = Number(feedbackAggregate?.commentCount ?? 0);
+    const promoterCount = Number(feedbackAggregate?.promoterCount ?? 0);
+    const passiveCount = Number(feedbackAggregate?.passiveCount ?? 0);
+    const detractorCount = Number(feedbackAggregate?.detractorCount ?? 0);
+    const averageScoreValue = feedbackAggregate?.averageScore;
+    const feedbackAverageScore = averageScoreValue == null
+      ? null
+      : Number(averageScoreValue);
     const feedbackNps = feedbackResponseCount > 0
       ? ((promoterCount / feedbackResponseCount)
         - (detractorCount / feedbackResponseCount)) * 100
@@ -274,11 +296,11 @@ export async function GET(
       promoterCount,
       passiveCount,
       detractorCount,
-      commentCount: feedbackCommentRows.length,
-      recentComments: feedbackCommentRows.slice(0, 8).map((entry) => ({
+      commentCount,
+      recentComments: recentFeedbackComments.map((entry) => ({
         id: entry.id,
-        attendeeName: entry.ticket?.name?.trim() || null,
-        attendeeEmail: entry.ticket?.email ?? null,
+        attendeeName: entry.attendeeName?.trim() || null,
+        attendeeEmail: entry.attendeeEmail ?? null,
         score: entry.score,
         comment: entry.comment?.trim() ?? "",
         updatedAt: entry.updatedAt.toISOString(),

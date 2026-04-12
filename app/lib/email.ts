@@ -2434,7 +2434,6 @@ async function generateTicketsAvailableInEmailHTML(
   const baseUrl = getBaseUrl();
   const eventUrl = data.eventRoute ? `${baseUrl}/events/${data.eventRoute}` : baseUrl;
   const formattedDate = formatFullDateTime(data.doorsOpenTime || data.eventStartTime);
-  const formattedTicketDrop = formatFullDateTimeWithTimezone(data.ticketDropTime || null);
 
   const heroCard = buildHeroCard({
     eventName: data.eventName,
@@ -3063,6 +3062,7 @@ function escapeHtml(value: string): string {
 function buildCampaignFeedbackPromptHTML(
   prompt: NonNullable<CampaignEmailData["feedbackPrompt"]>,
 ): string {
+  const safeFormUrl = escapeHtml(prompt.formUrl);
   const rows = [prompt.scoreLinks.slice(0, 5), prompt.scoreLinks.slice(5, 10)];
 
   return `
@@ -3071,7 +3071,7 @@ function buildCampaignFeedbackPromptHTML(
         How likely are you to recommend Stanford Speakers Bureau events to a friend?
       </h3>
       <p style="margin: 0 0 20px 0; color: #d4d4d8; font-size: 14px; line-height: 1.6;">
-       One-tap feedback greatly helps us with improving our events!
+       It takes just one click to share your feedback!
       </p>
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse: separate; border-spacing: 8px 8px; margin: 0 0 10px 0;">
         ${rows.map((row) => `
@@ -3079,7 +3079,7 @@ function buildCampaignFeedbackPromptHTML(
             ${row.map((entry) => `
               <td width="20%" align="center">
                 <a
-                  href="${entry.url}"
+                  href="${escapeHtml(entry.url)}"
                   style="display: block; padding: 14px 0; border-radius: 10px; background-color: #A80D0C; border: 1px solid #8a0a09; color: #ffffff; font-size: 16px; font-weight: 700; text-decoration: none; box-shadow: 0 1px 0 rgba(0,0,0,0.25);"
                 >
                   ${entry.score}
@@ -3097,7 +3097,7 @@ function buildCampaignFeedbackPromptHTML(
       </table>
       <p style="margin: 0; color: #71717a; font-size: 12px; line-height: 1.5;">
         Prefer a regular link instead?
-        <a href="${prompt.formUrl}" style="color: #f4f4f5; text-decoration: underline;">Open the feedback form</a>.
+        <a href="${safeFormUrl}" style="color: #f4f4f5; text-decoration: underline;">Open the feedback form</a>.
       </p>
     </div>
   `;
