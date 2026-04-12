@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { verifyAdminRequest } from "@/app/lib/auth";
 import { isValidUUID } from "@/app/lib/validation";
-import { db, eq, events, tickets, waitlist, count } from "@ssb/db";
+import { count, db, eq, eventFeedback, events, tickets, waitlist } from "@ssb/db";
 
 export async function GET(
   req: Request,
@@ -22,7 +22,7 @@ export async function GET(
       );
     }
 
-    const [event, ticketResults, waitlistResult] = await Promise.all([
+    const [event, ticketResults, waitlistResult, feedbackResults] = await Promise.all([
       db.query.events.findFirst({
         where: eq(events.id, eventId),
         columns: {
@@ -52,6 +52,24 @@ export async function GET(
         .select({ value: count() })
         .from(waitlist)
         .where(eq(waitlist.eventId, eventId)),
+      db.query.eventFeedback.findMany({
+        where: eq(eventFeedback.eventId, eventId),
+        columns: {
+          id: true,
+          score: true,
+          comment: true,
+          updatedAt: true,
+        },
+        with: {
+          ticket: {
+            columns: {
+              name: true,
+              email: true,
+            },
+          },
+        },
+        orderBy: (feedback, { desc }) => [desc(feedback.updatedAt)],
+      }),
     ]);
 
     if (!event) {
@@ -228,6 +246,45 @@ export async function GET(
       }
     }
 
+    const feedbackResponseCount = feedbackResults.length;
+    const feedbackCommentRows = feedbackResults.filter(
+      (entry) => entry.comment && entry.comment.trim().length > 0,
+    );
+    const promoterCount = feedbackResults.filter((entry) => entry.score >= 9).length;
+    const passiveCount = feedbackResults.filter(
+      (entry) => entry.score >= 7 && entry.score <= 8,
+    ).length;
+    const detractorCount = feedbackResults.filter((entry) => entry.score <= 6).length;
+    const feedbackAverageScore = feedbackResponseCount > 0
+      ? feedbackResults.reduce((sum, entry) => sum + entry.score, 0)
+        / feedbackResponseCount
+      : null;
+    const feedbackNps = feedbackResponseCount > 0
+      ? ((promoterCount / feedbackResponseCount)
+        - (detractorCount / feedbackResponseCount)) * 100
+      : null;
+    const feedbackResponseRate = scannedCount > 0
+      ? (feedbackResponseCount / scannedCount) * 100
+      : 0;
+    const feedbackStats = {
+      responseCount: feedbackResponseCount,
+      responseRate: feedbackResponseRate,
+      averageScore: feedbackAverageScore,
+      nps: feedbackNps,
+      promoterCount,
+      passiveCount,
+      detractorCount,
+      commentCount: feedbackCommentRows.length,
+      recentComments: feedbackCommentRows.slice(0, 8).map((entry) => ({
+        id: entry.id,
+        attendeeName: entry.ticket?.name?.trim() || null,
+        attendeeEmail: entry.ticket?.email ?? null,
+        score: entry.score,
+        comment: entry.comment?.trim() ?? "",
+        updatedAt: entry.updatedAt.toISOString(),
+      })),
+    };
+
     return NextResponse.json({
       eventName: event.name,
       eventDate: event.startTimeDate?.toISOString() ?? null,
@@ -250,6 +307,7 @@ export async function GET(
       earlyBirdFlake,
       referralAttendance,
       arrivalDistribution,
+      feedbackStats,
     });
   } catch (error) {
     console.error("Summary data fetch error:", error);

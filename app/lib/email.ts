@@ -3044,7 +3044,64 @@ export type CampaignEmailData = {
   eventVenueLink?: string | null;
   eventId?: string | null;
   imgVersion?: number | null;
+  feedbackPrompt?: {
+    eventName: string;
+    formUrl: string;
+    scoreLinks: Array<{ score: number; url: string }>;
+  } | null;
 };
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function buildCampaignFeedbackPromptHTML(
+  prompt: NonNullable<CampaignEmailData["feedbackPrompt"]>,
+): string {
+  const rows = [prompt.scoreLinks.slice(0, 5), prompt.scoreLinks.slice(5, 10)];
+
+  return `
+    <div style="margin-top: 28px; border: 1px solid #3f3f46; border-radius: 20px; background: #18181b; padding: 24px 20px;">
+      <h3 style="margin: 0 0 10px 0; color: #ffffff; font-size: 22px; line-height: 1.3; font-family: Georgia, serif;">
+        How likely are you to recommend Stanford Speakers Bureau events to a friend?
+      </h3>
+      <p style="margin: 0 0 20px 0; color: #d4d4d8; font-size: 14px; line-height: 1.6;">
+       One-tap feedback greatly helps us with improving our events!
+      </p>
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse: separate; border-spacing: 8px 8px; margin: 0 0 10px 0;">
+        ${rows.map((row) => `
+          <tr>
+            ${row.map((entry) => `
+              <td width="20%" align="center">
+                <a
+                  href="${entry.url}"
+                  style="display: block; padding: 14px 0; border-radius: 10px; background-color: #A80D0C; border: 1px solid #8a0a09; color: #ffffff; font-size: 16px; font-weight: 700; text-decoration: none; box-shadow: 0 1px 0 rgba(0,0,0,0.25);"
+                >
+                  ${entry.score}
+                </a>
+              </td>
+            `).join("")}
+          </tr>
+        `).join("")}
+      </table>
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin: 0 0 16px 0;">
+        <tr>
+          <td align="left" style="color: #a1a1aa; font-size: 12px;">Not likely</td>
+          <td align="right" style="color: #a1a1aa; font-size: 12px;">Extremely likely</td>
+        </tr>
+      </table>
+      <p style="margin: 0; color: #71717a; font-size: 12px; line-height: 1.5;">
+        Prefer a regular link instead?
+        <a href="${prompt.formUrl}" style="color: #f4f4f5; text-decoration: underline;">Open the feedback form</a>.
+      </p>
+    </div>
+  `;
+}
 
 function generateCampaignEmailText(data: CampaignEmailData): string {
   const body = data.bodyMarkdown
@@ -3053,8 +3110,13 @@ function generateCampaignEmailText(data: CampaignEmailData): string {
     .replace(/<u>(.+?)<\/u>/g, "$1")
     .replace(/\[([^\]]+)\]\(([^)]+)\)/g, "$1 ($2)");
 
+  const feedbackSection = data.feedbackPrompt
+    ? `\n\nHow likely are you to recommend Stanford Speakers Bureau events to a friend?\nShare feedback here: ${data.feedbackPrompt.formUrl}`
+    : "";
+
   return `
 ${body}
+${feedbackSection}
 
 Stanford Speakers Bureau
 For questions, please email ${FROM_EMAIL}
@@ -3070,6 +3132,10 @@ function generateCampaignEmailHTML(data: CampaignEmailData): string {
         <div style="color: #f4f4f5; font-size: 16px; line-height: 1.7;">${markdownToEmailHTML(data.bodyMarkdown)}</div>
       ${gmailBlendEnd}
     </div>`);
+
+  if (data.feedbackPrompt) {
+    contentSections.push(buildCampaignFeedbackPromptHTML(data.feedbackPrompt));
+  }
 
   let heroCard = "";
   if (data.includeHeroCard && data.eventName) {

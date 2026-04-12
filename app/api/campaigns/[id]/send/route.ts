@@ -1,10 +1,20 @@
 import { NextResponse } from "next/server";
 import { verifyAdminRequest } from "@/app/lib/auth";
-import { and, db, eq, emailCampaigns, sql } from "@ssb/db";
+import {
+  and,
+  db,
+  eq,
+  emailCampaigns,
+  events,
+  inArray,
+  sql,
+  tickets,
+} from "@ssb/db";
 import {
   REMINDER_EMAIL_BATCH_SIZE,
   REMINDER_EMAIL_MIN_BATCH_DURATION_MS,
 } from "@/app/lib/constants";
+import { buildEventFeedbackLink } from "@/app/lib/feedback-links";
 import {
   isValidEmail,
   isValidUUID,
@@ -245,9 +255,77 @@ export async function POST(req: Request, { params }: Params) {
       );
     }
 
+    const baseUrl =
+      process.env.NEXT_PUBLIC_BASE_URL || "https://stanfordspeakersbureau.com";
+    const feedbackEvent = activeCampaign.includeFeedbackPrompt
+      && activeCampaign.feedbackEventId
+      ? await db.query.events.findFirst({
+          where: eq(events.id, activeCampaign.feedbackEventId),
+          columns: {
+            id: true,
+            name: true,
+            route: true,
+            startTimeDate: true,
+            endTimeDate: true,
+          },
+        })
+      : null;
+
+    const feedbackTicketRows = feedbackEvent
+      ? await db.query.tickets.findMany({
+          where: and(
+            eq(tickets.eventId, feedbackEvent.id),
+            eq(tickets.scanned, true),
+            inArray(tickets.email, emails),
+          ),
+          columns: {
+            id: true,
+            email: true,
+          },
+        })
+      : [];
+    const feedbackTicketByEmail = new Map(
+      feedbackTicketRows.map((ticket) => [normalizeEmail(ticket.email), ticket]),
+    );
+
     const results = await Promise.allSettled(
-      emails.map((email) =>
-        sendCampaignEmail({
+      emails.map(async (email) => {
+        const feedbackTicket = feedbackEvent
+          ? feedbackTicketByEmail.get(email)
+          : null;
+        const feedbackPrompt = feedbackEvent && feedbackTicket
+          ? {
+              eventName: feedbackEvent.name || "this event",
+              formUrl: await buildEventFeedbackLink({
+                baseUrl,
+                eventRoute: feedbackEvent.route || feedbackEvent.id,
+                email,
+                ticketId: feedbackTicket.id,
+                eventId: feedbackEvent.id,
+                eventStartTime:
+                  feedbackEvent.startTimeDate?.toISOString() ?? null,
+                eventEndTime: feedbackEvent.endTimeDate?.toISOString() ?? null,
+              }),
+              scoreLinks: await Promise.all(
+                Array.from({ length: 10 }, (_, index) =>
+                  buildEventFeedbackLink({
+                    baseUrl,
+                    eventRoute: feedbackEvent.route || feedbackEvent.id,
+                    email,
+                    ticketId: feedbackTicket.id,
+                    eventId: feedbackEvent.id,
+                    score: index + 1,
+                    eventStartTime:
+                      feedbackEvent.startTimeDate?.toISOString() ?? null,
+                    eventEndTime:
+                      feedbackEvent.endTimeDate?.toISOString() ?? null,
+                  }).then((url) => ({ score: index + 1, url })),
+                ),
+              ),
+            }
+          : null;
+
+        return sendCampaignEmail({
           email,
           subject: activeCampaign.subject,
           bodyMarkdown: activeCampaign.body,
@@ -260,8 +338,9 @@ export async function POST(req: Request, { params }: Params) {
           eventVenueLink: activeCampaign.event?.venueLink ?? null,
           eventId: activeCampaign.eventId ?? null,
           imgVersion: activeCampaign.event?.imgVersion ?? null,
-        }),
-      ),
+          feedbackPrompt,
+        });
+      }),
     );
 
     let sent = 0;

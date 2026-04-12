@@ -12,6 +12,24 @@ import ReactECharts from "echarts-for-react";
 
 type TypeBreakdown = { total: number; scanned: number; flakeRate: number };
 type ScannerEntry = { name: string; email: string; count: number };
+type FeedbackStats = {
+  responseCount: number;
+  responseRate: number;
+  averageScore: number | null;
+  nps: number | null;
+  promoterCount: number;
+  passiveCount: number;
+  detractorCount: number;
+  commentCount: number;
+  recentComments: Array<{
+    id: string;
+    attendeeName: string | null;
+    attendeeEmail: string | null;
+    score: number;
+    comment: string;
+    updatedAt: string;
+  }>;
+};
 
 type SummaryResponse = {
   eventName: string | null;
@@ -35,6 +53,7 @@ type SummaryResponse = {
   earlyBirdFlake: { earlyFlakeRate: number; lateFlakeRate: number; earlyTotal: number; lateTotal: number } | null;
   referralAttendance: { referralShowRate: number; organicShowRate: number; referralTotal: number; organicTotal: number } | null;
   arrivalDistribution: { buckets: { label: string; count: number }[]; total: number } | null;
+  feedbackStats: FeedbackStats;
 };
 
 // ── Helpers ──────────────────────────────────────────────────────────────
@@ -118,6 +137,16 @@ function formatTimeRange(start: string, end: string): string {
       timeZone: "America/Los_Angeles",
     });
   return `${fmt(start)} – ${fmt(end)}`;
+}
+
+function formatTimestamp(value: string): string {
+  return new Date(value).toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone: "America/Los_Angeles",
+  });
 }
 
 function ProgressBar({ value, max, color = "#10b981" }: { value: number; max: number; color?: string }) {
@@ -632,6 +661,7 @@ function SummaryContent({ eventId }: { eventId: string }) {
     totalTickets, scannedCount, unscannedCount, flakeRate, byType,
     waitlistCount, averageArrivalOffsetMs, peakInterval, capacity, standbyEnabled,
     scannerLeaderboard, earlyBirdFlake, referralAttendance, arrivalDistribution,
+    feedbackStats,
   } = data;
 
   const attendanceRate = totalTickets > 0 ? (scannedCount / totalTickets) * 100 : 0;
@@ -652,6 +682,7 @@ function SummaryContent({ eventId }: { eventId: string }) {
     waitlistCount > 0,
     true,
   ].filter(Boolean).length;
+  const summaryFeedbackCardCount = 4;
 
   return (
     <div className="space-y-5">
@@ -714,6 +745,73 @@ function SummaryContent({ eventId }: { eventId: string }) {
           )}
         </div>
 
+      </div>
+
+      <div
+        className="grid grid-cols-2 gap-4 analytics-card-grid"
+        style={getAnalyticsCardGridStyle(summaryFeedbackCardCount)}
+      >
+        <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
+          <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-2">Feedback NPS</p>
+          {feedbackStats.nps != null ? (
+            <>
+              <p className={`text-3xl font-bold ${feedbackStats.nps >= 40 ? "text-emerald-400" : feedbackStats.nps >= 0 ? "text-blue-400" : "text-rose-400"}`}>
+                {Math.round(feedbackStats.nps)}
+              </p>
+              <p className="text-sm text-zinc-400 mt-1">
+                {feedbackStats.promoterCount} promoters &middot; {feedbackStats.detractorCount} detractors
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="text-3xl font-bold text-zinc-600">N/A</p>
+              <p className="text-sm text-zinc-400 mt-1">No feedback responses yet</p>
+            </>
+          )}
+        </div>
+
+        <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
+          <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-2">Feedback Response Rate</p>
+          <p className={`text-3xl font-bold ${feedbackStats.responseRate >= 35 ? "text-emerald-400" : feedbackStats.responseRate >= 15 ? "text-amber-400" : "text-zinc-300"}`}>
+            {feedbackStats.responseRate.toFixed(1)}%
+          </p>
+          <p className="text-sm text-zinc-400 mt-1">
+            {feedbackStats.responseCount} of {scannedCount} checked-in attendees
+          </p>
+          <div className="mt-3">
+            <ProgressBar value={feedbackStats.responseCount} max={Math.max(scannedCount, 1)} color={feedbackStats.responseRate >= 35 ? "#10b981" : feedbackStats.responseRate >= 15 ? "#f59e0b" : "#71717a"} />
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
+          <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-2">Average Score</p>
+          {feedbackStats.averageScore != null ? (
+            <>
+              <p className="text-3xl font-bold text-cyan-400">
+                {feedbackStats.averageScore.toFixed(1)}
+                <span className="text-lg text-zinc-500">/10</span>
+              </p>
+              <p className="text-sm text-zinc-400 mt-1">
+                {feedbackStats.passiveCount} passives in the middle
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="text-3xl font-bold text-zinc-600">N/A</p>
+              <p className="text-sm text-zinc-400 mt-1">Waiting on first response</p>
+            </>
+          )}
+        </div>
+
+        <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
+          <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-2">Written Comments</p>
+          <p className="text-3xl font-bold text-violet-400">{feedbackStats.commentCount}</p>
+          <p className="text-sm text-zinc-400 mt-1">
+            {feedbackStats.responseCount > 0
+              ? `${((feedbackStats.commentCount / feedbackStats.responseCount) * 100).toFixed(0)}% of responses included notes`
+              : "No comments yet"}
+          </p>
+        </div>
       </div>
 
       {/* ── Per-type flake breakdown ── */}
@@ -901,6 +999,37 @@ function SummaryContent({ eventId }: { eventId: string }) {
           )}
         </div>
       </div>
+
+      {feedbackStats.recentComments.length > 0 && (
+        <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-sm font-semibold text-zinc-300">Recent Feedback Comments</h3>
+            <span className="text-xs text-zinc-500">
+              {feedbackStats.commentCount} total comment{feedbackStats.commentCount !== 1 ? "s" : ""}
+            </span>
+          </div>
+          <div className="space-y-3">
+            {feedbackStats.recentComments.map((entry) => (
+              <div key={entry.id} className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
+                <div className="flex flex-wrap items-center gap-2 mb-2">
+                  <span className="inline-flex items-center rounded-full bg-violet-500/10 px-2.5 py-1 text-xs font-semibold text-violet-300">
+                    {entry.score}/10
+                  </span>
+                  <span className="text-sm font-medium text-white">
+                    {entry.attendeeName || entry.attendeeEmail || "Anonymous attendee"}
+                  </span>
+                  <span className="text-xs text-zinc-500">
+                    {formatTimestamp(entry.updatedAt)}
+                  </span>
+                </div>
+                <p className="text-sm leading-relaxed text-zinc-300 whitespace-pre-wrap">
+                  {entry.comment}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* ── Scanner Performance ── */}
       {scannerLeaderboard.length > 0 && (
