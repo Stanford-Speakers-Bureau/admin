@@ -150,10 +150,7 @@ export default function FeedbackAnalyticsClient() {
     });
   }, [data, search]);
 
-  const maxDistribution = useMemo(() => {
-    if (!data) return 0;
-    return Math.max(0, ...data.scoreDistribution);
-  }, [data]);
+  const distributionScale = data?.totalResponses ?? 0;
 
   function toggleSelect(ticketId: string) {
     setSelectedTicketIds((prev) => {
@@ -376,19 +373,22 @@ export default function FeedbackAnalyticsClient() {
         <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
           <div className="flex items-baseline justify-between mb-4">
             <h3 className="text-sm font-semibold text-white">Score Distribution</h3>
-            <p className="text-[11px] text-zinc-500">1 = not likely · 10 = extremely likely</p>
+            <p className="text-[11px] text-zinc-500">
+              % of {distributionScale} response{distributionScale === 1 ? "" : "s"} · 1 = not likely · 10 = extremely likely
+            </p>
           </div>
           <div className="grid grid-cols-10 gap-2 items-end h-40">
             {data.scoreDistribution.map((count, idx) => {
               const score = idx + 1;
-              const heightPct = maxDistribution > 0 ? (count / maxDistribution) * 100 : 0;
+              const sharePct =
+                distributionScale > 0 ? (count / distributionScale) * 100 : 0;
               return (
                 <div key={score} className="flex flex-col items-center gap-2">
                   <div className="flex-1 w-full flex items-end">
                     <div
                       className={`w-full rounded-md border ${scoreBg(score)} transition-all`}
-                      style={{ height: `${heightPct}%`, minHeight: count > 0 ? 4 : 0 }}
-                      title={`${count} response${count === 1 ? "" : "s"}`}
+                      style={{ height: `${sharePct}%`, minHeight: count > 0 ? 4 : 0 }}
+                      title={`${count} response${count === 1 ? "" : "s"} (${sharePct.toFixed(0)}%)`}
                     />
                   </div>
                   <div className="text-center">
