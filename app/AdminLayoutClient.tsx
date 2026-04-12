@@ -22,6 +22,7 @@ type AdminLayoutClientProps = {
 const EVENT_SCOPED_PATHS = [
   "/events/edit",
   "/notify-analytics",
+  "/feedback-analytics",
   "/sales",
   "/check-in",
   "/summary",
