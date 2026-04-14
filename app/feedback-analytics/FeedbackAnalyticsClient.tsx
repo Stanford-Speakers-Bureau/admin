@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import ReactECharts from "echarts-for-react";
 import { useEventContext } from "@/app/EventContext";
 import {
   runChunkedSend,
@@ -153,6 +154,66 @@ export default function FeedbackAnalyticsClient() {
   }, [data, search, anonymous]);
 
   const distributionScale = data?.totalResponses ?? 0;
+
+  const scoreDistributionOption = useMemo(() => {
+    const counts = data?.scoreDistribution ?? [];
+    const total = distributionScale;
+    const barColor = (score: number) => {
+      if (score >= 9) return "#10b981";
+      if (score >= 7) return "#f59e0b";
+      return "#f43f5e";
+    };
+    return {
+      grid: { left: 36, right: 16, top: 24, bottom: 28 },
+      tooltip: {
+        trigger: "axis" as const,
+        axisPointer: { type: "shadow" as const },
+        backgroundColor: "#18181b",
+        borderColor: "#3f3f46",
+        textStyle: { color: "#e4e4e7", fontSize: 12 },
+        formatter: (params: unknown) => {
+          const arr = params as Array<{ name: string; value: number }>;
+          const p = arr[0];
+          const pct = total > 0 ? ((p.value / total) * 100).toFixed(0) : "0";
+          return `Score ${p.name}<br/>${p.value} response${p.value === 1 ? "" : "s"} (${pct}%)`;
+        },
+      },
+      xAxis: {
+        type: "category" as const,
+        data: counts.map((_, i) => String(i + 1)),
+        axisLine: { lineStyle: { color: "#3f3f46" } },
+        axisTick: { show: false },
+        axisLabel: { color: "#a1a1aa", fontSize: 11 },
+      },
+      yAxis: {
+        type: "value" as const,
+        minInterval: 1,
+        splitLine: { lineStyle: { color: "#27272a" } },
+        axisLabel: { color: "#71717a", fontSize: 11 },
+      },
+      series: [
+        {
+          type: "bar" as const,
+          data: counts.map((count, idx) => ({
+            value: count,
+            itemStyle: {
+              color: barColor(idx + 1),
+              borderRadius: [4, 4, 0, 0],
+            },
+          })),
+          barMaxWidth: 40,
+          label: {
+            show: true,
+            position: "top" as const,
+            color: "#d4d4d8",
+            fontSize: 11,
+            fontWeight: 600,
+            formatter: (p: { value: number }) => (p.value > 0 ? String(p.value) : ""),
+          },
+        },
+      ],
+    };
+  }, [data?.scoreDistribution, distributionScale]);
 
   function toggleSelect(ticketId: string) {
     setSelectedTicketIds((prev) => {
@@ -361,27 +422,13 @@ export default function FeedbackAnalyticsClient() {
               % of {distributionScale} response{distributionScale === 1 ? "" : "s"} · 1 = not likely · 10 = extremely likely
             </p>
           </div>
-          <div className="grid grid-cols-10 gap-2 h-40">
-            {data.scoreDistribution.map((count, idx) => {
-              const score = idx + 1;
-              const sharePct =
-                distributionScale > 0 ? (count / distributionScale) * 100 : 0;
-              return (
-                <div key={score} className="flex flex-col items-center gap-2 h-full">
-                  <div className="flex-1 w-full flex items-end">
-                    <div
-                      className={`w-full rounded-md border ${scoreBg(score)} transition-all`}
-                      style={{ height: `${sharePct}%`, minHeight: count > 0 ? 4 : 0 }}
-                      title={`${count} response${count === 1 ? "" : "s"} (${sharePct.toFixed(0)}%)`}
-                    />
-                  </div>
-                  <div className="text-center">
-                    <div className={`text-xs font-semibold ${scoreTone(score)}`}>{count}</div>
-                    <div className="text-[10px] text-zinc-500">{score}</div>
-                  </div>
-                </div>
-              );
-            })}
+          <div className="h-56">
+            <ReactECharts
+              option={scoreDistributionOption}
+              style={{ height: "100%", width: "100%" }}
+              opts={{ renderer: "canvas" }}
+              notMerge
+            />
           </div>
         </div>
 
