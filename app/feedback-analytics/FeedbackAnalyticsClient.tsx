@@ -69,6 +69,49 @@ function scoreBg(score: number): string {
   return "bg-rose-500/15 border-rose-500/30";
 }
 
+function formatEventDateRange(
+  start: string | null,
+  end: string | null,
+): string {
+  if (!start) return "";
+  const startDate = new Date(start);
+  const dateStr = startDate.toLocaleDateString("en-US", {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+    timeZone: "America/Los_Angeles",
+  });
+  const startTime = startDate.toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone: "America/Los_Angeles",
+  });
+  if (!end) return `${dateStr} · ${startTime}`;
+  const endTime = new Date(end).toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone: "America/Los_Angeles",
+  });
+  return `${dateStr} · ${startTime} – ${endTime}`;
+}
+
+async function fetchImageAsDataUrl(url: string): Promise<string | null> {
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const blob = await res.blob();
+    return await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(blob);
+    });
+  } catch {
+    return null;
+  }
+}
+
 export default function FeedbackAnalyticsClient() {
   const { events, selectedEventId } = useEventContext();
   const [data, setData] = useState<AnalyticsResponse | null>(null);
@@ -241,6 +284,313 @@ export default function FeedbackAnalyticsClient() {
     });
   }
 
+  async function handleDownloadPdf() {
+    if (!data) return;
+    const [{ default: jsPDF }, logoDataUrl] = await Promise.all([
+      import("jspdf"),
+      fetchImageAsDataUrl("/logo.png"),
+    ]);
+    const doc = new jsPDF({ unit: "pt", format: "a4" });
+    const pageW = doc.internal.pageSize.getWidth();
+    const pageH = doc.internal.pageSize.getHeight();
+    const margin = 48;
+    const contentW = pageW - margin * 2;
+    let y = margin;
+
+    const BRAND_R = 168;
+    const BRAND_G = 13;
+    const BRAND_B = 12;
+
+    const ensureSpace = (needed: number) => {
+      if (y + needed > pageH - margin - 32) {
+        doc.addPage();
+        y = margin;
+      }
+    };
+
+    const logoSize = 44;
+    if (logoDataUrl) {
+      doc.addImage(logoDataUrl, "PNG", margin, y, logoSize, logoSize);
+    }
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(14);
+    doc.setTextColor(20, 20, 20);
+    doc.text("Stanford Speakers Bureau", margin + logoSize + 14, y + 18);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10);
+    doc.setTextColor(120, 120, 120);
+    doc.text(
+      "Feedback Report",
+      margin + logoSize + 14,
+      y + 34,
+    );
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    doc.setTextColor(140, 140, 140);
+    doc.text(
+      `Generated ${new Date().toLocaleDateString("en-US", {
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      })}`,
+      pageW - margin,
+      y + 18,
+      { align: "right" },
+    );
+    doc.text("Anonymized", pageW - margin, y + 32, { align: "right" });
+
+    y += logoSize + 16;
+    doc.setDrawColor(BRAND_R, BRAND_G, BRAND_B);
+    doc.setLineWidth(1.5);
+    doc.line(margin, y, margin + contentW, y);
+    doc.setLineWidth(1);
+    y += 22;
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(9);
+    doc.setTextColor(BRAND_R, BRAND_G, BRAND_B);
+    doc.text("EVENT", margin, y);
+    y += 26;
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(20);
+    doc.setTextColor(20, 20, 20);
+    const nameLines = doc.splitTextToSize(
+      data.eventName || "Unnamed Event",
+      contentW,
+    ) as string[];
+    nameLines.forEach((line) => {
+      doc.text(line, margin, y);
+      y += 26;
+    });
+    y += 4;
+
+    const dateLine = formatEventDateRange(data.eventStartTime, data.eventEndTime);
+    if (dateLine) {
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(11);
+      doc.setTextColor(90, 90, 90);
+      doc.text(dateLine, margin, y);
+      y += 16;
+    }
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10);
+    doc.setTextColor(120, 120, 120);
+    doc.text(
+      `${data.totalResponses} response${data.totalResponses === 1 ? "" : "s"}`,
+      margin,
+      y,
+    );
+    y += 24;
+
+    const npsColor: [number, number, number] =
+      data.totalResponses === 0
+        ? [20, 20, 20]
+        : data.npsScore >= 50
+          ? [16, 185, 129]
+          : data.npsScore >= 0
+            ? [245, 158, 11]
+            : [244, 63, 94];
+    const stats: Array<{
+      label: string;
+      value: string;
+      valueColor: [number, number, number];
+    }> = [
+      {
+        label: "RESPONSES",
+        value: String(data.totalResponses),
+        valueColor: [20, 20, 20],
+      },
+      {
+        label: "AVERAGE SCORE",
+        value: data.totalResponses > 0 ? data.averageScore.toFixed(2) : "—",
+        valueColor: [20, 20, 20],
+      },
+      {
+        label: "NPS",
+        value: data.totalResponses > 0 ? data.npsScore.toFixed(0) : "—",
+        valueColor: npsColor,
+      },
+    ];
+    const boxGap = 16;
+    const boxW = (contentW - boxGap * 2) / 3;
+    const boxH = 72;
+    stats.forEach((s, i) => {
+      const x = margin + i * (boxW + boxGap);
+      doc.setDrawColor(220, 220, 220);
+      doc.setFillColor(248, 248, 249);
+      doc.roundedRect(x, y, boxW, boxH, 6, 6, "FD");
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(9);
+      doc.setTextColor(110, 110, 110);
+      doc.text(s.label, x + 14, y + 20);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(22);
+      doc.setTextColor(s.valueColor[0], s.valueColor[1], s.valueColor[2]);
+      doc.text(s.value, x + 14, y + 50);
+    });
+    y += boxH + 10;
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10);
+    doc.setTextColor(90, 90, 90);
+    doc.text(
+      `${data.promoters} promoters · ${data.passives} passives · ${data.detractors} detractors`,
+      margin,
+      y,
+    );
+    y += 24;
+
+    ensureSpace(210);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(13);
+    doc.setTextColor(20, 20, 20);
+    doc.text("Score Distribution", margin, y);
+    y += 18;
+
+    const chartTop = y;
+    const chartH = 150;
+    const maxCount = Math.max(1, ...data.scoreDistribution);
+    const barGap = 10;
+    const barW = (contentW - barGap * 9) / 10;
+
+    doc.setDrawColor(230, 230, 230);
+    doc.line(margin, chartTop + chartH, margin + contentW, chartTop + chartH);
+
+    data.scoreDistribution.forEach((count, idx) => {
+      const score = idx + 1;
+      const barH = count > 0 ? Math.max(2, (count / maxCount) * (chartH - 24)) : 0;
+      const bx = margin + idx * (barW + barGap);
+      const by = chartTop + chartH - barH;
+      if (score >= 9) doc.setFillColor(16, 185, 129);
+      else if (score >= 7) doc.setFillColor(245, 158, 11);
+      else doc.setFillColor(244, 63, 94);
+      if (barH > 0) doc.rect(bx, by, barW, barH, "F");
+
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(9);
+      doc.setTextColor(60, 60, 60);
+      doc.text(String(count), bx + barW / 2, by - 4, { align: "center" });
+
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(10);
+      doc.setTextColor(120, 120, 120);
+      doc.text(String(score), bx + barW / 2, chartTop + chartH + 14, {
+        align: "center",
+      });
+    });
+    y = chartTop + chartH + 32;
+
+    const sections: Array<{
+      title: string;
+      rows: FeedbackRow[];
+      color: [number, number, number];
+    }> = [
+        {
+          title: "Promoters (9–10)",
+          rows: data.feedback.filter((r) => r.score >= 9),
+          color: [16, 185, 129],
+        },
+        {
+          title: "Passives (7–8)",
+          rows: data.feedback.filter((r) => r.score === 7 || r.score === 8),
+          color: [245, 158, 11],
+        },
+        {
+          title: "Detractors (1–6)",
+          rows: data.feedback.filter((r) => r.score <= 6),
+          color: [244, 63, 94],
+        },
+      ];
+
+    for (const section of sections) {
+      ensureSpace(60);
+      doc.setDrawColor(230, 230, 230);
+      doc.line(margin, y, margin + contentW, y);
+      y += 18;
+
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(14);
+      doc.setTextColor(20, 20, 20);
+      doc.text(section.title, margin, y);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(10);
+      doc.setTextColor(120, 120, 120);
+      doc.text(
+        `${section.rows.length} response${section.rows.length === 1 ? "" : "s"}`,
+        margin + contentW,
+        y,
+        { align: "right" },
+      );
+      y += 18;
+
+      if (section.rows.length === 0) {
+        doc.setFont("helvetica", "italic");
+        doc.setFontSize(10);
+        doc.setTextColor(160, 160, 160);
+        doc.text("No responses.", margin, y);
+        y += 24;
+        continue;
+      }
+
+      const sorted = [...section.rows].sort((a, b) => b.score - a.score);
+      for (const row of sorted) {
+        const hasComment = Boolean(row.comment?.trim());
+        const commentText = hasComment ? row.comment!.trim() : "No comment provided.";
+        const lines = doc.splitTextToSize(commentText, contentW - 54) as string[];
+        const blockH = Math.max(34, lines.length * 13 + 14);
+        ensureSpace(blockH + 8);
+
+        const [r, g, b] = section.color;
+        doc.setFillColor(r, g, b);
+        doc.roundedRect(margin, y, 38, 30, 4, 4, "F");
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(14);
+        doc.setTextColor(255, 255, 255);
+        doc.text(String(row.score), margin + 19, y + 20, { align: "center" });
+
+        doc.setFont("helvetica", hasComment ? "normal" : "italic");
+        doc.setFontSize(10);
+        if (hasComment) doc.setTextColor(40, 40, 40);
+        else doc.setTextColor(160, 160, 160);
+        doc.text(lines, margin + 50, y + 14);
+
+        y += blockH + 6;
+      }
+      y += 10;
+    }
+
+    const pageCount = doc.getNumberOfPages();
+    for (let i = 1; i <= pageCount; i++) {
+      doc.setPage(i);
+      doc.setDrawColor(230, 230, 230);
+      doc.setLineWidth(0.5);
+      doc.line(margin, pageH - 32, pageW - margin, pageH - 32);
+      if (logoDataUrl) {
+        doc.addImage(logoDataUrl, "PNG", margin, pageH - 26, 12, 12);
+      }
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(8);
+      doc.setTextColor(140, 140, 140);
+      doc.text(
+        "Stanford Speakers Bureau · Anonymized feedback report",
+        margin + (logoDataUrl ? 18 : 0),
+        pageH - 17,
+      );
+      doc.text(`Page ${i} of ${pageCount}`, pageW - margin, pageH - 17, {
+        align: "right",
+      });
+    }
+
+    const safeName = (data.eventName || "event")
+      .replace(/[^a-z0-9]+/gi, "-")
+      .replace(/^-+|-+$/g, "")
+      .toLowerCase();
+    doc.save(`feedback-report-${safeName || "event"}.pdf`);
+  }
+
   async function handleSendFeedbackPrompts() {
     if (!selectedEventId) return;
     const ids = [...selectedTicketIds];
@@ -288,7 +638,7 @@ export default function FeedbackAnalyticsClient() {
         })
           .then((r) => r.json())
           .then((fresh) => setData(fresh))
-          .catch(() => {});
+          .catch(() => { });
       }
     } catch (err) {
       setSendError(
@@ -357,13 +707,23 @@ export default function FeedbackAnalyticsClient() {
 
   return (
     <div className="px-4 sm:px-6 py-8">
-      <div className="mb-8">
-        <h1 className="text-2xl sm:text-3xl font-bold text-white font-serif mb-2">
-          Feedback Analytics
-        </h1>
-        {currentEvent && (
-          <p className="text-zinc-400">{currentEvent.name || "Unnamed Event"}</p>
-        )}
+      <div className="mb-8 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h1 className="text-2xl sm:text-3xl font-bold text-white font-serif mb-2">
+            Feedback Analytics
+          </h1>
+          {currentEvent && (
+            <p className="text-zinc-400">{currentEvent.name || "Unnamed Event"}</p>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={handleDownloadPdf}
+          disabled={!data || data.totalResponses === 0}
+          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold bg-[#A80D0C] text-white hover:bg-[#C11211] disabled:opacity-50 disabled:cursor-not-allowed self-start"
+        >
+          Download PDF Report
+        </button>
       </div>
 
       <div className="space-y-5">
