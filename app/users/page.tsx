@@ -1,6 +1,7 @@
 import AdminUsersClient, {
   Admin,
   Ban,
+  EmailSuppression,
   FeeWaiver,
   Scanner,
 } from "./AdminUsersClient";
@@ -15,11 +16,18 @@ async function getInitialUsers(): Promise<{
   bans: Ban[];
   feeWaivers: FeeWaiver[];
   scanners: Scanner[];
+  emailSuppressions: EmailSuppression[];
 }> {
   try {
     const auth = await verifyAdminRequest();
     if (!auth.authorized) {
-      return { admins: [], bans: [], feeWaivers: [], scanners: [] };
+      return {
+        admins: [],
+        bans: [],
+        feeWaivers: [],
+        scanners: [],
+        emailSuppressions: [],
+      };
     }
 
     const allRoles = await db.query.roles.findMany({
@@ -38,28 +46,40 @@ async function getInitialUsers(): Promise<{
     const bans = serialized.filter((r) => hasRoleName(r.roles, "banned"));
     const feeWaivers = serialized.filter((r) => hasRoleName(r.roles, "fee_waiver"));
     const scanners = serialized.filter((r) => hasRoleName(r.roles, "scanner"));
+    const emailSuppressions = serialized.filter((r) =>
+      hasRoleName(r.roles, "email_suppression"),
+    );
 
     return {
       admins: admins as Admin[],
       bans: bans as Ban[],
       feeWaivers: feeWaivers as FeeWaiver[],
       scanners: scanners as Scanner[],
+      emailSuppressions: emailSuppressions as EmailSuppression[],
     };
   } catch (error) {
     console.error("Failed to fetch initial users:", error);
-    return { admins: [], bans: [], feeWaivers: [], scanners: [] };
+    return {
+      admins: [],
+      bans: [],
+      feeWaivers: [],
+      scanners: [],
+      emailSuppressions: [],
+    };
   }
 }
 
 export default async function AdminUsersPage() {
   await connection();
-  const { admins, bans, feeWaivers, scanners } = await getInitialUsers();
+  const { admins, bans, feeWaivers, scanners, emailSuppressions } =
+    await getInitialUsers();
   return (
     <AdminUsersClient
       initialAdmins={admins}
       initialBans={bans}
       initialFeeWaivers={feeWaivers}
       initialScanners={scanners}
+      initialEmailSuppressions={emailSuppressions}
     />
   );
 }

@@ -1,10 +1,25 @@
 import type { QRCodeToBufferOptions } from "qrcode";
 import QRCode from "qrcode";
+import { db, eq, roles } from "@ssb/db";
 import { buildCancellationLink } from "./cancellation-links";
 import { IMPORTANT_NOTICE_ITEMS, PACIFIC_TIMEZONE } from "./constants";
 import { hasUnsafeHeaderChars, isValidEmail } from "./validation";
 import { buildAppleWalletLink } from "./wallet-links";
 import { generateGoogleCalendarUrl } from "./utils";
+
+async function isEmailSuppressed(email: string): Promise<boolean> {
+  const normalized = email.trim().toLowerCase();
+  if (!normalized) return false;
+  const row = await db.query.roles.findFirst({
+    where: eq(roles.email, normalized),
+    columns: { roles: true },
+  });
+  if (!row?.roles) return false;
+  return row.roles
+    .split(",")
+    .map((r) => r.trim().toLowerCase())
+    .includes("email_suppression");
+}
 
 // emails are so stupid
 // on ios gmail to fix: https://www.hteumeuleu.com/2021/fixing-gmail-dark-mode-css-blend-modes/
@@ -144,7 +159,17 @@ async function getSignatureKey(
 /**
  * Send raw email via AWS SES REST API
  */
-async function sendRawEmailViaSES(rawMessage: string): Promise<void> {
+async function sendRawEmailViaSES(
+  rawMessage: string,
+  recipientEmail: string,
+): Promise<void> {
+  if (await isEmailSuppressed(recipientEmail)) {
+    console.log(
+      `[email] Skipping send to suppressed address: ${recipientEmail}`,
+    );
+    return;
+  }
+
   const endpoint = `https://email.${AWS_REGION}.amazonaws.com/v2/email/outbound-emails`;
 
   const body = JSON.stringify({
@@ -1330,7 +1355,7 @@ export async function sendTicketEmail(data: TicketEmailData): Promise<void> {
 
   const rawMessage = lines.join("\r\n");
 
-  await sendRawEmailViaSES(rawMessage);
+  await sendRawEmailViaSES(rawMessage, data.email);
   console.log(`Ticket confirmation email sent to ${data.email}`);
 }
 
@@ -1678,7 +1703,7 @@ export async function sendDayOfReminderEmail(
 
   const rawMessage = lines.join("\r\n");
 
-  await sendRawEmailViaSES(rawMessage);
+  await sendRawEmailViaSES(rawMessage, data.email);
   console.log(`Day-of reminder email sent to ${data.email}`);
 }
 
@@ -1832,7 +1857,7 @@ export async function sendCancellationEmail(
 
   const rawMessage = lines.join("\r\n");
 
-  await sendRawEmailViaSES(rawMessage);
+  await sendRawEmailViaSES(rawMessage, data.email);
   console.log(`Cancellation email sent to ${data.email}`);
 }
 
@@ -2238,7 +2263,7 @@ export async function sendEarlyReminderEmail(
 
   const rawMessage = lines.join("\r\n");
 
-  await sendRawEmailViaSES(rawMessage);
+  await sendRawEmailViaSES(rawMessage, data.email);
   console.log(`Early reminder email sent to ${data.email}`);
 }
 
@@ -2375,7 +2400,7 @@ export async function sendTicketsAvailableNowEmail(
     `--${altBoundary}--`,
     "",
   ];
-  await sendRawEmailViaSES(lines.join("\r\n"));
+  await sendRawEmailViaSES(lines.join("\r\n"), data.email);
   console.log(`Tickets available now email sent to ${data.email}`);
 }
 
@@ -2526,7 +2551,7 @@ export async function sendTicketsAvailableInEmail(
     `--${altBoundary}--`,
     "",
   ];
-  await sendRawEmailViaSES(lines.join("\r\n"));
+  await sendRawEmailViaSES(lines.join("\r\n"), data.email);
   console.log(`Tickets available in email sent to ${data.email}`);
 }
 
@@ -2656,7 +2681,7 @@ export async function sendClaimTicketEmail(
     `--${altBoundary}--`,
     "",
   ];
-  await sendRawEmailViaSES(lines.join("\r\n"));
+  await sendRawEmailViaSES(lines.join("\r\n"), data.email);
   console.log(`Claim ticket email sent to ${data.email}`);
 }
 
@@ -2869,7 +2894,7 @@ export async function sendStandbyLineEmail(
 
   lines.push(`--${altBoundary}--`, "");
 
-  await sendRawEmailViaSES(lines.join("\r\n"));
+  await sendRawEmailViaSES(lines.join("\r\n"), data.email);
   console.log(`Standby line email sent to ${data.email}`);
 }
 
@@ -3022,7 +3047,7 @@ export async function sendEventAnnouncedEmail(
     `--${altBoundary}--`,
     "",
   ];
-  await sendRawEmailViaSES(lines.join("\r\n"));
+  await sendRawEmailViaSES(lines.join("\r\n"), data.email);
   console.log(`Event announced email sent to ${data.email}`);
 }
 
@@ -3201,5 +3226,5 @@ export async function sendCampaignEmail(
     `--${altBoundary}--`,
     "",
   ];
-  await sendRawEmailViaSES(lines.join("\r\n"));
+  await sendRawEmailViaSES(lines.join("\r\n"), data.email);
 }

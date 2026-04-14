@@ -144,7 +144,7 @@ function fakeName(seed: string): string {
   return `${copycat.oneOf(seed + "-f", FIRST_NAMES)} ${copycat.oneOf(seed + "-l", LAST_NAMES)}`;
 }
 function fakeEmail(seed: string): string {
-  return copycat.email(seed).replace(/@.*/, "@stanford.edu");
+  return copycat.email(seed).replace(/@.*/, "@stanford.edu").toLowerCase();
 }
 
 const SCANNERS = [

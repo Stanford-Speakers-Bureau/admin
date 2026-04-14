@@ -26,11 +26,18 @@ export type FeeWaiver = {
   created_at: string;
 };
 
+export type EmailSuppression = {
+  id: string;
+  email: string;
+  created_at: string;
+};
+
 type AdminUsersClientProps = {
   initialAdmins: Admin[];
   initialBans: Ban[];
   initialFeeWaivers: FeeWaiver[];
   initialScanners: Scanner[];
+  initialEmailSuppressions: EmailSuppression[];
 };
 
 export default function AdminUsersClient({
@@ -38,13 +45,17 @@ export default function AdminUsersClient({
   initialBans,
   initialFeeWaivers,
   initialScanners,
+  initialEmailSuppressions,
 }: AdminUsersClientProps) {
   const [admins, setAdmins] = useState<Admin[]>(initialAdmins);
   const [bans, setBans] = useState<Ban[]>(initialBans);
   const [feeWaivers, setFeeWaivers] = useState<FeeWaiver[]>(initialFeeWaivers);
   const [scanners, setScanners] = useState<Scanner[]>(initialScanners);
+  const [emailSuppressions, setEmailSuppressions] = useState<EmailSuppression[]>(
+    initialEmailSuppressions,
+  );
   const [activeTab, setActiveTab] = useState<
-    "admins" | "bans" | "feeWaivers" | "scanners"
+    "admins" | "bans" | "feeWaivers" | "scanners" | "emailSuppressions"
   >("admins");
   const [newEmail, setNewEmail] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -52,7 +63,7 @@ export default function AdminUsersClient({
   const [success, setSuccess] = useState<string | null>(null);
 
   async function handleAddUser(
-    type: "admin" | "ban" | "fee_waiver" | "scanner",
+    type: "admin" | "ban" | "fee_waiver" | "scanner" | "email_suppression",
   ) {
     if (!newEmail.trim()) {
       setError("Please enter an email address");
@@ -105,6 +116,11 @@ export default function AdminUsersClient({
             setFeeWaivers((prev) => [created as FeeWaiver, ...prev]);
           } else if (type === "ban") {
             setBans((prev) => [created as Ban, ...prev]);
+          } else if (type === "email_suppression") {
+            setEmailSuppressions((prev) => [
+              created as EmailSuppression,
+              ...prev,
+            ]);
           } else {
             setScanners((prev) => [created as Scanner, ...prev]);
           }
@@ -130,6 +146,8 @@ export default function AdminUsersClient({
             ? "fee waiver user(s)"
           : type === "scanner"
             ? "scanner(s)"
+          : type === "email_suppression"
+            ? "suppressed email(s)"
             : "banned user(s)";
       const successMsg = `Successfully added ${successCount} ${typeLabel}`;
       setSuccess(
@@ -143,7 +161,7 @@ export default function AdminUsersClient({
 
   async function handleRemoveUser(
     id: string,
-    type: "admin" | "ban" | "fee_waiver" | "scanner",
+    type: "admin" | "ban" | "fee_waiver" | "scanner" | "email_suppression",
   ) {
     try {
       const response = await fetch("/api/users", {
@@ -159,6 +177,8 @@ export default function AdminUsersClient({
           setFeeWaivers((prev) => prev.filter((user) => user.id !== id));
         } else if (type === "ban") {
           setBans((prev) => prev.filter((b) => b.id !== id));
+        } else if (type === "email_suppression") {
+          setEmailSuppressions((prev) => prev.filter((s) => s.id !== id));
         } else {
           setScanners((prev) => prev.filter((s) => s.id !== id));
         }
@@ -278,6 +298,29 @@ export default function AdminUsersClient({
           </svg>
           Banned Users ({bans.length})
         </button>
+        <button
+          onClick={() => setActiveTab("emailSuppressions")}
+          className={`flex items-center gap-2 px-4 py-2 rounded text-sm font-medium transition-all ${
+            activeTab === "emailSuppressions"
+              ? "bg-zinc-500/20 text-zinc-200 border border-zinc-500/30"
+              : "bg-zinc-900 text-zinc-400 border border-zinc-800 hover:border-zinc-700"
+          }`}
+        >
+          <svg
+            className="w-4 h-4"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
+            />
+          </svg>
+          Email Suppression ({emailSuppressions.length})
+        </button>
       </div>
 
       {/* Messages */}
@@ -364,6 +407,8 @@ export default function AdminUsersClient({
               ? "Add New Scanner"
               : activeTab === "feeWaivers"
                 ? "Add Fee Waiver User"
+              : activeTab === "emailSuppressions"
+                ? "Suppress Email Address"
               : "Ban a User"}
         </h3>
         <p className="text-zinc-500 text-sm mb-4">
@@ -398,6 +443,8 @@ export default function AdminUsersClient({
                       ? "scanner"
                       : activeTab === "feeWaivers"
                         ? "fee_waiver"
+                      : activeTab === "emailSuppressions"
+                        ? "email_suppression"
                       : "ban",
                 )
               }
@@ -413,6 +460,8 @@ export default function AdminUsersClient({
                     ? "scanner"
                     : activeTab === "feeWaivers"
                       ? "fee_waiver"
+                    : activeTab === "emailSuppressions"
+                      ? "email_suppression"
                     : "ban",
               )
             }
@@ -424,6 +473,8 @@ export default function AdminUsersClient({
                   ? "bg-blue-500 hover:bg-blue-600"
                   : activeTab === "feeWaivers"
                     ? "bg-amber-500 hover:bg-amber-600"
+                  : activeTab === "emailSuppressions"
+                    ? "bg-zinc-600 hover:bg-zinc-500"
                   : "bg-rose-500 hover:bg-rose-600"
             }`}
           >
@@ -450,6 +501,8 @@ export default function AdminUsersClient({
                     ? "Add Scanner"
                     : activeTab === "feeWaivers"
                       ? "Add Fee Waiver"
+                    : activeTab === "emailSuppressions"
+                      ? "Suppress Email"
                     : "Ban User"}
               </>
             )}
@@ -630,12 +683,13 @@ export default function AdminUsersClient({
               </div>
             ))
           )
-        ) : bans.length === 0 ? (
-          <div className="text-center py-12 bg-zinc-900/50 rounded-xl border border-zinc-800">
-            <p className="text-zinc-400">No banned users</p>
-          </div>
-        ) : (
-          bans.map((ban) => (
+        ) : activeTab === "bans" ? (
+          bans.length === 0 ? (
+            <div className="text-center py-12 bg-zinc-900/50 rounded-xl border border-zinc-800">
+              <p className="text-zinc-400">No banned users</p>
+            </div>
+          ) : (
+            bans.map((ban) => (
             <div
               key={ban.id}
               className="bg-zinc-900 rounded-xl border border-zinc-800 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:border-zinc-700 transition-colors"
@@ -681,6 +735,67 @@ export default function AdminUsersClient({
                   />
                 </svg>
                 Unban
+              </button>
+            </div>
+          ))
+          )
+        ) : emailSuppressions.length === 0 ? (
+          <div className="text-center py-12 bg-zinc-900/50 rounded-xl border border-zinc-800">
+            <p className="text-zinc-400">No suppressed emails</p>
+          </div>
+        ) : (
+          emailSuppressions.map((suppression) => (
+            <div
+              key={suppression.id}
+              className="bg-zinc-900 rounded-xl border border-zinc-800 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:border-zinc-700 transition-colors"
+            >
+              <div className="flex items-center gap-4">
+                <div className="w-10 h-10 bg-zinc-500/20 rounded-full flex items-center justify-center">
+                  <svg
+                    className="w-5 h-5 text-zinc-300"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
+                    />
+                  </svg>
+                </div>
+                <div>
+                  <p className="text-white font-medium">{suppression.email}</p>
+                  <p className="text-zinc-500 text-sm">
+                    Suppressed{" "}
+                    {new Date(suppression.created_at).toLocaleDateString(
+                      "en-US",
+                      { timeZone: "America/Los_Angeles" },
+                    )}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() =>
+                  handleRemoveUser(suppression.id, "email_suppression")
+                }
+                className="flex items-center gap-2 px-3 py-1.5 text-emerald-400 hover:bg-emerald-500/10 rounded text-sm transition-colors"
+              >
+                <svg
+                  className="w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M5 13l4 4L19 7"
+                  />
+                </svg>
+                Unsuppress
               </button>
             </div>
           ))
