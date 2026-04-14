@@ -377,13 +377,13 @@ export default function FeedbackAnalyticsClient() {
               % of {distributionScale} response{distributionScale === 1 ? "" : "s"} · 1 = not likely · 10 = extremely likely
             </p>
           </div>
-          <div className="grid grid-cols-10 gap-2 items-end h-40">
+          <div className="grid grid-cols-10 gap-2 h-40">
             {data.scoreDistribution.map((count, idx) => {
               const score = idx + 1;
               const sharePct =
                 distributionScale > 0 ? (count / distributionScale) * 100 : 0;
               return (
-                <div key={score} className="flex flex-col items-center gap-2">
+                <div key={score} className="flex flex-col items-center gap-2 h-full">
                   <div className="flex-1 w-full flex items-end">
                     <div
                       className={`w-full rounded-md border ${scoreBg(score)} transition-all`}
