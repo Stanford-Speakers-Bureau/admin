@@ -77,6 +77,7 @@ export default function FeedbackAnalyticsClient() {
     "all",
   );
   const [commentOnly, setCommentOnly] = useState(false);
+  const [anonymous, setAnonymous] = useState(true);
   const [search, setSearch] = useState("");
   const [selectedTicketIds, setSelectedTicketIds] = useState<Set<string>>(
     new Set(),
@@ -132,23 +133,24 @@ export default function FeedbackAnalyticsClient() {
       if (scoreFilter === "detractors" && row.score >= 7) return false;
       if (commentOnly && !row.comment) return false;
       if (query) {
-        const haystack =
-          `${row.name ?? ""} ${row.email} ${row.comment ?? ""}`.toLowerCase();
+        const haystack = anonymous
+          ? (row.comment ?? "").toLowerCase()
+          : `${row.name ?? ""} ${row.email} ${row.comment ?? ""}`.toLowerCase();
         if (!haystack.includes(query)) return false;
       }
       return true;
     });
-  }, [data, scoreFilter, commentOnly, search]);
+  }, [data, scoreFilter, commentOnly, search, anonymous]);
 
   const filteredEligible = useMemo(() => {
     if (!data) return [];
     const query = search.trim().toLowerCase();
-    if (!query) return data.eligibleMissing;
+    if (!query || anonymous) return data.eligibleMissing;
     return data.eligibleMissing.filter((row) => {
       const haystack = `${row.name ?? ""} ${row.email}`.toLowerCase();
       return haystack.includes(query);
     });
-  }, [data, search]);
+  }, [data, search, anonymous]);
 
   const distributionScale = data?.totalResponses ?? 0;
 
@@ -305,7 +307,7 @@ export default function FeedbackAnalyticsClient() {
 
       <div className="space-y-5">
         {/* Stat Cards */}
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 px-4 py-3">
             <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
               Responses
@@ -314,25 +316,7 @@ export default function FeedbackAnalyticsClient() {
               {data.totalResponses}
             </p>
             <p className="text-xs text-zinc-500 mt-1">
-              of {data.totalScanned} scanned attendees
-            </p>
-          </div>
-          <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 px-4 py-3">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
-              Response Rate
-            </p>
-            <p
-              className={`mt-2 text-2xl font-bold ${data.responseRate >= 50
-                ? "text-emerald-400"
-                : data.responseRate >= 25
-                  ? "text-blue-400"
-                  : "text-amber-400"
-                }`}
-            >
-              {data.responseRate.toFixed(1)}%
-            </p>
-            <p className="text-xs text-zinc-500 mt-1">
-              {data.totalScanned - data.totalResponses} haven&apos;t replied
+              {data.totalResponses === 1 ? "response" : "responses"} collected
             </p>
           </div>
           <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 px-4 py-3">
@@ -426,10 +410,19 @@ export default function FeedbackAnalyticsClient() {
               />
               Has comment
             </label>
+            <label className="flex items-center gap-2 text-xs text-zinc-300 ml-2">
+              <input
+                type="checkbox"
+                checked={anonymous}
+                onChange={(e) => setAnonymous(e.target.checked)}
+                className="rounded border-zinc-600 bg-zinc-800"
+              />
+              Anonymous
+            </label>
           </div>
           <input
             type="search"
-            placeholder="Search by name, email, comment…"
+            placeholder={anonymous ? "Search comments…" : "Search by name, email, comment…"}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="px-3 py-2 rounded-lg text-sm bg-zinc-800 border border-zinc-700 text-white placeholder-zinc-500 focus:outline-none focus:border-zinc-500 w-full sm:w-72"
@@ -454,7 +447,7 @@ export default function FeedbackAnalyticsClient() {
                 <thead className="bg-zinc-900/70 text-left text-[11px] uppercase tracking-wider text-zinc-500">
                   <tr>
                     <th className="px-4 py-2 w-16">Score</th>
-                    <th className="px-4 py-2">Attendee</th>
+                    {!anonymous && <th className="px-4 py-2">Attendee</th>}
                     <th className="px-4 py-2">Comment</th>
                     <th className="px-4 py-2 w-36">Submitted</th>
                     <th className="px-4 py-2 w-24">Via</th>
@@ -470,10 +463,12 @@ export default function FeedbackAnalyticsClient() {
                           {row.score}
                         </span>
                       </td>
-                      <td className="px-4 py-3">
-                        <div className="text-white">{row.name || "—"}</div>
-                        <div className="text-xs text-zinc-500">{row.email}</div>
-                      </td>
+                      {!anonymous && (
+                        <td className="px-4 py-3">
+                          <div className="text-white">{row.name || "—"}</div>
+                          <div className="text-xs text-zinc-500">{row.email}</div>
+                        </td>
+                      )}
                       <td className="px-4 py-3 text-zinc-300 max-w-md">
                         {row.comment ? (
                           <p className="whitespace-pre-wrap break-words">{row.comment}</p>
@@ -593,8 +588,14 @@ export default function FeedbackAnalyticsClient() {
                           />
                         </td>
                         <td className="px-4 py-3">
-                          <div className="text-white">{row.name || "—"}</div>
-                          <div className="text-xs text-zinc-500">{row.email}</div>
+                          {anonymous ? (
+                            <div className="text-zinc-500 italic">Hidden</div>
+                          ) : (
+                            <>
+                              <div className="text-white">{row.name || "—"}</div>
+                              <div className="text-xs text-zinc-500">{row.email}</div>
+                            </>
+                          )}
                         </td>
                         <td className="px-4 py-3 text-xs text-zinc-400">
                           {formatTimestamp(row.scanTime)}
