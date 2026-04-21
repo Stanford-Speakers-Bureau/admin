@@ -58,6 +58,8 @@ export type Event = {
   referrals_enabled?: boolean;
   standby_enabled?: boolean | null;
   ticketing_roles?: TicketingRole[];
+  external_ticketing_enabled?: boolean;
+  external_ticketing_url?: string | null;
   tickets_sold?: number;
   waitlist_count?: number;
   standby_count?: number;
