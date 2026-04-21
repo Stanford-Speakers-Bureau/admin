@@ -887,38 +887,45 @@ export default function EditEventClient({ allEvents }: EditEventClientProps) {
                     className={inputClass}
                   />
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-zinc-300 mb-2">
-                    Latitude <span className="text-rose-400">*</span>
-                  </label>
-                  <input
-                    type="number"
-                    step="any"
-                    value={formData.latitude}
-                    onChange={(e) =>
-                      setFormData({ ...formData, latitude: e.target.value })
-                    }
-                    placeholder="e.g., 37.7749"
-                    className={inputClass}
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-zinc-300 mb-2">
-                    Longitude <span className="text-rose-400">*</span>
-                  </label>
-                  <input
-                    type="number"
-                    step="any"
-                    value={formData.longitude}
-                    onChange={(e) =>
-                      setFormData({ ...formData, longitude: e.target.value })
-                    }
-                    placeholder="e.g., -122.4194"
-                    className={inputClass}
-                    required
-                  />
-                </div>
+                {!formData.external_ticketing_enabled && (
+                  <>
+                    <div>
+                      <label className="block text-sm font-medium text-zinc-300 mb-2">
+                        Latitude <span className="text-rose-400">*</span>
+                      </label>
+                      <input
+                        type="number"
+                        step="any"
+                        value={formData.latitude}
+                        onChange={(e) =>
+                          setFormData({ ...formData, latitude: e.target.value })
+                        }
+                        placeholder="e.g., 37.7749"
+                        className={inputClass}
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-zinc-300 mb-2">
+                        Longitude <span className="text-rose-400">*</span>
+                      </label>
+                      <input
+                        type="number"
+                        step="any"
+                        value={formData.longitude}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            longitude: e.target.value,
+                          })
+                        }
+                        placeholder="e.g., -122.4194"
+                        className={inputClass}
+                        required
+                      />
+                    </div>
+                  </>
+                )}
                 <div className="md:col-span-2">
                   <label className="block text-sm font-medium text-zinc-300 mb-2">
                     Livestream URL
@@ -1295,6 +1302,7 @@ export default function EditEventClient({ allEvents }: EditEventClientProps) {
                 </div>
               </div>
 
+              {!formData.external_ticketing_enabled && (
               <div>
                 <label className="block text-sm font-medium text-zinc-300 mb-2">
                   Apple Wallet Image
@@ -1348,6 +1356,7 @@ export default function EditEventClient({ allEvents }: EditEventClientProps) {
                   </div>
                 </div>
               </div>
+              )}
             </section>
 
             <div className="flex items-center gap-4 pt-4 border-t border-zinc-800">
