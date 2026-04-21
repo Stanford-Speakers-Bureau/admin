@@ -129,6 +129,10 @@ export async function POST(req: Request) {
     const latitude = formData.get("latitude") as string;
     const longitude = formData.get("longitude") as string;
     const address = formData.get("address") as string;
+    const external_ticketing_enabled =
+      formData.get("external_ticketing_enabled") === "true";
+    const external_ticketing_url =
+      (formData.get("external_ticketing_url") as string | null)?.trim() || "";
     const rawTicketingRoles = formData
       .getAll("ticketing_roles")
       .filter((value): value is string => typeof value === "string");
@@ -177,6 +181,23 @@ export async function POST(req: Request) {
     if (venue_link && !isValidUrl(venue_link)) {
       return NextResponse.json(
         { error: "Invalid venue link URL" },
+        { status: 400 },
+      );
+    }
+
+    if (external_ticketing_enabled && !external_ticketing_url) {
+      return NextResponse.json(
+        {
+          error:
+            "External ticketing URL is required when external ticketing is enabled.",
+        },
+        { status: 400 },
+      );
+    }
+
+    if (external_ticketing_url && !isValidUrl(external_ticketing_url)) {
+      return NextResponse.json(
+        { error: "Invalid external ticketing URL" },
         { status: 400 },
       );
     }
@@ -349,6 +370,10 @@ export async function POST(req: Request) {
       latitude,
       longitude,
       address: address || "",
+      externalTicketingEnabled: external_ticketing_enabled,
+      externalTicketingUrl: external_ticketing_enabled
+        ? external_ticketing_url
+        : null,
     };
 
     // Enforce: ticketing date must be on/after release date when both are set
