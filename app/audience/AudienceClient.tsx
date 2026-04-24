@@ -397,6 +397,7 @@ export default function AudienceClient() {
   const [expandedEmail, setExpandedEmail] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [showSendModal, setShowSendModal] = useState(false);
+  const [includeNotifyListUsers, setIncludeNotifyListUsers] = useState(false);
   const [sendState, setSendState] = useState<BulkSendProgressState | null>(null);
   const [individualSending, setIndividualSending] = useState<string | null>(null);
   const [openFilterDropdown, setOpenFilterDropdown] =
@@ -669,13 +670,33 @@ export default function AudienceClient() {
     )];
   }, [data]);
 
+  const allAudienceEmails = useMemo(() => {
+    if (!data) return [];
+    return [...new Set(data.users.map((user) => user.email.toLowerCase()))];
+  }, [data]);
+
+  const notifyAudienceEmails = useMemo(() => {
+    if (!data) return [];
+    return [...new Set(
+      data.users
+        .filter((user) => user.currentEventStatus.onNotifyList)
+        .map((user) => user.email.toLowerCase()),
+    )];
+  }, [data]);
+
+  const announcementRecipients = useMemo(
+    () => (includeNotifyListUsers ? allAudienceEmails : nonNotifyEmails),
+    [allAudienceEmails, includeNotifyListUsers, nonNotifyEmails],
+  );
+
   const CHUNK_SIZE = 50;
 
   async function sendAnnouncementToAll() {
-    if (!selectedEventId || nonNotifyEmails.length === 0) return;
+    if (!selectedEventId || announcementRecipients.length === 0) return;
     setShowSendModal(false);
+    setIncludeNotifyListUsers(false);
     await runChunkedSend({
-      items: nonNotifyEmails,
+      items: announcementRecipients,
       chunkSize: CHUNK_SIZE,
       label: "Sending announcements",
       onProgress: setSendState,
@@ -739,6 +760,7 @@ export default function AudienceClient() {
 
   useEffect(() => {
     setSendState(null);
+    setIncludeNotifyListUsers(false);
   }, [selectedEventId]);
 
   useEffect(() => {
@@ -867,9 +889,12 @@ export default function AudienceClient() {
             {data.event.date ? ` • ${formatDate(data.event.date)}` : ""}
           </p>
         </div>
-        {nonNotifyEmails.length > 0 && (
+        {allAudienceEmails.length > 0 && (
           <button
-            onClick={() => setShowSendModal(true)}
+            onClick={() => {
+              setIncludeNotifyListUsers(false);
+              setShowSendModal(true);
+            }}
             disabled={sendState?.active}
             className="shrink-0 flex items-center gap-2 px-4 py-2.5 bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-lg transition-colors"
           >
@@ -895,11 +920,41 @@ export default function AudienceClient() {
           <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 max-w-md w-full mx-4 shadow-2xl">
             <h2 className="text-lg font-bold text-white mb-2">Send Announcement</h2>
             <p className="text-sm text-zinc-400 mb-4">
-              Send an announcement email to <span className="text-white font-semibold">{nonNotifyEmails.length.toLocaleString()}</span> users
-              who have not signed up for notifications for{" "}
+              Send an announcement email to <span className="text-white font-semibold">{announcementRecipients.length.toLocaleString()}</span> users
+              for{" "}
               <span className="text-white font-medium">{data.event.name || "this event"}</span>.
             </p>
-            {nonNotifyEmails.length > 500 && (
+            <label className={`mb-4 flex cursor-pointer items-start gap-3 rounded-xl border px-4 py-3 transition-colors ${
+              includeNotifyListUsers
+                ? "border-emerald-500/30 bg-emerald-500/10"
+                : "border-zinc-800 bg-zinc-950/40 hover:border-zinc-700"
+            }`}>
+              <input
+                type="checkbox"
+                checked={includeNotifyListUsers}
+                onChange={(event) =>
+                  setIncludeNotifyListUsers(event.target.checked)}
+                className="mt-0.5 h-4 w-4 rounded border-zinc-600 bg-zinc-900 text-emerald-500 focus:ring-emerald-500/40"
+              />
+              <span className="space-y-1">
+                <span className="block text-sm font-medium text-white">
+                  Include users already on the notify list
+                </span>
+                <span className="block text-xs text-zinc-400">
+                  {includeNotifyListUsers
+                    ? `This will send to all ${allAudienceEmails.length.toLocaleString()} audience members, including ${notifyAudienceEmails.length.toLocaleString()} already on notify.`
+                    : `This will send only to the ${nonNotifyEmails.length.toLocaleString()} users who are not already on the notify list.`}
+                </span>
+              </span>
+            </label>
+            {announcementRecipients.length === 0 && (
+              <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 mb-4">
+                <p className="text-xs text-amber-300">
+                  Everyone in this audience is already on the notify list. Turn on the toggle above to send the announcement to all of them.
+                </p>
+              </div>
+            )}
+            {announcementRecipients.length > 500 && (
               <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 mb-4">
                 <p className="text-xs text-amber-300">
                   Large batch — this will send in chunks of {CHUNK_SIZE} and may take a few minutes.
@@ -908,16 +963,20 @@ export default function AudienceClient() {
             )}
             <div className="flex gap-3 justify-end">
               <button
-                onClick={() => setShowSendModal(false)}
+                onClick={() => {
+                  setShowSendModal(false);
+                  setIncludeNotifyListUsers(false);
+                }}
                 className="px-4 py-2 text-sm font-medium text-zinc-400 hover:text-white transition-colors"
               >
                 Cancel
               </button>
               <button
                 onClick={sendAnnouncementToAll}
-                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-semibold rounded-lg transition-colors"
+                disabled={announcementRecipients.length === 0}
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-lg transition-colors"
               >
-                Send {nonNotifyEmails.length.toLocaleString()} Emails
+                Send {announcementRecipients.length.toLocaleString()} Emails
               </button>
             </div>
           </div>
