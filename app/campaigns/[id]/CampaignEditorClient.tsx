@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import ReactMarkdown from "react-markdown";
 import rehypeRaw from "rehype-raw";
 import rehypeSanitize from "rehype-sanitize";
+import { useConfirmationDialog } from "@/app/components/ConfirmationDialog";
 import { sanitizeSchema } from "@/app/lib/sanitize";
 import MarkdownEditor from "@/app/components/MarkdownEditor";
 import BulkSendProgress from "@/app/components/BulkSendProgress";
@@ -97,6 +98,8 @@ type CampaignEditorProps = {
 export default function CampaignEditorClient({ campaignId }: CampaignEditorProps) {
   const router = useRouter();
   const { events } = useEventContext();
+  const { confirm: confirmAction, confirmationDialog } =
+    useConfirmationDialog();
 
   // Form state
   const [subject, setSubject] = useState("");
@@ -124,7 +127,6 @@ export default function CampaignEditorClient({ campaignId }: CampaignEditorProps
   const [resolving, setResolving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  const [showSendModal, setShowSendModal] = useState(false);
   const [sendState, setSendState] = useState<BulkSendProgressState | null>(null);
   const [showPreview, setShowPreview] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -384,7 +386,6 @@ export default function CampaignEditorClient({ campaignId }: CampaignEditorProps
   }, [saveDraft]);
 
   const handleSendCampaign = useCallback(async () => {
-    setShowSendModal(false);
     const id = await saveDraft();
     if (!id) return;
 
@@ -464,9 +465,49 @@ export default function CampaignEditorClient({ campaignId }: CampaignEditorProps
     }
   }, [refreshCampaign, saveDraft, subject]);
 
+  const handleConfirmSendCampaign = useCallback(async () => {
+    const shouldSend = await confirmAction({
+      title: "Send campaign now?",
+      description: (
+        <>
+          Send <span className="font-medium text-white">&ldquo;{subject}&rdquo;</span>{" "}
+          to{" "}
+          {audienceCount !== null ? (
+            <>
+              <span className="font-medium text-white">
+                {audienceCount.toLocaleString()}
+              </span>{" "}
+              recipients
+            </>
+          ) : (
+            "the resolved audience"
+          )}{" "}
+          across{" "}
+          <span className="font-medium text-white">
+            {segments.length} audience segment{segments.length !== 1 ? "s" : ""}
+          </span>
+          .
+        </>
+      ),
+      confirmLabel: "Send Now",
+      tone: "primary",
+    });
+    if (!shouldSend) return;
+
+    await handleSendCampaign();
+  }, [audienceCount, confirmAction, handleSendCampaign, segments.length, subject]);
+
   const handleDelete = useCallback(async () => {
     if (!savedId) return;
-    if (!confirm("Delete this draft campaign?")) return;
+    const shouldDelete = await confirmAction({
+      title: "Delete this draft campaign?",
+      description:
+        "This removes the draft campaign and its current audience configuration.",
+      confirmLabel: "Delete campaign",
+      tone: "danger",
+    });
+    if (!shouldDelete) return;
+
     setDeleting(true);
     try {
       const res = await fetch(`/api/campaigns/${savedId}`, { method: "DELETE" });
@@ -479,7 +520,7 @@ export default function CampaignEditorClient({ campaignId }: CampaignEditorProps
       setError(err instanceof Error ? err.message : "Delete failed");
       setDeleting(false);
     }
-  }, [savedId, router]);
+  }, [confirmAction, savedId, router]);
 
   if (loading) {
     return (
@@ -827,7 +868,7 @@ export default function CampaignEditorClient({ campaignId }: CampaignEditorProps
               <button onClick={handleSendTest} disabled={sendingTest || saving || !!sendState?.active} className="px-5 py-2.5 rounded-xl text-sm font-medium bg-zinc-800 text-white hover:bg-zinc-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
                 {sendingTest ? "Sending..." : "Send Test Email"}
               </button>
-              <button onClick={() => setShowSendModal(true)} disabled={saving || sendingTest || !!sendState?.active || !subject.trim() || segments.length === 0} className="px-5 py-2.5 rounded-xl text-sm font-medium bg-gradient-to-r from-emerald-500 to-teal-500 text-white hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed">
+              <button onClick={handleConfirmSendCampaign} disabled={saving || sendingTest || !!sendState?.active || !subject.trim() || segments.length === 0} className="px-5 py-2.5 rounded-xl text-sm font-medium bg-gradient-to-r from-emerald-500 to-teal-500 text-white hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed">
                 Send Campaign
               </button>
               {savedId && (
@@ -908,28 +949,7 @@ export default function CampaignEditorClient({ campaignId }: CampaignEditorProps
         </div>
       </div>
 
-      {/* Send confirmation modal */}
-      {showSendModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={(e) => { if (e.target === e.currentTarget) setShowSendModal(false); }}>
-          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 max-w-md w-full shadow-2xl mx-4" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-lg font-bold text-white mb-2">Send Campaign</h3>
-            <p className="text-sm text-zinc-400 mb-1">
-              Are you sure you want to send <span className="text-white font-medium">&ldquo;{subject}&rdquo;</span>?
-            </p>
-            <p className="text-sm text-zinc-400 mb-4">
-              {segments.length} audience segment{segments.length !== 1 ? "s" : ""} &middot;{" "}
-              {audienceCount !== null
-                ? <><span className="text-white font-medium">{audienceCount.toLocaleString()}</span> recipients</>
-                : "recipients will be resolved before sending"
-              }
-            </p>
-            <div className="flex justify-end gap-3">
-              <button onClick={() => setShowSendModal(false)} className="px-4 py-2 rounded-lg text-sm font-medium bg-zinc-800 text-white hover:bg-zinc-700 transition-colors">Cancel</button>
-              <button onClick={handleSendCampaign} className="px-4 py-2 rounded-lg text-sm font-medium bg-gradient-to-r from-emerald-500 to-teal-500 text-white hover:opacity-90 transition-opacity">Send Now</button>
-            </div>
-          </div>
-        </div>
-      )}
+      {confirmationDialog}
     </div>
   );
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { ConfirmationDialog } from "@/app/components/ConfirmationDialog";
 import { PACIFIC_TIMEZONE } from "@/app/lib/constants";
 import { useEventContext } from "@/app/EventContext";
 
@@ -560,42 +561,26 @@ export default function WaitlistViewerClient() {
         </div>
       )}
 
-      {/* Standby Enable Confirmation Dialog */}
-      {showStandbyConfirm && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-zinc-900 rounded-2xl border border-zinc-800 p-6 max-w-md w-full">
-            <h2 className="text-xl font-bold text-white mb-4">
-              Enable Standby Line?
-            </h2>
-            <p className="text-zinc-400 mb-6">
-              This closes the online waitlist and shows the standby ticket option on the event page.
-            </p>
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => setShowStandbyConfirm(false)}
-                disabled={isTogglingStandby}
-                className="flex-1 px-4 py-2 bg-zinc-800 text-white rounded-lg font-medium hover:bg-zinc-700 transition-colors disabled:opacity-50"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => handleToggleStandby(true)}
-                disabled={isTogglingStandby}
-                className="flex-1 px-4 py-2 bg-emerald-600 text-white rounded-lg font-medium hover:bg-emerald-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
-              >
-                {isTogglingStandby ? (
-                  <>
-                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    Enabling...
-                  </>
-                ) : (
-                  "Enable"
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ConfirmationDialog
+        open={showStandbyConfirm}
+        title="Enable Standby Line?"
+        description="This closes the online waitlist and shows the standby ticket option on the event page."
+        confirmLabel={isTogglingStandby
+          ? (
+            <>
+              <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+              Enabling...
+            </>
+          )
+          : "Enable"}
+        tone="primary"
+        dismissible={!isTogglingStandby}
+        isConfirming={isTogglingStandby}
+        onCancel={() => setShowStandbyConfirm(false)}
+        onConfirm={() => {
+          void handleToggleStandby(true);
+        }}
+      />
 
       {/* Send Standby Emails Dialog */}
       {showSendDialog && (

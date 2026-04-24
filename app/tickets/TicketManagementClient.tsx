@@ -3,6 +3,10 @@
 import { useCallback, useEffect, useEffectEvent, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import BulkSendProgress from "@/app/components/BulkSendProgress";
+import {
+  ConfirmationDialog,
+  useConfirmationDialog,
+} from "@/app/components/ConfirmationDialog";
 import { useEventContext } from "@/app/EventContext";
 import { REMINDER_EMAIL_BATCH_SIZE } from "@/app/lib/constants";
 import {
@@ -132,6 +136,8 @@ export default function TicketManagementClient({
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const { events, selectedEventId } = useEventContext();
+  const { confirm: confirmAction, confirmationDialog } =
+    useConfirmationDialog();
   const [tickets, setTickets] = useState<Ticket[]>(initialTickets);
   const [total, setTotal] = useState(initialTotal);
   const [scannedCount, setScannedCount] = useState(initialScannedCount);
@@ -183,6 +189,7 @@ export default function TicketManagementClient({
   const [editingNameId, setEditingNameId] = useState<string | null>(null);
   const [editingNameValue, setEditingNameValue] = useState("");
   const [deleteModalTicket, setDeleteModalTicket] = useState<Ticket | null>(null);
+  const [isDeletingTicket, setIsDeletingTicket] = useState(false);
   const [shouldSendCancellationEmail, setShouldSendCancellationEmail] = useState(true);
   const rawAffiliationFilter = searchParams.get("affiliation");
   const affiliationFilter = AFFILIATION_FILTER_ORDER.includes(
@@ -520,6 +527,7 @@ export default function TicketManagementClient({
     const ticketToDelete = deleteModalTicket;
 
     try {
+      setIsDeletingTicket(true);
       const response = await fetch("/api/tickets", {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
@@ -561,6 +569,7 @@ export default function TicketManagementClient({
       console.error("Error deleting ticket:", err);
       setError(err instanceof Error ? err.message : "Failed to delete ticket");
     } finally {
+      setIsDeletingTicket(false);
       setDeleteModalTicket(null);
     }
   }
@@ -694,12 +703,22 @@ export default function TicketManagementClient({
   }
 
   async function handleResendEmail(id: string) {
-    if (
-      !confirm(
-        "Are you sure you want to resend the confirmation email to this ticket holder?",
-      )
-    )
-      return;
+    const ticket = tickets.find((item) => item.id === id);
+    const shouldResend = await confirmAction({
+      title: "Resend confirmation email?",
+      description: (
+        <>
+          This will resend the ticket confirmation to{" "}
+          <span className="font-medium text-white">
+            {ticket?.email || "this ticket holder"}
+          </span>
+          .
+        </>
+      ),
+      confirmLabel: "Resend email",
+      tone: "primary",
+    });
+    if (!shouldResend) return;
 
     setResendingEmailId(id);
     setError(null);
@@ -735,12 +754,23 @@ export default function TicketManagementClient({
     const selectedEvent = events.find((e) => e.id === selectedEventId);
     const eventName = selectedEvent?.name || "this event";
 
-    if (
-      !confirm(
-        `Send day-of reminder emails to all ${total} ticket holders for ${eventName}?\n\nThis will send reminder emails with "no bags" and ADA accommodation info.`,
-      )
-    )
-      return;
+    const shouldSend = await confirmAction({
+      title: "Send day-of reminder emails?",
+      description: (
+        <>
+          Send reminders to{" "}
+          <span className="font-medium text-white">
+            {total.toLocaleString()}
+          </span>{" "}
+          ticket holders for{" "}
+          <span className="font-medium text-white">{eventName}</span>. This
+          includes the no-bags policy and ADA accommodation info.
+        </>
+      ),
+      confirmLabel: "Send reminders",
+      tone: "primary",
+    });
+    if (!shouldSend) return;
 
     setIsSendingReminders(true);
     setError(null);
@@ -767,12 +797,19 @@ export default function TicketManagementClient({
     const ticket = tickets.find((t) => t.id === id);
     if (!ticket) return;
 
-    if (
-      !confirm(
-        `Send day-of reminder email to ${ticket.email}?\n\nThis will send a reminder with "no bags" and ADA accommodation info.`,
-      )
-    )
-      return;
+    const shouldSend = await confirmAction({
+      title: "Send day-of reminder?",
+      description: (
+        <>
+          Send the day-of reminder to{" "}
+          <span className="font-medium text-white">{ticket.email}</span>. This
+          includes the no-bags policy and ADA accommodation info.
+        </>
+      ),
+      confirmLabel: "Send reminder",
+      tone: "primary",
+    });
+    if (!shouldSend) return;
 
     setSendingReminderId(id);
     setError(null);
@@ -819,12 +856,23 @@ export default function TicketManagementClient({
     const selectedEvent = events.find((e) => e.id === selectedEventId);
     const eventName = selectedEvent?.name || "this event";
 
-    if (
-      !confirm(
-        `Send early reminder emails to all ${total} ticket holders for ${eventName}?\n\nThis will send reminder emails with doors open time, ticket validity, and no bags notice.`,
-      )
-    )
-      return;
+    const shouldSend = await confirmAction({
+      title: "Send early reminder emails?",
+      description: (
+        <>
+          Send reminders to{" "}
+          <span className="font-medium text-white">
+            {total.toLocaleString()}
+          </span>{" "}
+          ticket holders for{" "}
+          <span className="font-medium text-white">{eventName}</span>. This
+          includes doors open time, ticket validity, and the no-bags notice.
+        </>
+      ),
+      confirmLabel: "Send reminders",
+      tone: "primary",
+    });
+    if (!shouldSend) return;
 
     setIsSendingEarlyReminders(true);
     setError(null);
@@ -851,12 +899,19 @@ export default function TicketManagementClient({
     const ticket = tickets.find((t) => t.id === id);
     if (!ticket) return;
 
-    if (
-      !confirm(
-        `Send early reminder email to ${ticket.email}?\n\nThis will send a reminder with doors open time, ticket validity, and no bags notice.`,
-      )
-    )
-      return;
+    const shouldSend = await confirmAction({
+      title: "Send early reminder?",
+      description: (
+        <>
+          Send the early reminder to{" "}
+          <span className="font-medium text-white">{ticket.email}</span>. This
+          includes doors open time, ticket validity, and the no-bags notice.
+        </>
+      ),
+      confirmLabel: "Send reminder",
+      tone: "primary",
+    });
+    if (!shouldSend) return;
 
     setSendingEarlyReminderId(id);
     setError(null);
@@ -1917,47 +1972,57 @@ export default function TicketManagementClient({
         </div>
       )}
 
-      {/* Delete Ticket Modal */}
-      {deleteModalTicket && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 max-w-md w-full mx-4 shadow-2xl">
-            <h2 className="text-lg font-bold text-white mb-2">Delete Ticket</h2>
-            <p className="text-sm text-zinc-400 mb-4">
-              Are you sure you want to delete the ticket for{" "}
-              <span className="text-white font-semibold">{deleteModalTicket.email}</span>
-              {deleteModalTicket.name && (
-                <> ({deleteModalTicket.name})</>
-              )}
-              ?
-            </p>
-            <label className="flex items-center gap-3 cursor-pointer mb-6">
-              <input
-                type="checkbox"
-                checked={shouldSendCancellationEmail}
-                onChange={(e) => setShouldSendCancellationEmail(e.target.checked)}
-                className="rounded border-zinc-600 text-rose-500 focus:ring-rose-500"
-              />
-              <span className="text-sm text-zinc-300">
-                Send cancellation email to {deleteModalTicket.email}
+      <ConfirmationDialog
+        open={deleteModalTicket !== null}
+        title="Delete Ticket"
+        description={
+          deleteModalTicket ? (
+            <>
+              Delete the ticket for{" "}
+              <span className="font-semibold text-white">
+                {deleteModalTicket.email}
               </span>
-            </label>
-            <div className="flex gap-3 justify-end">
-              <button
-                onClick={() => setDeleteModalTicket(null)}
-                className="px-4 py-2 text-sm font-medium text-zinc-400 hover:text-white transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={confirmDelete}
-                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-semibold rounded-lg transition-colors"
-              >
-                Delete Ticket
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+              {deleteModalTicket.name ? ` (${deleteModalTicket.name})` : ""}.
+            </>
+          ) : undefined
+        }
+        confirmLabel={isDeletingTicket
+          ? (
+            <>
+              <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+              Deleting...
+            </>
+          )
+          : "Delete Ticket"}
+        tone="danger"
+        dismissible={!isDeletingTicket}
+        isConfirming={isDeletingTicket}
+        onCancel={() => {
+          if (!isDeletingTicket) {
+            setDeleteModalTicket(null);
+          }
+        }}
+        onConfirm={() => {
+          void confirmDelete();
+        }}
+      >
+        {deleteModalTicket ? (
+          <label className="flex cursor-pointer items-center gap-3">
+            <input
+              type="checkbox"
+              checked={shouldSendCancellationEmail}
+              onChange={(event) =>
+                setShouldSendCancellationEmail(event.target.checked)}
+              disabled={isDeletingTicket}
+              className="rounded border-zinc-600 text-rose-500 focus:ring-rose-500 disabled:cursor-not-allowed disabled:opacity-50"
+            />
+            <span className="text-sm text-zinc-300">
+              Send cancellation email to {deleteModalTicket.email}
+            </span>
+          </label>
+        ) : null}
+      </ConfirmationDialog>
+      {confirmationDialog}
     </div>
   );
 }

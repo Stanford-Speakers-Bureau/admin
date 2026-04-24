@@ -1,0 +1,216 @@
+"use client";
+
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+
+type ConfirmationTone = "primary" | "danger";
+
+type ConfirmationDialogProps = {
+  open: boolean;
+  title: string;
+  description?: ReactNode;
+  children?: ReactNode;
+  confirmLabel?: ReactNode;
+  cancelLabel?: ReactNode;
+  tone?: ConfirmationTone;
+  dismissible?: boolean;
+  isConfirming?: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
+};
+
+export type ConfirmationOptions = {
+  title: string;
+  description?: ReactNode;
+  confirmLabel?: ReactNode;
+  cancelLabel?: ReactNode;
+  tone?: ConfirmationTone;
+};
+
+const TONE_STYLES: Record<ConfirmationTone, string> = {
+  primary:
+    "bg-gradient-to-r from-emerald-500 to-teal-500 text-white hover:opacity-90",
+  danger: "bg-rose-600 text-white hover:bg-rose-700",
+};
+
+function renderDescription(description: ReactNode) {
+  if (typeof description === "string") {
+    return <p className="text-sm leading-6 text-zinc-400">{description}</p>;
+  }
+
+  return <div className="text-sm leading-6 text-zinc-400">{description}</div>;
+}
+
+export function ConfirmationDialog({
+  open,
+  title,
+  description,
+  children,
+  confirmLabel = "Confirm",
+  cancelLabel = "Cancel",
+  tone = "primary",
+  dismissible = true,
+  isConfirming = false,
+  onConfirm,
+  onCancel,
+}: ConfirmationDialogProps) {
+  useEffect(() => {
+    if (!open) return;
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape" && dismissible && !isConfirming) {
+        onCancel();
+      }
+    }
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [dismissible, isConfirming, onCancel, open]);
+
+  if (!open) return null;
+
+  return (
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
+      onClick={(event) => {
+        if (
+          dismissible &&
+          !isConfirming &&
+          event.target === event.currentTarget
+        ) {
+          onCancel();
+        }
+      }}
+      role="presentation"
+    >
+      <div
+        className="w-full max-w-md rounded-2xl border border-zinc-800 bg-zinc-900 p-6 shadow-2xl"
+        onClick={(event) => event.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="confirmation-dialog-title"
+      >
+        <div className="flex items-start gap-4">
+          <div
+            className={`mt-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-full border ${
+              tone === "danger"
+                ? "border-rose-500/30 bg-rose-500/10 text-rose-300"
+                : "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
+            }`}
+          >
+            {tone === "danger" ? (
+              <svg
+                className="h-5 w-5"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 9v4m0 4h.01M5.07 19h13.86c1.54 0 2.5-1.67 1.73-3L13.73 4c-.77-1.33-2.69-1.33-3.46 0L3.34 16c-.77 1.33.19 3 1.73 3z"
+                />
+              </svg>
+            ) : (
+              <svg
+                className="h-5 w-5"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M5 13l4 4L19 7"
+                />
+              </svg>
+            )}
+          </div>
+          <div className="min-w-0 flex-1">
+            <h2
+              id="confirmation-dialog-title"
+              className="text-lg font-semibold text-white"
+            >
+              {title}
+            </h2>
+            {description ? (
+              <div className="mt-2">{renderDescription(description)}</div>
+            ) : null}
+            {children ? <div className="mt-4">{children}</div> : null}
+          </div>
+        </div>
+        <div className="mt-6 flex justify-end gap-3">
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={isConfirming}
+            autoFocus
+            className="rounded-lg border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-300 transition-colors hover:bg-zinc-800 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {cancelLabel}
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={isConfirming}
+            className={`inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${TONE_STYLES[tone]}`}
+          >
+            {confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function useConfirmationDialog() {
+  const [pendingConfirmation, setPendingConfirmation] =
+    useState<ConfirmationOptions | null>(null);
+  const resolverRef = useRef<((result: boolean) => void) | null>(null);
+
+  const closeConfirmation = useCallback((result: boolean) => {
+    const resolve = resolverRef.current;
+    resolverRef.current = null;
+    setPendingConfirmation(null);
+    resolve?.(result);
+  }, []);
+
+  const confirm = useCallback((options: ConfirmationOptions) => {
+    if (resolverRef.current) {
+      resolverRef.current(false);
+    }
+
+    return new Promise<boolean>((resolve) => {
+      resolverRef.current = resolve;
+      setPendingConfirmation(options);
+    });
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (resolverRef.current) {
+        resolverRef.current(false);
+        resolverRef.current = null;
+      }
+    };
+  }, []);
+
+  return {
+    confirm,
+    confirmationDialog: (
+      <ConfirmationDialog
+        open={pendingConfirmation !== null}
+        title={pendingConfirmation?.title ?? ""}
+        description={pendingConfirmation?.description}
+        confirmLabel={pendingConfirmation?.confirmLabel}
+        cancelLabel={pendingConfirmation?.cancelLabel}
+        tone={pendingConfirmation?.tone}
+        onConfirm={() => closeConfirmation(true)}
+        onCancel={() => closeConfirmation(false)}
+      />
+    ),
+  };
+}

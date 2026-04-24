@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import BulkSendProgress from "@/app/components/BulkSendProgress";
+import { useConfirmationDialog } from "@/app/components/ConfirmationDialog";
 import { useEventContext } from "@/app/EventContext";
 import {
   BulkSendProgressState,
@@ -145,6 +146,8 @@ async function loadNotificationsForSelection(
 
 export default function AdminNotifyClient() {
   const { events, selectedEventId } = useEventContext();
+  const { confirm: confirmAction, confirmationDialog } =
+    useConfirmationDialog();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [eventData, setEventData] = useState<EventData | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -236,10 +239,35 @@ export default function AdminNotifyClient() {
       : sendVariant === "now"
         ? "Tickets available now"
         : `Tickets available in ${sendApproxTime.trim()}`;
-    const confirmMessage = sendEmailSingleEmail
-      ? `Send "${variantLabel}" email to ${sendEmailSingleEmail} for ${eventName}?`
-      : `Send "${variantLabel}" email to ${recipientEmails.length} ${sendVariant === "claim" ? "people without tickets" : "people on the list"} for ${eventName}?`;
-    if (!confirm(confirmMessage)) return;
+    const recipientDescription = sendEmailSingleEmail
+      ? (
+        <>
+          Send <span className="font-medium text-white">{variantLabel}</span>{" "}
+          to{" "}
+          <span className="font-medium text-white">{sendEmailSingleEmail}</span>{" "}
+          for <span className="font-medium text-white">{eventName}</span>.
+        </>
+      )
+      : (
+        <>
+          Send <span className="font-medium text-white">{variantLabel}</span>{" "}
+          to{" "}
+          <span className="font-medium text-white">
+            {recipientEmails.length.toLocaleString()}
+          </span>{" "}
+          {sendVariant === "claim"
+            ? "people without tickets"
+            : "people on the list"}{" "}
+          for <span className="font-medium text-white">{eventName}</span>.
+        </>
+      );
+    const shouldSend = await confirmAction({
+      title: "Send notification email?",
+      description: recipientDescription,
+      confirmLabel: "Send email",
+      tone: "primary",
+    });
+    if (!shouldSend) return;
 
     setIsSendingNotify(true);
     setNotifyError(null);
@@ -849,6 +877,7 @@ export default function AdminNotifyClient() {
           </div>
         );
       })()}
+      {confirmationDialog}
     </div>
   );
 }

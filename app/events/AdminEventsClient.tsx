@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
+import { useConfirmationDialog } from "@/app/components/ConfirmationDialog";
 import { PACIFIC_TIMEZONE } from "@/app/lib/constants";
 import { useEventContext } from "@/app/EventContext";
 import type { TicketingRole } from "@/app/lib/ticketingRoles";
@@ -204,6 +205,8 @@ export default function AdminEventsClient({
 }: AdminEventsClientProps) {
   const router = useRouter();
   const { setSelectedEventId, removeEvent } = useEventContext();
+  const { confirm: confirmAction, confirmationDialog } =
+    useConfirmationDialog();
   const [events, setEvents] = useState<Event[]>(initialEvents);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -213,7 +216,14 @@ export default function AdminEventsClient({
   }, [initialEvents]);
 
   async function handleDelete(id: string) {
-    if (!confirm("Are you sure you want to delete this event?")) return;
+    const shouldDelete = await confirmAction({
+      title: "Delete this event?",
+      description:
+        "This permanently removes the event from the admin dashboard.",
+      confirmLabel: "Delete event",
+      tone: "danger",
+    });
+    if (!shouldDelete) return;
 
     try {
       const response = await fetch("/api/events", {
@@ -507,6 +517,7 @@ export default function AdminEventsClient({
           ))}
         </div>
       )}
+      {confirmationDialog}
     </div>
   );
 }

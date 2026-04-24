@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import BulkSendProgress from "@/app/components/BulkSendProgress";
+import { useConfirmationDialog } from "@/app/components/ConfirmationDialog";
 import { useEventContext } from "@/app/EventContext";
 import {
   BulkSendProgressState,
@@ -373,6 +374,8 @@ function hasNoCurrentEventStatus(user: AudienceUser): boolean {
 
 export default function AudienceClient() {
   const { selectedEventId } = useEventContext();
+  const { confirm: confirmAction, confirmationDialog } =
+    useConfirmationDialog();
   const filterDropdownRef = useRef<HTMLDivElement | null>(null);
   const [data, setData] = useState<AudienceResponse | null>(null);
   const [detailsByEmail, setDetailsByEmail] = useState<
@@ -724,7 +727,22 @@ export default function AudienceClient() {
 
   async function sendAnnouncementToOne(email: string) {
     if (!selectedEventId) return;
-    if (!confirm(`Send announcement email to ${email}?`)) return;
+    const shouldSend = await confirmAction({
+      title: "Send announcement email?",
+      description: (
+        <>
+          Send the current announcement for{" "}
+          <span className="font-medium text-white">
+            {data?.event.name || "this event"}
+          </span>{" "}
+          to <span className="font-medium text-white">{email}</span>.
+        </>
+      ),
+      confirmLabel: "Send email",
+      tone: "primary",
+    });
+    if (!shouldSend) return;
+
     setIndividualSending(email);
     try {
       const res = await fetch("/api/email/bulk-send", {
@@ -1430,6 +1448,7 @@ export default function AudienceClient() {
           </div>
         )}
       </div>
+      {confirmationDialog}
     </div>
   );
 }
