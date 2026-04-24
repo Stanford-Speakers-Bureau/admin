@@ -48,6 +48,7 @@ export async function POST(req: Request) {
         name: true,
         route: true,
         startTimeDate: true,
+        ticketingDate: true,
         tagline: true,
         imgVersion: true,
         desc: true,
@@ -64,6 +65,9 @@ export async function POST(req: Request) {
     const eventName = event.name || "Event";
     const eventRoute = event.route ?? null;
     const eventStartTime = event.startTimeDate?.toISOString() ?? null;
+    const ticketingOpen = event.ticketingDate
+      ? new Date() >= new Date(event.ticketingDate)
+      : false;
 
     // Send all emails in the chunk concurrently.
     // This is safe because announcement emails are lightweight (no QR code, no ICS).
@@ -82,6 +86,7 @@ export async function POST(req: Request) {
           eventVenue: event.venue || null,
           eventVenueLink: event.venueLink || null,
           doorsOpenTime: event.doorsOpen?.toISOString() || null,
+          ticketingOpen,
         }).then(
           () => ({ success: true, email }),
           (error) => ({ success: false, email, error }),

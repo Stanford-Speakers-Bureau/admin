@@ -2914,6 +2914,7 @@ export type EventAnnouncedEmailData = {
   eventVenue?: string | null;
   eventVenueLink?: string | null;
   doorsOpenTime?: string | null;
+  ticketingOpen?: boolean;
 };
 
 /** Strip basic markdown to plain-ish HTML (bold, italic, links, line breaks) */
@@ -2925,18 +2926,39 @@ function markdownToEmailHTML(md: string): string {
     .replace(/\n/g, "<br>");
 }
 
+function getEventAnnouncementCtaCopy(ticketingOpen?: boolean): {
+  body: string;
+  buttonLabel: string;
+  textLinkLabel: string;
+} {
+  if (ticketingOpen) {
+    return {
+      body: "Tickets are live now — get yours on our event page.",
+      buttonLabel: "Get Tickets",
+      textLinkLabel: "Get tickets",
+    };
+  }
+
+  return {
+    body: "Be the first to know when tickets drop — sign up for notifications on our event page.",
+    buttonLabel: "Get Notified",
+    textLinkLabel: "View event",
+  };
+}
+
 function generateEventAnnouncedEmailText(data: EventAnnouncedEmailData): string {
   const baseUrl = getBaseUrl();
   const eventUrl = data.eventRoute ? `${baseUrl}/events/${data.eventRoute}` : baseUrl;
   const formattedDate = formatFullDateTime(data.doorsOpenTime || data.eventStartTime);
+  const ctaCopy = getEventAnnouncementCtaCopy(data.ticketingOpen);
   return `
 ${data.eventName} is coming to Stanford!
 
 ${data.eventDescription || ""}
 
-Be the first to know when tickets drop — sign up for notifications on our event page.
+${ctaCopy.body}
 
-View event: ${eventUrl}
+${ctaCopy.textLinkLabel}: ${eventUrl}
 
 Event Details:
 - Event: ${data.eventName}
@@ -2953,6 +2975,7 @@ async function generateEventAnnouncedEmailHTML(
   const baseUrl = getBaseUrl();
   const eventUrl = data.eventRoute ? `${baseUrl}/events/${data.eventRoute}` : baseUrl;
   const formattedDate = formatFullDateTime(data.doorsOpenTime || data.eventStartTime);
+  const ctaCopy = getEventAnnouncementCtaCopy(data.ticketingOpen);
 
   const heroCard = buildHeroCard({
     eventName: data.eventName,
@@ -2983,11 +3006,11 @@ async function generateEventAnnouncedEmailHTML(
   }
 
   contentSections.push(buildParagraph(
-    "Be the first to know when tickets drop &mdash; sign up for notifications on our event page.",
+    ctaCopy.body.replace("—", "&mdash;"),
     { color: "#a1a1aa" },
   ));
 
-  contentSections.push(buildButton(eventUrl, "Get Notified", { style: " padding: 16px 40px; font-weight: 700; font-size: 18px; letter-spacing: 0.5px;" }));
+  contentSections.push(buildButton(eventUrl, ctaCopy.buttonLabel, { style: " padding: 16px 40px; font-weight: 700; font-size: 18px; letter-spacing: 0.5px;" }));
 
   // Details card with venue
   const detailRows: { label: string; value: string; isLink?: boolean; href?: string }[] = [

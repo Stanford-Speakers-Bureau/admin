@@ -181,6 +181,9 @@ export async function POST(req: Request) {
     const eventName = event.name || "Event";
     const eventRoute = event.route ?? null;
     const eventStartTime = event.startTimeDate?.toISOString() ?? null;
+    const ticketingOpen = event.ticketingDate
+      ? new Date() >= new Date(event.ticketingDate)
+      : false;
 
     const results = await Promise.allSettled(
       recipients.map((email) => {
@@ -197,6 +200,7 @@ export async function POST(req: Request) {
             eventVenue: event.venue || null,
             eventVenueLink: event.venueLink || null,
             doorsOpenTime: event.doorsOpen?.toISOString() || null,
+            ticketingOpen,
           });
         }
 
