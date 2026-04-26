@@ -26,6 +26,7 @@ export async function getAdminSuggestions(): Promise<{
       votes: s.votes ?? 0,
       reviewed: !!s.reviewed,
       duplicate: !!s.duplicate,
+      spoke: !!s.spoke,
       voters: [],
     }));
     try {
@@ -53,6 +54,7 @@ export async function getAdminSuggestions(): Promise<{
           votes: s.votes ?? 0,
           reviewed: !!s.reviewed,
           duplicate: !!s.duplicate,
+          spoke: !!s.spoke,
           voters: votersBySpeaker[s.id] || [],
         }));
       }

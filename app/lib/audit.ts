@@ -19,6 +19,7 @@ type AuditAction =
   | "suggestion.reject"
   | "suggestion.edit"
   | "suggestion.mark_duplicate"
+  | "suggestion.mark_spoke"
   | "suggestion.merge"
   | "waitlist.pull"
   | "waitlist.issue_standby"
