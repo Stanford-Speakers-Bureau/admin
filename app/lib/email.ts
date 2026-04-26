@@ -3268,6 +3268,7 @@ function generateSuggestionApprovedEmailText(
 ): string {
   const baseUrl = getBaseUrl();
   const shareUrl = `${baseUrl}/suggest/${data.suggestionId}`;
+  const shareCtaUrl = `${shareUrl}?share=1`;
   const leaderboardUrl = `${baseUrl}/suggest`;
   return `
 Your suggestion just made the leaderboard.
@@ -3276,7 +3277,7 @@ Nice pick — ${data.speaker} is now live on the Stanford Speakers Bureau commun
 
 The names with the most community support become the leads we chase. Help ${data.speaker} climb by sharing this link with friends:
 
-${shareUrl}
+${shareCtaUrl}
 
 Anyone with a Stanford account can tap "Vote" — every upvote moves them closer to a real invite from us.
 
@@ -3292,6 +3293,7 @@ function generateSuggestionApprovedEmailHTML(
 ): string {
   const baseUrl = getBaseUrl();
   const shareUrl = `${baseUrl}/suggest/${data.suggestionId}`;
+  const shareCtaUrl = `${shareUrl}?share=1`;
   const leaderboardUrl = `${baseUrl}/suggest`;
   const escapedSpeaker = escapeHtml(data.speaker);
 
@@ -3321,7 +3323,7 @@ function generateSuggestionApprovedEmailHTML(
     { color: "#a1a1aa" },
   ));
 
-  contentSections.push(buildButton(shareUrl, "Share & Rally Votes", {
+  contentSections.push(buildButton(shareCtaUrl, "Share & Rally Votes", {
     style: " padding: 16px 40px; font-weight: 700; font-size: 16px; letter-spacing: 0.5px;",
   }));
 
