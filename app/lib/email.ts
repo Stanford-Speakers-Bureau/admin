@@ -3251,3 +3251,159 @@ export async function sendCampaignEmail(
   ];
   await sendRawEmailViaSES(lines.join("\r\n"), data.email);
 }
+
+// ============================================================================
+// Suggestion approved email
+// ============================================================================
+
+/** Data for the "your suggestion is on the leaderboard" email */
+export type SuggestionApprovedEmailData = {
+  email: string;
+  speaker: string;
+  suggestionId: string;
+};
+
+function generateSuggestionApprovedEmailText(
+  data: SuggestionApprovedEmailData,
+): string {
+  const baseUrl = getBaseUrl();
+  const shareUrl = `${baseUrl}/suggest/${data.suggestionId}`;
+  const shareCtaUrl = `${shareUrl}?share=1`;
+  const leaderboardUrl = `${baseUrl}/suggest`;
+  return `
+Your suggestion just made the leaderboard.
+
+Nice pick — ${data.speaker} is now live on the Stanford Speakers Bureau community leaderboard.
+
+The names with the most community support become the leads we chase. Help ${data.speaker} climb by sharing this link with friends:
+
+${shareCtaUrl}
+
+Anyone with a Stanford account can tap "Vote" — every upvote moves them closer to a real invite from us.
+
+See the full leaderboard: ${leaderboardUrl}
+
+Stanford Speakers Bureau
+Questions? ${FROM_EMAIL}
+  `.trim();
+}
+
+function generateSuggestionApprovedEmailHTML(
+  data: SuggestionApprovedEmailData,
+): string {
+  const baseUrl = getBaseUrl();
+  const shareUrl = `${baseUrl}/suggest/${data.suggestionId}`;
+  const shareCtaUrl = `${shareUrl}?share=1`;
+  const leaderboardUrl = `${baseUrl}/suggest`;
+  const escapedSpeaker = escapeHtml(data.speaker);
+
+  const heroSection = `
+    <tr>
+      <td align="center" style="padding: 0;">
+        <div style="max-width: 600px; margin: 0 auto; overflow: hidden;">
+          <div style="background: linear-gradient(135deg, #A80D0C 0%, #C11211 100%); padding: 32px 24px; text-align: center;">
+            ${gmailBlendStart}
+              <p style="margin: 0 0 8px 0; color: #ffffff; font-size: 12px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; opacity: 0.85;">Stanford Speakers Bureau</p>
+              <h1 style="margin: 0; color: #ffffff; font-size: 28px; font-weight: 700; font-family: Georgia, 'Times New Roman', Times, serif; line-height: 1.2;">${escapedSpeaker} is on the leaderboard.</h1>
+            ${gmailBlendEnd}
+          </div>
+        </div>
+      </td>
+    </tr>`;
+
+  const contentSections: string[] = [];
+
+  contentSections.push(buildParagraph(
+    `Nice pick. <strong style="color: #ffffff;">${escapedSpeaker}</strong> is now live on the Stanford Speakers Bureau community leaderboard.`,
+    { fontSize: "17px" },
+  ));
+
+  contentSections.push(buildParagraph(
+    "The names with the most community support become the leads we actually chase. Help them climb by sharing this link with friends &mdash; every upvote from a Stanford account moves them closer to a real invite.",
+    { color: "#a1a1aa" },
+  ));
+
+  contentSections.push(buildButton(shareCtaUrl, "Share & Rally Votes", {
+    style: " padding: 16px 40px; font-weight: 700; font-size: 16px; letter-spacing: 0.5px;",
+  }));
+
+  contentSections.push(`
+    <table role="presentation" style="width: 100%; border-collapse: collapse; margin-bottom: 24px;">
+      <tr>
+        <td class="details-card" style="background-color: #18181b; border-radius: 12px; padding: 18px 20px;">
+          ${gmailBlendStart}
+            <p style="margin: 0 0 6px 0; color: #71717a; font-size: 11px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase;">Your shareable link</p>
+            <p style="margin: 0; color: #f4f4f5; font-size: 14px; font-family: 'SF Mono', Menlo, Consolas, monospace; word-break: break-all; line-height: 1.5;">${shareUrl}</p>
+          ${gmailBlendEnd}
+        </td>
+      </tr>
+    </table>`);
+
+  contentSections.push(buildParagraph(
+    `Or send the leaderboard so friends can browse and vote on everyone: <a href="${leaderboardUrl}" style="color: #A80D0C; text-decoration: underline;">${leaderboardUrl}</a>`,
+    { color: "#a1a1aa", fontSize: "14px" },
+  ));
+
+  const bodyContent = `
+    ${heroSection}
+    <tr>
+      <td align="center" class="email-container" style="background-color: #27272a; padding: 32px 20px; max-width: 900px; width: 100%;">
+        <div style="padding: 0; max-width: 600px; margin: 0 auto;">
+          ${contentSections.join("\n")}
+        </div>
+      </td>
+    </tr>
+    ${buildFooter()}`;
+
+  return buildEmailShell(
+    "Your suggestion is on the leaderboard",
+    buildEmailStyles(),
+    bodyContent,
+  );
+}
+
+export async function sendSuggestionApprovedEmail(
+  data: SuggestionApprovedEmailData,
+): Promise<void> {
+  if (!isValidEmail(data.email) || hasUnsafeHeaderChars(data.email)) {
+    console.error(
+      `Skipping suggestion approval email — invalid recipient: ${data.email}`,
+    );
+    return;
+  }
+
+  if (process.env.DISABLE_EMAIL?.toLowerCase().trim() === "true") {
+    console.log(
+      `Email disabled. Skipping suggestion approval email to ${data.email}`,
+    );
+    return;
+  }
+
+  if (await isEmailSuppressed(data.email)) {
+    console.log(
+      `Email suppression on for ${data.email} — skipping suggestion approval email`,
+    );
+    return;
+  }
+
+  const subject = `${data.speaker} just made the SSB leaderboard`;
+  const textContent = generateSuggestionApprovedEmailText(data);
+  const htmlContent = generateSuggestionApprovedEmailHTML(data);
+  const altBoundary = `alt_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+  const lines: string[] = [
+    `From: ${FROM_EMAIL}`,
+    `To: ${data.email}`,
+    `Subject: ${subject}`,
+    `MIME-Version: 1.0`,
+    `Content-Type: multipart/alternative; boundary="${altBoundary}"`,
+    "",
+    `--${altBoundary}`,
+    ...buildUtf8MimeBodyPart("text/plain", textContent),
+    `--${altBoundary}`,
+    ...buildUtf8MimeBodyPart("text/html", htmlContent),
+    `--${altBoundary}--`,
+    "",
+  ];
+  await sendRawEmailViaSES(lines.join("\r\n"), data.email);
+  console.log(`Suggestion approved email sent to ${data.email}`);
+}

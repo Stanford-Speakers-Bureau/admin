@@ -11,6 +11,7 @@ export type Suggestion = {
   approved: boolean;
   reviewed: boolean;
   duplicate?: boolean;
+  spoke?: boolean;
   // List of voter emails for this suggestion (admin-only view)
   voters?: string[];
 };
@@ -25,7 +26,7 @@ export default function AdminSuggestClient({
   const [suggestions, setSuggestions] =
     useState<Suggestion[]>(initialSuggestions);
   const [filter, setFilter] = useState<
-    "pending" | "approved" | "rejected" | "all"
+    "pending" | "approved" | "rejected" | "spoke" | "all"
   >("pending");
   const [processingIds, setProcessingIds] = useState<Set<string>>(new Set());
   const [editingSuggestion, setEditingSuggestion] = useState<Suggestion | null>(
@@ -185,6 +186,40 @@ export default function AdminSuggestClient({
     }
   }
 
+  async function handleToggleSpoke(id: string, spoke: boolean) {
+    setProcessingIds((prev) => new Set(prev).add(id));
+
+    try {
+      const response = await fetch("/api/suggestions", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, spoke }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        console.error(
+          "Failed to update spoke status:",
+          data.error || "Unknown error",
+        );
+        return;
+      }
+
+      if (Array.isArray(data.suggestions)) {
+        setSuggestions(data.suggestions);
+      }
+    } catch (error) {
+      console.error("Failed to toggle spoke:", error);
+    } finally {
+      setProcessingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    }
+  }
+
   async function handleSyncVotes() {
     setIsSyncingVotes(true);
     setSyncError(null);
@@ -290,6 +325,7 @@ export default function AdminSuggestClient({
     { id: "pending" as const, label: "Pending", count: pendingCount },
     { id: "approved" as const, label: "Approved" },
     { id: "rejected" as const, label: "Rejected" },
+    { id: "spoke" as const, label: "Spoke" },
     { id: "all" as const, label: "All" },
   ];
 
@@ -299,9 +335,11 @@ export default function AdminSuggestClient({
         case "pending":
           return !s.reviewed;
         case "approved":
-          return s.reviewed && s.approved;
+          return s.reviewed && s.approved && !s.spoke;
         case "rejected":
           return s.reviewed && !s.approved;
+        case "spoke":
+          return s.spoke;
         case "all":
         default:
           return true;
@@ -494,6 +532,11 @@ export default function AdminSuggestClient({
                             : suggestion.duplicate
                               ? "Duplicate"
                               : "Rejected"}
+                        </span>
+                      )}
+                      {suggestion.spoke && (
+                        <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-sky-500/20 text-sky-300 border border-sky-500/40">
+                          Spoke
                         </span>
                       )}
                       {!suggestion.reviewed && isDuplicateOfApproved && (
@@ -727,7 +770,48 @@ export default function AdminSuggestClient({
                     </div>
                   )}
                   {suggestion.reviewed && (
-                    <div className="flex gap-2 shrink-0">
+                    <div className="flex gap-2 shrink-0 flex-wrap">
+                      {suggestion.approved && (
+                        <button
+                          onClick={() =>
+                            handleToggleSpoke(suggestion.id, !suggestion.spoke)
+                          }
+                          disabled={processingIds.has(suggestion.id)}
+                          className={`flex items-center gap-2 px-4 py-2 rounded text-sm font-medium transition-colors disabled:opacity-50 ${
+                            suggestion.spoke
+                              ? "bg-zinc-800 text-zinc-200 hover:bg-zinc-700"
+                              : "bg-sky-500/20 text-sky-300 hover:bg-sky-500/30"
+                          }`}
+                        >
+                          {processingIds.has(suggestion.id) ? (
+                            <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                          ) : (
+                            <svg
+                              className="w-4 h-4"
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              {suggestion.spoke ? (
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                                />
+                              ) : (
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M5 13l4 4L19 7"
+                                />
+                              )}
+                            </svg>
+                          )}
+                          {suggestion.spoke ? "Unhide" : "Mark Spoke"}
+                        </button>
+                      )}
                       {!suggestion.approved &&
                         isDuplicateOfApproved &&
                         !suggestion.duplicate && (
