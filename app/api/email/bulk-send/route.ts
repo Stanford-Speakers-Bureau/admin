@@ -9,6 +9,11 @@ import {
 import { isValidUUID } from "@/app/lib/validation";
 import { db, eq, events, notify, tickets } from "@ssb/db";
 import { logAuditEvent } from "@/app/lib/audit";
+import { filterUnsubscribedHierarchical } from "@/app/lib/mailing-list";
+import {
+  logSendFailures,
+  partitionBySuppression,
+} from "@/app/lib/email-suppression";
 
 const MAX_EMAILS_PER_REQUEST = 50;
 
@@ -174,8 +179,25 @@ export async function POST(req: Request) {
       }
     }
 
+    const { kept, skipped: unsubSkipped } = await filterUnsubscribedHierarchical(
+      recipients,
+      eventId,
+    );
+    skipped += unsubSkipped.length;
+    recipients = kept;
+
+    const { sendable, suppressed: suppressedList } =
+      await partitionBySuppression(recipients);
+    recipients = sendable;
+    const suppressedCount = suppressedList.length;
+
     if (recipients.length === 0) {
-      return NextResponse.json({ sent: 0, failed: 0, skipped });
+      return NextResponse.json({
+        sent: 0,
+        failed: 0,
+        skipped,
+        suppressed: suppressedCount,
+      });
     }
 
     const eventName = event.name || "Event";
@@ -251,15 +273,30 @@ export async function POST(req: Request) {
 
     let sent = 0;
     let failed = 0;
+    const failures: Array<{ email: string; error: unknown }> = [];
 
-    for (const result of results) {
+    for (let i = 0; i < results.length; i++) {
+      const result = results[i];
       if (result.status === "fulfilled") {
         sent++;
       } else {
         failed++;
-        console.error("Bulk email send failed:", result.reason);
+        failures.push({ email: recipients[i], error: result.reason });
+        console.error(
+          `Bulk email send failed for ${recipients[i]}:`,
+          result.reason,
+        );
       }
     }
+
+    await logSendFailures({
+      failures,
+      actor: auth.email!,
+      source: `bulk_send.${kind}`,
+      batchId: normalizedAuditBatchId,
+      eventId,
+      eventName: event.name ?? null,
+    });
 
     await logAuditEvent({
       action: "email.send_mass",
@@ -272,12 +309,18 @@ export async function POST(req: Request) {
         sent,
         failed,
         skipped,
-        total: sent + failed + skipped,
+        suppressed: suppressedCount,
+        total: sent + failed + skipped + suppressedCount,
         ...(normalizedAuditBatchId ? { batchId: normalizedAuditBatchId } : {}),
       },
     });
 
-    return NextResponse.json({ sent, failed, skipped });
+    return NextResponse.json({
+      sent,
+      failed,
+      skipped,
+      suppressed: suppressedCount,
+    });
   } catch (err) {
     console.error("Bulk email send error:", err);
     return NextResponse.json(

@@ -16,10 +16,56 @@ import {
 } from "@/app/lib/bulkSend";
 import {
   AUDIENCE_OPTIONS,
+  isTicketHolderAudience,
   parseAudienceSegments,
   TICKET_TYPES,
   type AudienceSegment,
 } from "@/app/lib/campaignAudienceConfig";
+
+type FooterType =
+  | "event_unsubscribe"
+  | "announce_unsubscribe"
+  | "essential"
+  | "none";
+
+const FOOTER_TYPE_OPTIONS: Array<{
+  value: FooterType;
+  label: string;
+  hint: string;
+}> = [
+  {
+    value: "event_unsubscribe",
+    label: "Event unsubscribe link",
+    hint: "Lets recipients opt out of promotional emails for this event only. Best for event-tied marketing (announcements, tickets available).",
+  },
+  {
+    value: "announce_unsubscribe",
+    label: "Announce unsubscribe link",
+    hint: "Lets recipients opt out of all SSB promotional email. Best for general newsletters not tied to a single event.",
+  },
+  {
+    value: "essential",
+    label: "Event-essential (no unsubscribe)",
+    hint: "Footer says \"you got a ticket to X\". Recipients can't opt out — use only for service mail to confirmed ticket holders.",
+  },
+  {
+    value: "none",
+    label: "No footer extra",
+    hint: "Only the base SSB footer (no unsubscribe link, no notice). Use sparingly.",
+  },
+];
+
+function suggestFooterType(args: {
+  segments: AudienceSegment[];
+  hasEvent: boolean;
+}): FooterType {
+  if (!args.hasEvent) return "announce_unsubscribe";
+  if (args.segments.length === 0) return "event_unsubscribe";
+  const allTicketHolders = args.segments.every((s) =>
+    isTicketHolderAudience(s.type),
+  );
+  return allTicketHolders ? "essential" : "event_unsubscribe";
+}
 
 const EMAIL_CHUNK_SIZE = 50;
 
@@ -109,6 +155,8 @@ export default function CampaignEditorClient({ campaignId }: CampaignEditorProps
   const [includeHeroCard, setIncludeHeroCard] = useState(false);
   const [feedbackEventId, setFeedbackEventId] = useState<string>("");
   const [includeFeedbackPrompt, setIncludeFeedbackPrompt] = useState(false);
+  const [footerType, setFooterType] = useState<FooterType>("event_unsubscribe");
+  const [footerTypeTouched, setFooterTypeTouched] = useState(false);
 
   // Campaign metadata
   const [savedId, setSavedId] = useState<string | null>(campaignId);
@@ -149,6 +197,7 @@ export default function CampaignEditorClient({ campaignId }: CampaignEditorProps
       includeHeroCard: boolean;
       feedbackEventId: string | null;
       includeFeedbackPrompt: boolean;
+      footerType?: string | null;
       status: string;
       sentAt: string | null;
       recipientCount: number | null;
@@ -168,12 +217,26 @@ export default function CampaignEditorClient({ campaignId }: CampaignEditorProps
     setIncludeHeroCard(c.includeHeroCard);
     setFeedbackEventId(c.feedbackEventId ?? "");
     setIncludeFeedbackPrompt(c.includeFeedbackPrompt);
+    const savedFooter = (c.footerType ?? "event_unsubscribe") as FooterType;
+    setFooterType(savedFooter);
+    // Treat any saved campaign as "touched" so we don't overwrite the
+    // admin's saved choice when the audience changes later.
+    setFooterTypeTouched(true);
     setStatus(c.status);
     setSentAt(c.sentAt);
     setRecipientCount(c.recipientCount);
     setFailedCount(c.failedCount ?? 0);
     setAudienceCount(data.audienceCount ?? null);
   }, []);
+
+  // Suggest a default footer type when the audience / event-bound state
+  // changes — but only until the admin has explicitly chosen one.
+  useEffect(() => {
+    if (footerTypeTouched) return;
+    const hasEvent =
+      segments.some((s) => s.eventIds.length > 0) || !!heroEventId;
+    setFooterType(suggestFooterType({ segments, hasEvent }));
+  }, [segments, heroEventId, footerTypeTouched]);
 
   const refreshCampaign = useCallback(async (id: string) => {
     const res = await fetch(`/api/campaigns/${id}`);
@@ -302,6 +365,7 @@ export default function CampaignEditorClient({ campaignId }: CampaignEditorProps
         includeHeroCard,
         feedbackEventId: includeFeedbackPrompt ? feedbackEventId || null : null,
         includeFeedbackPrompt,
+        footerType,
       };
 
       if (savedId) {
@@ -342,6 +406,7 @@ export default function CampaignEditorClient({ campaignId }: CampaignEditorProps
     includeHeroCard,
     feedbackEventId,
     includeFeedbackPrompt,
+    footerType,
     savedId,
   ]);
 
@@ -826,6 +891,73 @@ export default function CampaignEditorClient({ campaignId }: CampaignEditorProps
             </div>
           )}
 
+          {/* Footer type */}
+          <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5 space-y-3">
+            <div className="flex items-baseline justify-between gap-2">
+              <label
+                htmlFor="footer-type"
+                className="text-sm font-medium text-zinc-300"
+              >
+                Email footer
+              </label>
+              {(() => {
+                const hasEvent =
+                  segments.some((s) => s.eventIds.length > 0) || !!heroEventId;
+                const suggested = suggestFooterType({ segments, hasEvent });
+                if (suggested === footerType) {
+                  return (
+                    <span className="text-[10px] uppercase tracking-wide text-emerald-400/80">
+                      Matches suggestion
+                    </span>
+                  );
+                }
+                return (
+                  <button
+                    type="button"
+                    disabled={isLocked}
+                    onClick={() => {
+                      setFooterType(suggested);
+                      setFooterTypeTouched(true);
+                    }}
+                    className="text-[10px] uppercase tracking-wide text-amber-300/90 hover:text-amber-200 disabled:opacity-50"
+                  >
+                    Use suggested:{" "}
+                    {
+                      FOOTER_TYPE_OPTIONS.find((o) => o.value === suggested)
+                        ?.label
+                    }
+                  </button>
+                );
+              })()}
+            </div>
+            <select
+              id="footer-type"
+              value={footerType}
+              onChange={(e) => {
+                setFooterType(e.target.value as FooterType);
+                setFooterTypeTouched(true);
+              }}
+              disabled={isLocked}
+              className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-white focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 disabled:opacity-50"
+            >
+              {FOOTER_TYPE_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+            <p className="text-xs text-zinc-500 leading-relaxed">
+              {FOOTER_TYPE_OPTIONS.find((o) => o.value === footerType)?.hint}
+            </p>
+            {(footerType === "essential" || footerType === "none") && (
+              <p className="text-xs text-amber-300/90 leading-relaxed">
+                Recipients can&rsquo;t unsubscribe from this send and the
+                opt-out filter will not run. Only use this for service mail to
+                ticket holders.
+              </p>
+            )}
+          </div>
+
           {/* Email body */}
           <div>
             <div className="px-4 py-3 bg-zinc-800/50 border border-dashed border-zinc-700 rounded-t-xl flex items-center gap-3">
@@ -893,13 +1025,156 @@ export default function CampaignEditorClient({ campaignId }: CampaignEditorProps
                 </div>
                 {includeHeroCard && heroEventId && (() => {
                   const ev = events.find((e) => e.id === heroEventId);
-                  return ev ? (
+                  if (!ev) return null;
+                  const publicBase =
+                    process.env.NEXT_PUBLIC_BASE_URL
+                    || "https://stanfordspeakersbureau.com";
+                  const imageUrl = ev.imgVersion
+                    ? `${publicBase}/api/images/${ev.id}?v=${ev.imgVersion}`
+                    : null;
+                  const pillFmt: Intl.DateTimeFormatOptions = {
+                    timeZone: "America/Los_Angeles",
+                    weekday: "short",
+                    month: "short",
+                    day: "numeric",
+                    hour: "numeric",
+                    minute: "2-digit",
+                  };
+                  const timeFmt: Intl.DateTimeFormatOptions = {
+                    timeZone: "America/Los_Angeles",
+                    hour: "numeric",
+                    minute: "2-digit",
+                  };
+                  const startPill = ev.start_time_date
+                    ? new Date(ev.start_time_date).toLocaleString("en-US", pillFmt)
+                    : null;
+                  const doorsPill = ev.doors_open
+                    ? new Date(ev.doors_open).toLocaleString("en-US", timeFmt)
+                    : null;
+                  return (
                     <div className="mx-auto" style={{ maxWidth: 600 }}>
-                      <div style={{ backgroundColor: "#18181b", borderTop: "4px solid #A80D0C", padding: "20px 24px" }}>
-                        <h2 style={{ color: "#ffffff", fontSize: 24, fontWeight: 700, fontFamily: "Georgia, serif", margin: 0 }}>{ev.name || "Event Name"}</h2>
+                      {imageUrl ? (
+                        <img
+                          src={imageUrl}
+                          alt={ev.name ?? "Event"}
+                          style={{
+                            width: "100%",
+                            height: "auto",
+                            display: "block",
+                          }}
+                        />
+                      ) : (
+                        <div
+                          style={{
+                            background: "linear-gradient(135deg, #A80D0C 0%, #C11211 100%)",
+                            padding: 24,
+                            textAlign: "center",
+                            color: "#ffffff",
+                            fontSize: 14,
+                            fontWeight: 700,
+                            letterSpacing: 1,
+                            textTransform: "uppercase",
+                          }}
+                        >
+                          Stanford Speakers Bureau
+                        </div>
+                      )}
+                      <div
+                        style={{
+                          backgroundColor: "#18181b",
+                          borderTop: "4px solid #A80D0C",
+                          padding: "24px 24px 20px",
+                        }}
+                      >
+                        <h2
+                          style={{
+                            color: "#ffffff",
+                            fontSize: 28,
+                            fontWeight: 700,
+                            fontFamily: "Georgia, 'Times New Roman', Times, serif",
+                            lineHeight: 1.2,
+                            margin: "0 0 6px 0",
+                          }}
+                        >
+                          {ev.name || "Event Name"}
+                        </h2>
+                        {ev.tagline && (
+                          <p
+                            style={{
+                              color: "#a1a1aa",
+                              fontSize: 15,
+                              lineHeight: 1.5,
+                              margin: "0 0 4px 0",
+                            }}
+                          >
+                            {ev.tagline}
+                          </p>
+                        )}
+                        {(startPill || doorsPill || ev.venue) && (
+                          <div
+                            style={{
+                              display: "flex",
+                              flexWrap: "wrap",
+                              gap: 6,
+                              marginTop: 14,
+                            }}
+                          >
+                            {startPill && (
+                              <span
+                                style={{
+                                  backgroundColor: "#2a2a2e",
+                                  border: "1px solid #3f3f46",
+                                  borderRadius: 50,
+                                  padding: "5px 12px",
+                                  fontSize: 13,
+                                  color: "#e4e4e7",
+                                  fontWeight: 500,
+                                  whiteSpace: "nowrap",
+                                }}
+                              >
+                                <span style={{ color: "#f87171" }}>📅</span>{" "}
+                                {startPill}
+                              </span>
+                            )}
+                            {doorsPill && (
+                              <span
+                                style={{
+                                  backgroundColor: "#2a2a2e",
+                                  border: "1px solid #3f3f46",
+                                  borderRadius: 50,
+                                  padding: "5px 12px",
+                                  fontSize: 13,
+                                  color: "#e4e4e7",
+                                  fontWeight: 500,
+                                  whiteSpace: "nowrap",
+                                }}
+                              >
+                                <span style={{ color: "#f87171" }}>🚪</span>{" "}
+                                Doors open {doorsPill}
+                              </span>
+                            )}
+                            {ev.venue && (
+                              <span
+                                style={{
+                                  backgroundColor: "#2a2a2e",
+                                  border: "1px solid #3f3f46",
+                                  borderRadius: 50,
+                                  padding: "5px 12px",
+                                  fontSize: 13,
+                                  color: "#e4e4e7",
+                                  fontWeight: 500,
+                                  whiteSpace: "nowrap",
+                                }}
+                              >
+                                <span style={{ color: "#f87171" }}>📍</span>{" "}
+                                {ev.venue}
+                              </span>
+                            )}
+                          </div>
+                        )}
                       </div>
                     </div>
-                  ) : null;
+                  );
                 })()}
                 <div className="px-5 py-8 mx-auto" style={{ maxWidth: 600 }}>
                   {body ? (
@@ -940,8 +1215,42 @@ export default function CampaignEditorClient({ campaignId }: CampaignEditorProps
                   })()}
                 </div>
                 <div className="text-center py-6 border-t" style={{ backgroundColor: "#18181b", borderColor: "#3f3f46" }}>
-                  <p style={{ color: "#71717a", fontSize: 12, margin: "0 0 6px 0" }}>Stanford Speakers Bureau</p>
+                  <p style={{ color: "#71717a", fontSize: 12, margin: "0 0 8px 0" }}>Stanford Speakers Bureau</p>
                   <p style={{ color: "#71717a", fontSize: 12, margin: 0 }}>For ADA accommodations or other questions, please email tickets@stanfordspeakersbureau.com</p>
+                  {(() => {
+                    const heroEvent = heroEventId
+                      ? events.find((e) => e.id === heroEventId)
+                      : null;
+                    const heroName = heroEvent?.name?.trim() || "this event";
+                    if (footerType === "event_unsubscribe") {
+                      return (
+                        <p style={{ color: "#71717a", fontSize: 12, margin: "12px 0 0 0" }}>
+                          <span style={{ color: "#a1a1aa", textDecoration: "underline" }}>
+                            Unsubscribe from emails about {heroName}
+                          </span>
+                        </p>
+                      );
+                    }
+                    if (footerType === "announce_unsubscribe") {
+                      return (
+                        <p style={{ color: "#71717a", fontSize: 12, margin: "12px 0 0 0" }}>
+                          <span style={{ color: "#a1a1aa", textDecoration: "underline" }}>
+                            Unsubscribe from announcements
+                          </span>
+                        </p>
+                      );
+                    }
+                    if (footerType === "essential") {
+                      return (
+                        <p style={{ color: "#71717a", fontSize: 12, margin: "12px 0 0 0", lineHeight: 1.5 }}>
+                          This is an event-essential update. You&rsquo;re
+                          receiving it because you got a ticket to{" "}
+                          <span style={{ color: "#a1a1aa" }}>{heroName}</span>.
+                        </p>
+                      );
+                    }
+                    return null;
+                  })()}
                 </div>
               </div>
             </div>

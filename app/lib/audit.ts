@@ -25,7 +25,13 @@ type AuditAction =
   | "waitlist.issue_standby"
   | "referral.toggle"
   | "campaign.create"
-  | "campaign.send";
+  | "campaign.send"
+  | "email.send_failed"
+  | "mailing_list.subscribe"
+  | "mailing_list.unsubscribe"
+  | "mailing_list.resubscribe"
+  | "mailing_list.admin_unsubscribe"
+  | "mailing_list.admin_resubscribe";
 
 type AuditLogParams = {
   action: AuditAction;

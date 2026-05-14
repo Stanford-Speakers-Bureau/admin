@@ -3,9 +3,60 @@ import QRCode from "qrcode";
 import { db, eq, roles } from "@ssb/db";
 import { buildCancellationLink } from "./cancellation-links";
 import { IMPORTANT_NOTICE_ITEMS, PACIFIC_TIMEZONE } from "./constants";
+import {
+  buildAnnounceUnsubscribeLink,
+  buildEventUnsubscribeLink,
+} from "./unsubscribe-links";
 import { hasUnsafeHeaderChars, isValidEmail } from "./validation";
 import { buildAppleWalletLink } from "./wallet-links";
 import { generateGoogleCalendarUrl } from "./utils";
+
+type FooterContext =
+  | { kind: "unsub"; url: string; label: string }
+  | { kind: "essential"; eventName: string };
+
+function eventUnsubFooter(input: {
+  email: string;
+  eventId?: string | null;
+  eventName?: string | null;
+  eventStartTime?: string | null;
+  eventEndTime?: string | null;
+}): FooterContext | null {
+  if (!input.eventId) return null;
+  const url = buildEventUnsubscribeLink({
+    baseUrl: getBaseUrl(),
+    email: input.email,
+    eventId: input.eventId,
+    eventStartTime: input.eventStartTime ?? null,
+    eventEndTime: input.eventEndTime ?? null,
+  });
+  const eventName = input.eventName?.trim() || "this event";
+  return {
+    kind: "unsub",
+    url,
+    label: `Unsubscribe from emails about ${eventName}`,
+  };
+}
+
+function announceUnsubFooter(input: { email: string }): FooterContext {
+  return {
+    kind: "unsub",
+    url: buildAnnounceUnsubscribeLink({
+      baseUrl: getBaseUrl(),
+      email: input.email,
+    }),
+    label: "Unsubscribe from announcements",
+  };
+}
+
+function essentialFooter(
+  eventName: string | null | undefined,
+): FooterContext {
+  return {
+    kind: "essential",
+    eventName: eventName?.trim() || "this event",
+  };
+}
 
 async function isEmailSuppressed(email: string): Promise<boolean> {
   const normalized = email.trim().toLowerCase();
@@ -855,7 +906,20 @@ function buildCancelBanner(cancelTicketUrl: string): string {
 }
 
 /** Builds the email footer */
-function buildFooter(): string {
+function buildFooter(ctx?: FooterContext | null): string {
+  let extraLine = "";
+  if (ctx?.kind === "unsub") {
+    extraLine = `
+          <p style="margin: 12px 0 0 0; color: #71717a; font-size: 12px;">
+            <a href="${ctx.url}" style="color: #a1a1aa; text-decoration: underline;">${ctx.label}</a>
+          </p>`;
+  } else if (ctx?.kind === "essential") {
+    extraLine = `
+          <p style="margin: 12px 0 0 0; color: #71717a; font-size: 12px; line-height: 1.5;">
+            This is an event-essential update. You&rsquo;re receiving it because you got a ticket to <span style="color: #a1a1aa;">${ctx.eventName}</span>.
+          </p>`;
+  }
+
   return `
     <tr>
       <td align="center" class="footer" style="padding: 30px; background-color: #18181b; border-top: 1px solid #3f3f46; text-align: center;">
@@ -863,7 +927,7 @@ function buildFooter(): string {
           <p style="margin: 0 0 8px 0; color: #71717a; font-size: 12px;">Stanford Speakers Bureau</p>
           <p style="margin: 0; color: #71717a; font-size: 12px;">
             For ADA accommodations or other questions, please email <a href="mailto:${FROM_EMAIL}" style="color: #a1a1aa; text-decoration: none;">${FROM_EMAIL}</a>
-          </p>
+          </p>${extraLine}
         ${gmailBlendEnd}
       </td>
     </tr>`;
@@ -1525,7 +1589,7 @@ async function generateDayOfReminderEmailHTML(
         </div>
       </td>
     </tr>
-    ${buildFooter()}`;
+    ${buildFooter(essentialFooter(data.eventName))}`;
 
   return buildEmailShell(
     "Day-of Reminder",
@@ -2049,7 +2113,7 @@ async function generateEarlyReminderEmailHTML(
         </div>
       </td>
     </tr>
-    ${buildFooter()}`;
+    ${buildFooter(essentialFooter(data.eventName))}`;
 
   return buildEmailShell(
     "Event Reminder",
@@ -2366,7 +2430,12 @@ async function generateTicketsAvailableNowEmailHTML(
         </div>
       </td>
     </tr>
-    ${buildFooter()}`;
+    ${buildFooter(eventUnsubFooter({
+      email: data.email,
+      eventId: data.eventId,
+      eventName: data.eventName,
+      eventStartTime: data.eventStartTime,
+    }))}`;
 
   return buildEmailShell(
     "Tickets are LIVE!",
@@ -2517,7 +2586,12 @@ async function generateTicketsAvailableInEmailHTML(
         </div>
       </td>
     </tr>
-    ${buildFooter()}`;
+    ${buildFooter(eventUnsubFooter({
+      email: data.email,
+      eventId: data.eventId,
+      eventName: data.eventName,
+      eventStartTime: data.eventStartTime,
+    }))}`;
 
   return buildEmailShell(
     "Tickets dropping soon!",
@@ -2647,7 +2721,12 @@ async function generateClaimTicketEmailHTML(
         </div>
       </td>
     </tr>
-    ${buildFooter()}`;
+    ${buildFooter(eventUnsubFooter({
+      email: data.email,
+      eventId: data.eventId,
+      eventName: data.eventName,
+      eventStartTime: data.eventStartTime,
+    }))}`;
 
   return buildEmailShell(
     "Tickets are LIVE!",
@@ -2788,7 +2867,7 @@ async function generateStandbyLineEmailHTML(
         </div>
       </td>
     </tr>
-    ${buildFooter()}`;
+    ${buildFooter(essentialFooter(data.eventName))}`;
 
   return buildEmailShell(
     "Please come in-person for your ticket!",
@@ -3036,7 +3115,12 @@ async function generateEventAnnouncedEmailHTML(
         </div>
       </td>
     </tr>
-    ${buildFooter()}`;
+    ${buildFooter(eventUnsubFooter({
+      email: data.email,
+      eventId: data.eventId,
+      eventName: data.eventName,
+      eventStartTime: data.eventStartTime,
+    }))}`;
 
   return buildEmailShell(
     "Speaker Announcement",
@@ -3078,11 +3162,18 @@ export async function sendEventAnnouncedEmail(
 // Campaign email
 // ============================================================================
 
+export type CampaignFooterType =
+  | "event_unsubscribe"
+  | "announce_unsubscribe"
+  | "essential"
+  | "none";
+
 export type CampaignEmailData = {
   email: string;
   subject: string;
   bodyMarkdown: string;
   includeHeroCard: boolean;
+  footerType: CampaignFooterType;
   eventName?: string | null;
   eventTagline?: string | null;
   eventStartTime?: string | null;
@@ -3199,6 +3290,21 @@ function generateCampaignEmailHTML(data: CampaignEmailData): string {
     });
   }
 
+  let footerCtx: FooterContext | null = null;
+  if (data.footerType === "event_unsubscribe" && data.eventId) {
+    footerCtx = eventUnsubFooter({
+      email: data.email,
+      eventId: data.eventId,
+      eventName: data.eventName,
+      eventStartTime: data.eventStartTime,
+    });
+  } else if (data.footerType === "announce_unsubscribe") {
+    footerCtx = announceUnsubFooter({ email: data.email });
+  } else if (data.footerType === "essential") {
+    footerCtx = essentialFooter(data.eventName);
+  }
+  // "none" → footerCtx stays null
+
   const bodyContent = `
     ${heroCard}
     <tr>
@@ -3208,7 +3314,7 @@ function generateCampaignEmailHTML(data: CampaignEmailData): string {
         </div>
       </td>
     </tr>
-    ${buildFooter()}`;
+    ${buildFooter(footerCtx)}`;
 
   return buildEmailShell(
     data.subject,

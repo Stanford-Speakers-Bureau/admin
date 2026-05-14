@@ -108,8 +108,27 @@ const EVENT_SCOPED_TYPES: AudienceType[] = [
   "event_past_attendees",
 ];
 
+/**
+ * Segments whose recipients are guaranteed (or near-guaranteed) to hold a
+ * ticket for the referenced event(s). Used to suggest the right footer type
+ * in the campaign editor — these audiences should typically get an
+ * "essential" notice, not an unsubscribe link.
+ */
+const TICKET_HOLDER_TYPES: AudienceType[] = [
+  "event_ticketholders",
+  "event_ticket_type",
+  "event_not_checked_in",
+  "event_feedback_pending",
+  "event_past_attendees",
+  "past_attendees",
+];
+
 export function isEventScoped(audienceType: string): boolean {
   return EVENT_SCOPED_TYPES.includes(audienceType as AudienceType);
+}
+
+export function isTicketHolderAudience(audienceType: string): boolean {
+  return TICKET_HOLDER_TYPES.includes(audienceType as AudienceType);
 }
 
 export function needsTicketType(audienceType: string): boolean {

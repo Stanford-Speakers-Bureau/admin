@@ -182,6 +182,7 @@ export async function POST(req: Request) {
           subject,
           bodyMarkdown,
           includeHeroCard: true,
+          footerType: "event_unsubscribe",
           eventName: event.name,
           eventTagline: event.tagline ?? null,
           eventStartTime: eventStartIso,

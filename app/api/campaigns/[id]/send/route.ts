@@ -22,6 +22,14 @@ import {
 import { sendCampaignEmail } from "@/app/lib/email";
 import { logAuditEvent } from "@/app/lib/audit";
 import { parseAudiences, resolveSegments } from "@/app/lib/campaignAudience";
+import {
+  filterUnsubscribed,
+  filterUnsubscribedHierarchical,
+} from "@/app/lib/mailing-list";
+import {
+  logSendFailures,
+  partitionBySuppression,
+} from "@/app/lib/email-suppression";
 
 const MAX_EMAILS_PER_REQUEST = REMINDER_EMAIL_BATCH_SIZE;
 
@@ -266,6 +274,35 @@ export async function POST(req: Request, { params }: Params) {
       );
     }
 
+    // The campaign's footer_type drives both the rendered footer and whether
+    // the unsubscribe filter runs at all:
+    //   - "essential" / "none": treat as transactional — no filter (admin chose
+    //     to bypass opt-outs, e.g. for ticket-holder service mail).
+    //   - "event_unsubscribe" with an eventId: hierarchical filter.
+    //   - "event_unsubscribe" without an eventId: behave like announce (fallback).
+    //   - "announce_unsubscribe": announce-only filter.
+    const footerType = activeCampaign.footerType;
+    const filterMode: "hierarchical" | "announce" | "skip" =
+      footerType === "essential" || footerType === "none"
+        ? "skip"
+        : footerType === "event_unsubscribe" && activeCampaign.eventId
+          ? "hierarchical"
+          : "announce";
+
+    const { kept: filteredEmails, skipped: unsubSkipped } =
+      filterMode === "skip"
+        ? { kept: emails, skipped: [] as string[] }
+        : filterMode === "hierarchical"
+          ? await filterUnsubscribedHierarchical(emails, activeCampaign.eventId!)
+          : await filterUnsubscribed(emails, "announce", null);
+
+    // Drop hard-suppressed addresses up front so they don't count as "sent"
+    // and so we can report a suppression count.
+    const { sendable: sendableEmails, suppressed: suppressedEmails } =
+      await partitionBySuppression(filteredEmails);
+    const skippedCount = unsubSkipped.length;
+    const suppressedCount = suppressedEmails.length;
+
     const baseUrl =
       process.env.NEXT_PUBLIC_BASE_URL || "https://stanfordspeakersbureau.com";
     const feedbackEvent = activeCampaign.includeFeedbackPrompt
@@ -287,7 +324,7 @@ export async function POST(req: Request, { params }: Params) {
           where: and(
             eq(tickets.eventId, feedbackEvent.id),
             eq(tickets.scanned, true),
-            normalizedTicketEmailIn(emails),
+            normalizedTicketEmailIn(sendableEmails),
           ),
           columns: {
             id: true,
@@ -300,7 +337,7 @@ export async function POST(req: Request, { params }: Params) {
     );
 
     const results = await Promise.allSettled(
-      emails.map(async (email) => {
+      sendableEmails.map(async (email) => {
         const feedbackTicket = feedbackEvent
           ? feedbackTicketByEmail.get(email)
           : null;
@@ -341,6 +378,11 @@ export async function POST(req: Request, { params }: Params) {
           subject: activeCampaign.subject,
           bodyMarkdown: activeCampaign.body,
           includeHeroCard: activeCampaign.includeHeroCard,
+          footerType: activeCampaign.footerType as
+            | "event_unsubscribe"
+            | "announce_unsubscribe"
+            | "essential"
+            | "none",
           eventName: activeCampaign.event?.name ?? null,
           eventTagline: activeCampaign.event?.tagline ?? null,
           eventStartTime: activeCampaign.event?.startTimeDate?.toISOString() ?? null,
@@ -356,14 +398,30 @@ export async function POST(req: Request, { params }: Params) {
 
     let sent = 0;
     let failed = 0;
-    for (const result of results) {
+    const failures: Array<{ email: string; error: unknown }> = [];
+    for (let i = 0; i < results.length; i++) {
+      const result = results[i];
       if (result.status === "fulfilled") {
         sent++;
       } else {
         failed++;
-        console.error("Campaign email send failed:", result.reason);
+        failures.push({ email: sendableEmails[i], error: result.reason });
+        console.error(
+          `Campaign email send failed for ${sendableEmails[i]}:`,
+          result.reason,
+        );
       }
     }
+
+    await logSendFailures({
+      failures,
+      actor: auth.email!,
+      source: "campaign",
+      batchId: normalizedAuditBatchId,
+      eventId: activeCampaign.eventId ?? null,
+      eventName: activeCampaign.event?.name ?? null,
+      extraMetadata: { campaignId: id, chunkIndex },
+    });
 
     const isFinalChunk = chunkIndex === chunkCount - 1;
 
@@ -409,6 +467,10 @@ export async function POST(req: Request, { params }: Params) {
         subject: activeCampaign.subject,
         sent,
         failed,
+        skipped: skippedCount,
+        suppressed: suppressedCount,
+        footerType,
+        filterMode,
         batchId: normalizedAuditBatchId,
         chunkIndex,
         chunkCount,
@@ -428,6 +490,8 @@ export async function POST(req: Request, { params }: Params) {
     return NextResponse.json({
       sent,
       failed,
+      skipped: skippedCount,
+      suppressed: suppressedCount,
       status: updatedCampaign.status,
       recipientCount: updatedCampaign.recipientCount,
       failedCount: updatedCampaign.failedCount,

@@ -23,6 +23,7 @@ export {
   AUDIENCE_OPTIONS,
   AUDIENCE_TYPE_LABELS,
   isEventScoped,
+  isTicketHolderAudience,
   isValidAudienceType,
   needsTicketType,
   parseAudienceSegments,

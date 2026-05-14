@@ -118,6 +118,12 @@ const navItems = [
     icon: "M17 20h5v-1a4 4 0 00-5.874-3.57M17 20H2v-1a4 4 0 014-4h7a4 4 0 014 4zm-5-9a3 3 0 110-6 3 3 0 010 6zm6-1a2 2 0 110-4 2 2 0 010 4z",
   },
   {
+    href: "/mailing-lists",
+    label: "Mailing Lists",
+    group: "events" as const,
+    icon: "M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z",
+  },
+  {
     href: "/campaigns",
     label: "Campaigns",
     group: "admin" as const,
@@ -168,7 +174,19 @@ async function checkLiveEvent(): Promise<boolean> {
 async function getEvents() {
   try {
     const eventList = await db.query.events.findMany({
-      columns: { id: true, name: true, startTimeDate: true, standbyEnabled: true, live: true },
+      columns: {
+        id: true,
+        name: true,
+        startTimeDate: true,
+        standbyEnabled: true,
+        live: true,
+        tagline: true,
+        imgVersion: true,
+        doorsOpen: true,
+        venue: true,
+        venueLink: true,
+        route: true,
+      },
       orderBy: desc(events.startTimeDate),
     });
 
@@ -178,6 +196,12 @@ async function getEvents() {
       start_time_date: e.startTimeDate?.toISOString() ?? null,
       standbyEnabled: e.standbyEnabled ?? false,
       live: e.live ?? false,
+      tagline: e.tagline ?? null,
+      imgVersion: e.imgVersion ?? null,
+      doors_open: e.doorsOpen?.toISOString() ?? null,
+      venue: e.venue ?? null,
+      venue_link: e.venueLink ?? null,
+      route: e.route ?? null,
     }));
   } catch (error) {
     console.error("Failed to fetch events for layout:", error);
