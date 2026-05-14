@@ -174,7 +174,19 @@ async function checkLiveEvent(): Promise<boolean> {
 async function getEvents() {
   try {
     const eventList = await db.query.events.findMany({
-      columns: { id: true, name: true, startTimeDate: true, standbyEnabled: true, live: true },
+      columns: {
+        id: true,
+        name: true,
+        startTimeDate: true,
+        standbyEnabled: true,
+        live: true,
+        tagline: true,
+        imgVersion: true,
+        doorsOpen: true,
+        venue: true,
+        venueLink: true,
+        route: true,
+      },
       orderBy: desc(events.startTimeDate),
     });
 
@@ -184,6 +196,12 @@ async function getEvents() {
       start_time_date: e.startTimeDate?.toISOString() ?? null,
       standbyEnabled: e.standbyEnabled ?? false,
       live: e.live ?? false,
+      tagline: e.tagline ?? null,
+      imgVersion: e.imgVersion ?? null,
+      doors_open: e.doorsOpen?.toISOString() ?? null,
+      venue: e.venue ?? null,
+      venue_link: e.venueLink ?? null,
+      route: e.route ?? null,
     }));
   } catch (error) {
     console.error("Failed to fetch events for layout:", error);

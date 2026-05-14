@@ -1025,13 +1025,156 @@ export default function CampaignEditorClient({ campaignId }: CampaignEditorProps
                 </div>
                 {includeHeroCard && heroEventId && (() => {
                   const ev = events.find((e) => e.id === heroEventId);
-                  return ev ? (
+                  if (!ev) return null;
+                  const publicBase =
+                    process.env.NEXT_PUBLIC_BASE_URL
+                    || "https://stanfordspeakersbureau.com";
+                  const imageUrl = ev.imgVersion
+                    ? `${publicBase}/api/images/${ev.id}?v=${ev.imgVersion}`
+                    : null;
+                  const pillFmt: Intl.DateTimeFormatOptions = {
+                    timeZone: "America/Los_Angeles",
+                    weekday: "short",
+                    month: "short",
+                    day: "numeric",
+                    hour: "numeric",
+                    minute: "2-digit",
+                  };
+                  const timeFmt: Intl.DateTimeFormatOptions = {
+                    timeZone: "America/Los_Angeles",
+                    hour: "numeric",
+                    minute: "2-digit",
+                  };
+                  const startPill = ev.start_time_date
+                    ? new Date(ev.start_time_date).toLocaleString("en-US", pillFmt)
+                    : null;
+                  const doorsPill = ev.doors_open
+                    ? new Date(ev.doors_open).toLocaleString("en-US", timeFmt)
+                    : null;
+                  return (
                     <div className="mx-auto" style={{ maxWidth: 600 }}>
-                      <div style={{ backgroundColor: "#18181b", borderTop: "4px solid #A80D0C", padding: "20px 24px" }}>
-                        <h2 style={{ color: "#ffffff", fontSize: 24, fontWeight: 700, fontFamily: "Georgia, serif", margin: 0 }}>{ev.name || "Event Name"}</h2>
+                      {imageUrl ? (
+                        <img
+                          src={imageUrl}
+                          alt={ev.name ?? "Event"}
+                          style={{
+                            width: "100%",
+                            height: "auto",
+                            display: "block",
+                          }}
+                        />
+                      ) : (
+                        <div
+                          style={{
+                            background: "linear-gradient(135deg, #A80D0C 0%, #C11211 100%)",
+                            padding: 24,
+                            textAlign: "center",
+                            color: "#ffffff",
+                            fontSize: 14,
+                            fontWeight: 700,
+                            letterSpacing: 1,
+                            textTransform: "uppercase",
+                          }}
+                        >
+                          Stanford Speakers Bureau
+                        </div>
+                      )}
+                      <div
+                        style={{
+                          backgroundColor: "#18181b",
+                          borderTop: "4px solid #A80D0C",
+                          padding: "24px 24px 20px",
+                        }}
+                      >
+                        <h2
+                          style={{
+                            color: "#ffffff",
+                            fontSize: 28,
+                            fontWeight: 700,
+                            fontFamily: "Georgia, 'Times New Roman', Times, serif",
+                            lineHeight: 1.2,
+                            margin: "0 0 6px 0",
+                          }}
+                        >
+                          {ev.name || "Event Name"}
+                        </h2>
+                        {ev.tagline && (
+                          <p
+                            style={{
+                              color: "#a1a1aa",
+                              fontSize: 15,
+                              lineHeight: 1.5,
+                              margin: "0 0 4px 0",
+                            }}
+                          >
+                            {ev.tagline}
+                          </p>
+                        )}
+                        {(startPill || doorsPill || ev.venue) && (
+                          <div
+                            style={{
+                              display: "flex",
+                              flexWrap: "wrap",
+                              gap: 6,
+                              marginTop: 14,
+                            }}
+                          >
+                            {startPill && (
+                              <span
+                                style={{
+                                  backgroundColor: "#2a2a2e",
+                                  border: "1px solid #3f3f46",
+                                  borderRadius: 50,
+                                  padding: "5px 12px",
+                                  fontSize: 13,
+                                  color: "#e4e4e7",
+                                  fontWeight: 500,
+                                  whiteSpace: "nowrap",
+                                }}
+                              >
+                                <span style={{ color: "#f87171" }}>📅</span>{" "}
+                                {startPill}
+                              </span>
+                            )}
+                            {doorsPill && (
+                              <span
+                                style={{
+                                  backgroundColor: "#2a2a2e",
+                                  border: "1px solid #3f3f46",
+                                  borderRadius: 50,
+                                  padding: "5px 12px",
+                                  fontSize: 13,
+                                  color: "#e4e4e7",
+                                  fontWeight: 500,
+                                  whiteSpace: "nowrap",
+                                }}
+                              >
+                                <span style={{ color: "#f87171" }}>🚪</span>{" "}
+                                Doors open {doorsPill}
+                              </span>
+                            )}
+                            {ev.venue && (
+                              <span
+                                style={{
+                                  backgroundColor: "#2a2a2e",
+                                  border: "1px solid #3f3f46",
+                                  borderRadius: 50,
+                                  padding: "5px 12px",
+                                  fontSize: 13,
+                                  color: "#e4e4e7",
+                                  fontWeight: 500,
+                                  whiteSpace: "nowrap",
+                                }}
+                              >
+                                <span style={{ color: "#f87171" }}>📍</span>{" "}
+                                {ev.venue}
+                              </span>
+                            )}
+                          </div>
+                        )}
                       </div>
                     </div>
-                  ) : null;
+                  );
                 })()}
                 <div className="px-5 py-8 mx-auto" style={{ maxWidth: 600 }}>
                   {body ? (
@@ -1072,8 +1215,42 @@ export default function CampaignEditorClient({ campaignId }: CampaignEditorProps
                   })()}
                 </div>
                 <div className="text-center py-6 border-t" style={{ backgroundColor: "#18181b", borderColor: "#3f3f46" }}>
-                  <p style={{ color: "#71717a", fontSize: 12, margin: "0 0 6px 0" }}>Stanford Speakers Bureau</p>
+                  <p style={{ color: "#71717a", fontSize: 12, margin: "0 0 8px 0" }}>Stanford Speakers Bureau</p>
                   <p style={{ color: "#71717a", fontSize: 12, margin: 0 }}>For ADA accommodations or other questions, please email tickets@stanfordspeakersbureau.com</p>
+                  {(() => {
+                    const heroEvent = heroEventId
+                      ? events.find((e) => e.id === heroEventId)
+                      : null;
+                    const heroName = heroEvent?.name?.trim() || "this event";
+                    if (footerType === "event_unsubscribe") {
+                      return (
+                        <p style={{ color: "#71717a", fontSize: 12, margin: "12px 0 0 0" }}>
+                          <span style={{ color: "#a1a1aa", textDecoration: "underline" }}>
+                            Unsubscribe from emails about {heroName}
+                          </span>
+                        </p>
+                      );
+                    }
+                    if (footerType === "announce_unsubscribe") {
+                      return (
+                        <p style={{ color: "#71717a", fontSize: 12, margin: "12px 0 0 0" }}>
+                          <span style={{ color: "#a1a1aa", textDecoration: "underline" }}>
+                            Unsubscribe from announcements
+                          </span>
+                        </p>
+                      );
+                    }
+                    if (footerType === "essential") {
+                      return (
+                        <p style={{ color: "#71717a", fontSize: 12, margin: "12px 0 0 0", lineHeight: 1.5 }}>
+                          This is an event-essential update. You&rsquo;re
+                          receiving it because you got a ticket to{" "}
+                          <span style={{ color: "#a1a1aa" }}>{heroName}</span>.
+                        </p>
+                      );
+                    }
+                    return null;
+                  })()}
                 </div>
               </div>
             </div>

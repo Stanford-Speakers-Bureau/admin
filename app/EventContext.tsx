@@ -10,6 +10,12 @@ export type EventOption = {
   start_time_date: string | null;
   standbyEnabled: boolean;
   live: boolean;
+  tagline?: string | null;
+  imgVersion?: number | null;
+  doors_open?: string | null;
+  venue?: string | null;
+  venue_link?: string | null;
+  route?: string | null;
 };
 
 type EventContextType = {
