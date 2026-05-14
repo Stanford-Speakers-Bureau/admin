@@ -132,6 +132,11 @@ export async function POST(_req: Request, { params }: Params) {
       subject: `[TEST] ${campaign.subject}`,
       bodyMarkdown: campaign.body,
       includeHeroCard: campaign.includeHeroCard,
+      footerType: campaign.footerType as
+        | "event_unsubscribe"
+        | "announce_unsubscribe"
+        | "essential"
+        | "none",
       eventName: campaign.event?.name ?? null,
       eventTagline: campaign.event?.tagline ?? null,
       eventStartTime: campaign.event?.startTimeDate?.toISOString() ?? null,

@@ -373,10 +373,64 @@ export const emailCampaigns = pgTable(
       .notNull()
       .default(-1),
     createdBy: text("created_by").notNull(),
+    footerType: text("footer_type").notNull().default("event_unsubscribe"),
   },
   (t) => [
     index("email_campaigns_status_idx").on(t.status),
     index("email_campaigns_created_at_idx").on(t.createdAt),
+  ],
+);
+
+// ── Mailing List ────────────────────────────────────────────────────────────
+export const mailingList = pgTable(
+  "mailing_list",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    email: text("email").notNull(),
+    displayEmail: text("display_email").notNull(),
+    source: text("source").notNull(),
+  },
+  (t) => [
+    uniqueIndex("mailing_list_email_unique").on(t.email),
+    index("mailing_list_source_idx").on(t.source),
+    index("mailing_list_created_at_idx").on(t.createdAt),
+  ],
+);
+
+// ── Email Unsubscribes ──────────────────────────────────────────────────────
+export const emailUnsubscribes = pgTable(
+  "email_unsubscribes",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    email: text("email").notNull(),
+    scope: text("scope").notNull(),
+    eventId: uuid("event_id").references(() => events.id, {
+      onDelete: "cascade",
+      onUpdate: "cascade",
+    }),
+    source: text("source").notNull(),
+    reason: text("reason"),
+    actor: text("actor").notNull(),
+  },
+  (t) => [
+    index("email_unsubscribes_scope_event_idx").on(t.scope, t.eventId),
+    check(
+      "email_unsubscribes_scope_check",
+      sql`${t.scope} in ('announce', 'event')`,
+    ),
+    check(
+      "email_unsubscribes_scope_event_check",
+      sql`(${t.scope} = 'announce' AND ${t.eventId} IS NULL) OR (${t.scope} = 'event' AND ${t.eventId} IS NOT NULL)`,
+    ),
   ],
 );
 
@@ -389,6 +443,7 @@ export const eventsRelations = relations(events, ({ many }) => ({
   notifyList: many(notify),
   feedbackList: many(eventFeedback),
   campaignList: many(emailCampaigns),
+  unsubscribes: many(emailUnsubscribes),
 }));
 
 export const ticketsRelations = relations(tickets, ({ one }) => ({
@@ -436,6 +491,13 @@ export const eventFeedbackRelations = relations(eventFeedback, ({ one }) => ({
 export const emailCampaignsRelations = relations(emailCampaigns, ({ one }) => ({
   event: one(events, {
     fields: [emailCampaigns.eventId],
+    references: [events.id],
+  }),
+}));
+
+export const emailUnsubscribesRelations = relations(emailUnsubscribes, ({ one }) => ({
+  event: one(events, {
+    fields: [emailUnsubscribes.eventId],
     references: [events.id],
   }),
 }));

@@ -23,6 +23,19 @@ function validateCampaignSubject(subject: unknown): string | null {
   return trimmedSubject;
 }
 
+const VALID_FOOTER_TYPES = [
+  "event_unsubscribe",
+  "announce_unsubscribe",
+  "essential",
+  "none",
+] as const;
+type FooterType = (typeof VALID_FOOTER_TYPES)[number];
+
+function isValidFooterType(value: unknown): value is FooterType {
+  return typeof value === "string"
+    && (VALID_FOOTER_TYPES as readonly string[]).includes(value);
+}
+
 export async function GET(_req: Request, { params }: Params) {
   try {
     const auth = await verifyAdminRequest();
@@ -90,6 +103,7 @@ export async function GET(_req: Request, { params }: Params) {
         eventDoorsOpen: campaign.event?.doorsOpen?.toISOString() ?? null,
         includeHeroCard: campaign.includeHeroCard,
         includeFeedbackPrompt: campaign.includeFeedbackPrompt,
+        footerType: campaign.footerType,
         feedbackEventName: feedbackEvent?.name ?? null,
         feedbackEventRoute: feedbackEvent?.route ?? null,
         feedbackEventStartTime: feedbackEvent?.startTimeDate?.toISOString() ?? null,
@@ -149,6 +163,7 @@ export async function PATCH(req: Request, { params }: Params) {
       includeHeroCard?: boolean;
       feedbackEventId?: string | null;
       includeFeedbackPrompt?: boolean;
+      footerType?: string;
     };
     try {
       body = await req.json();
@@ -301,6 +316,17 @@ export async function PATCH(req: Request, { params }: Params) {
     }
     if (body.includeFeedbackPrompt !== undefined) {
       updates.includeFeedbackPrompt = body.includeFeedbackPrompt;
+    }
+    if (body.footerType !== undefined) {
+      if (!isValidFooterType(body.footerType)) {
+        return NextResponse.json(
+          {
+            error: `footerType must be one of: ${VALID_FOOTER_TYPES.join(", ")}`,
+          },
+          { status: 400 },
+        );
+      }
+      updates.footerType = body.footerType;
     }
 
     const [updated] = await db

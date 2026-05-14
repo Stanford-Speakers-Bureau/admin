@@ -17,6 +17,19 @@ function validateCampaignSubject(subject: unknown): string | null {
   return trimmedSubject;
 }
 
+const VALID_FOOTER_TYPES = [
+  "event_unsubscribe",
+  "announce_unsubscribe",
+  "essential",
+  "none",
+] as const;
+type FooterType = (typeof VALID_FOOTER_TYPES)[number];
+
+function isValidFooterType(value: unknown): value is FooterType {
+  return typeof value === "string"
+    && (VALID_FOOTER_TYPES as readonly string[]).includes(value);
+}
+
 export async function GET() {
   try {
     const auth = await verifyAdminRequest();
@@ -42,6 +55,7 @@ export async function GET() {
         eventName: c.event?.name ?? null,
         includeHeroCard: c.includeHeroCard,
         includeFeedbackPrompt: c.includeFeedbackPrompt,
+        footerType: c.footerType,
         sentAt: c.sentAt?.toISOString() ?? null,
         sentBy: c.sentBy,
         recipientCount: c.recipientCount,
@@ -75,6 +89,7 @@ export async function POST(req: Request) {
       includeHeroCard?: boolean;
       feedbackEventId?: string | null;
       includeFeedbackPrompt?: boolean;
+      footerType?: string;
     };
     try {
       body = await req.json();
@@ -90,7 +105,23 @@ export async function POST(req: Request) {
       includeHeroCard,
       feedbackEventId,
       includeFeedbackPrompt,
+      footerType,
     } = body;
+
+    if (footerType !== undefined && !isValidFooterType(footerType)) {
+      return NextResponse.json(
+        {
+          error: `footerType must be one of: ${VALID_FOOTER_TYPES.join(", ")}`,
+        },
+        { status: 400 },
+      );
+    }
+    const resolvedFooterType: FooterType =
+      isValidFooterType(footerType)
+        ? footerType
+        : eventId && isValidUUID(eventId)
+          ? "event_unsubscribe"
+          : "announce_unsubscribe";
 
     const validatedSubject = validateCampaignSubject(subject);
     if (!validatedSubject) {
@@ -175,6 +206,7 @@ export async function POST(req: Request) {
             ? feedbackEventId
             : null,
         includeFeedbackPrompt: includeFeedbackPrompt ?? false,
+        footerType: resolvedFooterType,
         createdBy: auth.email!,
       })
       .returning();

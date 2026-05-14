@@ -1,8 +1,15 @@
+import { randomUUID } from "crypto";
 import { NextResponse } from "next/server";
 import { verifyAdminRequest } from "@/app/lib/auth";
 import { isValidUUID } from "@/app/lib/validation";
 import { sendEventAnnouncedEmail } from "@/app/lib/email";
 import { db, eq, events } from "@ssb/db";
+import { filterUnsubscribedHierarchical } from "@/app/lib/mailing-list";
+import { logAuditEvent } from "@/app/lib/audit";
+import {
+  logSendFailures,
+  partitionBySuppression,
+} from "@/app/lib/email-suppression";
 
 export async function POST(req: Request) {
   try {
@@ -69,11 +76,27 @@ export async function POST(req: Request) {
       ? new Date() >= new Date(event.ticketingDate)
       : false;
 
-    // Send all emails in the chunk concurrently.
-    // This is safe because announcement emails are lightweight (no QR code, no ICS).
-    // Each chunk is max 50 emails, well within SES quota of 100/s and worker memory.
+    const { kept: filteredEmails, skipped } = await filterUnsubscribedHierarchical(
+      emails,
+      eventId,
+    );
+
+    const { sendable, suppressed } = await partitionBySuppression(filteredEmails);
+    const batchId = randomUUID();
+
+    if (sendable.length === 0) {
+      return NextResponse.json({
+        sent: 0,
+        failed: 0,
+        skipped: skipped.length,
+        suppressed: suppressed.length,
+        batchId,
+      });
+    }
+
+    // Each request is capped at 50 recipients, well within SES quota of 100/s.
     const results = await Promise.allSettled(
-      emails.map((email) =>
+      sendable.map((email) =>
         sendEventAnnouncedEmail({
           email,
           eventName,
@@ -87,31 +110,59 @@ export async function POST(req: Request) {
           eventVenueLink: event.venueLink || null,
           doorsOpenTime: event.doorsOpen?.toISOString() || null,
           ticketingOpen,
-        }).then(
-          () => ({ success: true, email }),
-          (error) => ({ success: false, email, error }),
-        ),
+        }),
       ),
     );
 
     let sent = 0;
     let failed = 0;
-    for (const result of results) {
-      if (result.status === "fulfilled" && result.value.success) {
+    const failures: Array<{ email: string; error: unknown }> = [];
+    for (let i = 0; i < results.length; i++) {
+      const result = results[i];
+      if (result.status === "fulfilled") {
         sent++;
       } else {
         failed++;
-        if (result.status === "fulfilled") {
-          const val = result.value as { success: boolean; email: string; error?: unknown };
-          console.error(
-            `Failed to send announcement to ${val.email}:`,
-            val.error,
-          );
-        }
+        failures.push({ email: sendable[i], error: result.reason });
+        console.error(
+          `Failed to send announcement to ${sendable[i]}:`,
+          result.reason,
+        );
       }
     }
 
-    return NextResponse.json({ sent, failed });
+    await logSendFailures({
+      failures,
+      actor: auth.email!,
+      source: "audience_send",
+      batchId,
+      eventId,
+      eventName: event.name ?? null,
+    });
+
+    await logAuditEvent({
+      action: "email.send_mass",
+      actor: auth.email!,
+      eventId,
+      eventName: event.name ?? null,
+      metadata: {
+        type: "audienceSend",
+        sent,
+        failed,
+        skipped: skipped.length,
+        suppressed: suppressed.length,
+        total: sent + failed + skipped.length + suppressed.length,
+        batchId,
+      },
+    });
+
+    return NextResponse.json({
+      sent,
+      failed,
+      skipped: skipped.length,
+      suppressed: suppressed.length,
+      batchId,
+    });
   } catch (err) {
     console.error("Audience send error:", err);
     return NextResponse.json(

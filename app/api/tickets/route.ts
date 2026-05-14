@@ -40,6 +40,11 @@ import {
 } from "@ssb/db";
 import { isValidUUID } from "@/app/lib/validation";
 import { logAuditEvent } from "@/app/lib/audit";
+import { recordMailingListMember } from "@/app/lib/mailing-list";
+import {
+  logSendFailures,
+  partitionBySuppression,
+} from "@/app/lib/email-suppression";
 
 type TicketAffiliationKey =
   | "student"
@@ -358,6 +363,7 @@ async function sendReminderBatch(options: {
   let sent = 0;
   let failed = 0;
   const errors: string[] = [];
+  const failures: Array<{ email: string; error: unknown }> = [];
 
   for (const result of results) {
     if (result.status === "fulfilled") {
@@ -370,6 +376,10 @@ async function sendReminderBatch(options: {
           ? emailResult.error.message
           : "Unknown error";
         errors.push(`${emailResult.email}: ${errorMessage}`);
+        failures.push({
+          email: emailResult.email,
+          error: emailResult.error,
+        });
         console.error(
           `${logPrefix} ${emailResult.email}:`,
           emailResult.error ?? "Unknown error",
@@ -382,7 +392,7 @@ async function sendReminderBatch(options: {
     }
   }
 
-  return { sent, failed, errors };
+  return { sent, failed, errors, failures };
 }
 
 export async function GET(req: Request) {
@@ -1175,8 +1185,22 @@ export async function PATCH(req: Request) {
         });
       }
 
-      const { sent, failed, errors } = await sendReminderBatch({
-        recipients: eventTickets,
+      // Reminders are event-essential — they go to every ticket holder
+      // regardless of any mailing-list opt-out. The email itself shows a
+      // "you got a ticket to X" footer in place of an unsubscribe link.
+      // Hard-suppressed addresses are still dropped (admin kill switch).
+      const dayOfSuppressed = await partitionBySuppression(
+        eventTickets.map((t) => t.email),
+      );
+      const dayOfSuppressedSet = new Set(
+        dayOfSuppressed.suppressed.map((e) => e.trim().toLowerCase()),
+      );
+      const dayOfRecipients = eventTickets.filter(
+        (t) => !dayOfSuppressedSet.has(t.email.trim().toLowerCase()),
+      );
+
+      const { sent, failed, errors, failures } = await sendReminderBatch({
+        recipients: dayOfRecipients,
         batchSize: hasTicketIdFilter
           ? normalizedTicketIds.length
           : REMINDER_EMAIL_BATCH_SIZE,
@@ -1202,6 +1226,15 @@ export async function PATCH(req: Request) {
         logPrefix: "Failed to send reminder to",
       });
 
+      await logSendFailures({
+        failures,
+        actor: auth.email!,
+        source: "reminders.day_of",
+        batchId: normalizedAuditBatchId,
+        eventId,
+        eventName: event.name ?? null,
+      });
+
       await logAuditEvent({
         action: "email.send_mass",
         actor: auth.email!,
@@ -1211,6 +1244,7 @@ export async function PATCH(req: Request) {
           type: "dayOfReminders",
           sent,
           failed,
+          suppressed: dayOfSuppressed.suppressed.length,
           total: eventTickets.length,
           ...(normalizedAuditBatchId ? { batchId: normalizedAuditBatchId } : {}),
         },
@@ -1220,6 +1254,7 @@ export async function PATCH(req: Request) {
         success: true,
         sent,
         failed,
+        suppressed: dayOfSuppressed.suppressed.length,
         total: eventTickets.length,
         message: `Sent ${sent} reminder(s), ${failed} failed`,
         errors: errors.length > 0 ? errors : undefined,
@@ -1368,8 +1403,19 @@ export async function PATCH(req: Request) {
         });
       }
 
-      const { sent, failed, errors } = await sendReminderBatch({
-        recipients: eventTickets,
+      // Reminders are event-essential — see comment in sendDayOfReminders.
+      const earlySuppressed = await partitionBySuppression(
+        eventTickets.map((t) => t.email),
+      );
+      const earlySuppressedSet = new Set(
+        earlySuppressed.suppressed.map((e) => e.trim().toLowerCase()),
+      );
+      const earlyRecipients = eventTickets.filter(
+        (t) => !earlySuppressedSet.has(t.email.trim().toLowerCase()),
+      );
+
+      const { sent, failed, errors, failures } = await sendReminderBatch({
+        recipients: earlyRecipients,
         batchSize: hasTicketIdFilter
           ? normalizedTicketIds.length
           : REMINDER_EMAIL_BATCH_SIZE,
@@ -1396,6 +1442,15 @@ export async function PATCH(req: Request) {
         logPrefix: "Failed to send early reminder to",
       });
 
+      await logSendFailures({
+        failures,
+        actor: auth.email!,
+        source: "reminders.early",
+        batchId: normalizedAuditBatchId,
+        eventId,
+        eventName: event.name ?? null,
+      });
+
       await logAuditEvent({
         action: "email.send_mass",
         actor: auth.email!,
@@ -1405,6 +1460,7 @@ export async function PATCH(req: Request) {
           type: "earlyReminders",
           sent,
           failed,
+          suppressed: earlySuppressed.suppressed.length,
           total: eventTickets.length,
           ...(normalizedAuditBatchId ? { batchId: normalizedAuditBatchId } : {}),
         },
@@ -1414,6 +1470,7 @@ export async function PATCH(req: Request) {
         success: true,
         sent,
         failed,
+        suppressed: earlySuppressed.suppressed.length,
         total: eventTickets.length,
         message: `Sent ${sent} early reminder(s), ${failed} failed`,
         errors: errors.length > 0 ? errors : undefined,
@@ -1755,6 +1812,11 @@ export async function POST(req: Request) {
       eventName: ticket!.event?.name ?? null,
       targetEmail: email,
       metadata: { ticketId: ticket!.id, type: ticket!.type },
+    });
+    await recordMailingListMember({
+      email,
+      source: "ticket_admin",
+      actor: auth.email!,
     });
 
     return NextResponse.json({
