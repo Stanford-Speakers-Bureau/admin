@@ -245,20 +245,35 @@ export async function POST(req: Request) {
       );
     }
 
-    // Validate latitude (required)
-    if (!latitude || !isValidLatitude(latitude)) {
-      return NextResponse.json(
-        { error: "Valid latitude is required (-90 to 90)" },
-        { status: 400 },
-      );
-    }
+    // Validate latitude/longitude (required only when using in-platform ticketing,
+    // since the map view is shown to ticket holders). External ticketing skips the map.
+    if (!external_ticketing_enabled) {
+      if (!latitude || !isValidLatitude(latitude)) {
+        return NextResponse.json(
+          { error: "Valid latitude is required (-90 to 90)" },
+          { status: 400 },
+        );
+      }
 
-    // Validate longitude (required)
-    if (!longitude || !isValidLongitude(longitude)) {
-      return NextResponse.json(
-        { error: "Valid longitude is required (-180 to 180)" },
-        { status: 400 },
-      );
+      if (!longitude || !isValidLongitude(longitude)) {
+        return NextResponse.json(
+          { error: "Valid longitude is required (-180 to 180)" },
+          { status: 400 },
+        );
+      }
+    } else {
+      if (latitude && !isValidLatitude(latitude)) {
+        return NextResponse.json(
+          { error: "Invalid latitude (-90 to 90)" },
+          { status: 400 },
+        );
+      }
+      if (longitude && !isValidLongitude(longitude)) {
+        return NextResponse.json(
+          { error: "Invalid longitude (-180 to 180)" },
+          { status: 400 },
+        );
+      }
     }
 
     // Validate address
@@ -367,8 +382,8 @@ export async function POST(req: Request) {
       referralsEnabled: referrals_enabled,
       standbyEnabled: standby_enabled,
       livestream: livestream || null,
-      latitude,
-      longitude,
+      latitude: latitude || "0",
+      longitude: longitude || "0",
       address: address || "",
       externalTicketingEnabled: external_ticketing_enabled,
       externalTicketingUrl: external_ticketing_enabled
