@@ -1354,7 +1354,8 @@ export default function AudienceClient() {
                             >
                               {currentEventStatus.label}
                             </span>
-                            {hasNoCurrentEventStatus(user) && (
+                            {(hasNoCurrentEventStatus(user) ||
+                              user.currentEventStatus.onNotifyList) && (
                               <button
                                 onClick={(e) => { e.stopPropagation(); sendAnnouncementToOne(user.email); }}
                                 disabled={individualSending === user.email || sendState?.active}
