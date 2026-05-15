@@ -61,6 +61,7 @@ export type Event = {
   ticketing_roles?: TicketingRole[];
   external_ticketing_enabled?: boolean;
   external_ticketing_url?: string | null;
+  banner_eligible?: boolean;
   tickets_sold?: number;
   waitlist_count?: number;
   standby_count?: number;

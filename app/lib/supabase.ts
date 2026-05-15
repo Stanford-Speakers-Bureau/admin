@@ -49,6 +49,7 @@ export type Event = {
   ticketing_roles?: TicketingRole[];
   external_ticketing_enabled?: boolean;
   external_ticketing_url?: string | null;
+  banner_eligible?: boolean;
 };
 
 /**
@@ -89,6 +90,7 @@ export function serializeEvent(e: DBEvent): Event {
     referrals_enabled: e.referralsEnabled ?? false,
     external_ticketing_enabled: e.externalTicketingEnabled ?? false,
     external_ticketing_url: e.externalTicketingUrl ?? null,
+    banner_eligible: e.bannerEligible ?? true,
   };
 }
 

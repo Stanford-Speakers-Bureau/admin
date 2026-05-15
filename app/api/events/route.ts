@@ -133,6 +133,10 @@ export async function POST(req: Request) {
       formData.get("external_ticketing_enabled") === "true";
     const external_ticketing_url =
       (formData.get("external_ticketing_url") as string | null)?.trim() || "";
+    // banner_eligible defaults to true: only an explicit "false" disables it,
+    // so older form payloads (or clients that don't send the field) keep the
+    // current promote-everywhere behavior.
+    const banner_eligible = formData.get("banner_eligible") !== "false";
     const rawTicketingRoles = formData
       .getAll("ticketing_roles")
       .filter((value): value is string => typeof value === "string");
@@ -389,6 +393,7 @@ export async function POST(req: Request) {
       externalTicketingUrl: external_ticketing_enabled
         ? external_ticketing_url
         : null,
+      bannerEligible: banner_eligible,
     };
 
     // Enforce: ticketing date must be on/after release date when both are set

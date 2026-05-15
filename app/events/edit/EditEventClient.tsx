@@ -68,6 +68,7 @@ type FormData = {
   address: string;
   external_ticketing_enabled: boolean;
   external_ticketing_url: string;
+  banner_eligible: boolean;
 };
 
 const emptyForm: FormData = {
@@ -96,6 +97,7 @@ const emptyForm: FormData = {
   address: "",
   external_ticketing_enabled: false,
   external_ticketing_url: "",
+  banner_eligible: true,
 };
 
 const sortEvents = sortByStartDate<Event>;
@@ -159,6 +161,7 @@ function eventToFormData(event: Event): FormData {
     address: event.address || "",
     external_ticketing_enabled: event.external_ticketing_enabled || false,
     external_ticketing_url: event.external_ticketing_url || "",
+    banner_eligible: event.banner_eligible ?? true,
   };
 }
 
@@ -488,6 +491,10 @@ export default function EditEventClient({ allEvents }: EditEventClientProps) {
         "external_ticketing_url",
         formData.external_ticketing_url,
       );
+      submitData.append(
+        "banner_eligible",
+        formData.banner_eligible.toString(),
+      );
       formData.ticketing_roles.forEach((role) => {
         submitData.append("ticketing_roles", role);
       });
@@ -751,6 +758,28 @@ export default function EditEventClient({ allEvents }: EditEventClientProps) {
                 placeholder="e.g. This event is only open to Stanford affiliates"
                 rows={2}
               />
+              <label className="flex items-start gap-3 rounded-xl border border-zinc-800 bg-zinc-950/40 px-4 py-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={formData.banner_eligible}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      banner_eligible: e.target.checked,
+                    })
+                  }
+                  className="mt-0.5 w-5 h-5 rounded border-zinc-600 bg-zinc-800 text-emerald-500 focus:ring-emerald-500/50"
+                />
+                <span className="text-sm text-zinc-300">
+                  <span className="font-medium text-zinc-200">
+                    Promote in site banner &amp; popup
+                  </span>
+                  <span className="block text-xs text-zinc-500 mt-0.5">
+                    When off, this event is hidden from the top banner and
+                    homepage popup. The event page itself stays reachable.
+                  </span>
+                </span>
+              </label>
             </section>
 
             <section className="space-y-5">
