@@ -201,6 +201,13 @@ function formatMetadataValue(value: unknown): string {
   return String(value);
 }
 
+const METADATA_RENDERED_SEPARATELY = new Set([
+  "batchId",
+  "initial",
+  "changes",
+  "changedFields",
+]);
+
 function getMetadataEntries(
   metadata: Record<string, unknown> | null,
 ): Array<[string, unknown]> {
@@ -209,9 +216,43 @@ function getMetadataEntries(
   }
 
   return Object.entries(metadata).filter(([key, value]) => {
-    if (key === "batchId") return false;
+    if (METADATA_RENDERED_SEPARATELY.has(key)) return false;
     return value !== null && value !== undefined && value !== "";
   });
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    !Array.isArray(value)
+  );
+}
+
+function isFromToChange(
+  value: unknown,
+): value is { from: unknown; to: unknown } {
+  return isPlainObject(value) && "from" in value && "to" in value;
+}
+
+const ISO_DATE_REGEX =
+  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/;
+
+function formatChangeValue(value: unknown): string {
+  if (value === null || value === undefined || value === "") {
+    return "—";
+  }
+  if (typeof value === "string" && ISO_DATE_REGEX.test(value)) {
+    return new Date(value).toLocaleString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    });
+  }
+  return formatMetadataValue(value);
 }
 
 function getMassEmailLabel(metadata: Record<string, unknown> | null): string {
@@ -241,6 +282,34 @@ function getMassEmailLabel(metadata: Record<string, unknown> | null): string {
 }
 
 function getDetailsSummary(log: AuditLogItem): string {
+  if (log.action === "event.edit") {
+    const changed = log.metadata?.changedFields;
+    if (Array.isArray(changed) && changed.length > 0) {
+      const fields = changed
+        .map((field) => formatMetadataKey(String(field)))
+        .slice(0, 3)
+        .join(", ");
+      const suffix = changed.length > 3 ? ` +${changed.length - 3} more` : "";
+      const label = changed.length === 1 ? "field" : "fields";
+      return `${changed.length} ${label} updated: ${fields}${suffix}`;
+    }
+    if (Array.isArray(changed) && changed.length === 0) {
+      return "No changes";
+    }
+  }
+
+  if (log.action === "event.create" && isPlainObject(log.metadata?.initial)) {
+    const initial = log.metadata!.initial as Record<string, unknown>;
+    const parts: string[] = [];
+    if (initial.venue) parts.push(`Venue: ${formatMetadataValue(initial.venue)}`);
+    if (typeof initial.capacity === "number")
+      parts.push(`Capacity: ${initial.capacity.toLocaleString()}`);
+    if (initial.startTime)
+      parts.push(`Start: ${formatChangeValue(initial.startTime)}`);
+    if (parts.length > 0) return parts.slice(0, 3).join(" • ");
+    return "Initial details captured";
+  }
+
   if (log.action === "email.send_mass") {
     const label = getMassEmailLabel(log.metadata);
     const sent = getMetadataNumber(log.metadata, "sent");
@@ -275,20 +344,64 @@ function getDetailsSummary(log: AuditLogItem): string {
 
 const PAGE_SIZE = 50;
 
-function MetadataDetails({
-  metadata,
+function ChangesGrid({
+  changes,
 }: {
-  metadata: Record<string, unknown> | null;
+  changes: Record<string, unknown>;
 }) {
-  const metadataEntries = getMetadataEntries(metadata);
+  const entries = Object.entries(changes).filter(([, value]) =>
+    isFromToChange(value),
+  ) as Array<[string, { from: unknown; to: unknown }]>;
 
-  if (metadataEntries.length === 0) {
-    return <p className="text-sm text-zinc-500">No additional details.</p>;
+  if (entries.length === 0) {
+    return (
+      <p className="text-sm text-zinc-500">
+        No field-level changes recorded.
+      </p>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      {entries.map(([field, change]) => (
+        <div
+          key={field}
+          className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-3"
+        >
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
+            {formatMetadataKey(field)}
+          </p>
+          <div className="mt-1 flex flex-wrap items-center gap-2 text-sm">
+            <span className="rounded-md border border-rose-500/30 bg-rose-500/10 px-2 py-0.5 text-rose-200 break-words">
+              {formatChangeValue(change.from)}
+            </span>
+            <span className="text-zinc-500">→</span>
+            <span className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-emerald-200 break-words">
+              {formatChangeValue(change.to)}
+            </span>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function SnapshotGrid({
+  snapshot,
+}: {
+  snapshot: Record<string, unknown>;
+}) {
+  const entries = Object.entries(snapshot).filter(
+    ([, value]) => value !== null && value !== undefined && value !== "",
+  );
+
+  if (entries.length === 0) {
+    return <p className="text-sm text-zinc-500">No starting values captured.</p>;
   }
 
   return (
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-      {metadataEntries.map(([key, value]) => (
+      {entries.map(([key, value]) => (
         <div
           key={key}
           className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-3"
@@ -297,10 +410,70 @@ function MetadataDetails({
             {formatMetadataKey(key)}
           </p>
           <p className="mt-1 text-sm text-zinc-200 break-words">
-            {formatMetadataValue(value)}
+            {formatChangeValue(value)}
           </p>
         </div>
       ))}
+    </div>
+  );
+}
+
+function MetadataDetails({
+  metadata,
+}: {
+  metadata: Record<string, unknown> | null;
+}) {
+  const metadataEntries = getMetadataEntries(metadata);
+  const initial = metadata?.initial;
+  const changes = metadata?.changes;
+  const hasInitial = isPlainObject(initial);
+  const hasChanges = isPlainObject(changes) && Object.keys(changes).length > 0;
+
+  if (
+    metadataEntries.length === 0 &&
+    !hasInitial &&
+    !hasChanges
+  ) {
+    return <p className="text-sm text-zinc-500">No additional details.</p>;
+  }
+
+  return (
+    <div className="space-y-4">
+      {hasChanges ? (
+        <div>
+          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
+            Changes
+          </p>
+          <ChangesGrid changes={changes as Record<string, unknown>} />
+        </div>
+      ) : null}
+
+      {hasInitial ? (
+        <div>
+          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
+            Starting values
+          </p>
+          <SnapshotGrid snapshot={initial as Record<string, unknown>} />
+        </div>
+      ) : null}
+
+      {metadataEntries.length > 0 ? (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          {metadataEntries.map(([key, value]) => (
+            <div
+              key={key}
+              className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-3"
+            >
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
+                {formatMetadataKey(key)}
+              </p>
+              <p className="mt-1 text-sm text-zinc-200 break-words">
+                {formatMetadataValue(value)}
+              </p>
+            </div>
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }

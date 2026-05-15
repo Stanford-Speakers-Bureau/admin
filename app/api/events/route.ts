@@ -81,6 +81,67 @@ async function uploadEventImage(
   return fileName;
 }
 
+type EventSnapshot = Record<string, unknown>;
+
+function buildEventSnapshot(
+  event: InferSelectModel<typeof events>,
+): EventSnapshot {
+  return {
+    name: event.name,
+    description: event.desc,
+    tagline: event.tagline,
+    venue: event.venue,
+    venueLink: event.venueLink,
+    address: event.address || null,
+    latitude: event.latitude,
+    longitude: event.longitude,
+    route: event.route,
+    priorityNotice: event.priority,
+    capacity: event.capacity,
+    tickets: event.tickets,
+    reserved: event.reserved,
+    releaseDate: event.releaseDate ? event.releaseDate.toISOString() : null,
+    ticketingDate: event.ticketingDate
+      ? event.ticketingDate.toISOString()
+      : null,
+    startTime: event.startTimeDate ? event.startTimeDate.toISOString() : null,
+    endTime: event.endTimeDate ? event.endTimeDate.toISOString() : null,
+    doorsOpen: event.doorsOpen ? event.doorsOpen.toISOString() : null,
+    hideTicketingDate: event.hideTicketingDate,
+    referralsEnabled: event.referralsEnabled,
+    standbyEnabled: event.standbyEnabled,
+    bannerEligible: event.bannerEligible,
+    externalTicketingEnabled: event.externalTicketingEnabled,
+    externalTicketingUrl: event.externalTicketingUrl,
+    livestream: event.livestream,
+    ticketingRoles: [...event.ticketingRoles],
+    image: event.img,
+    mobileImage: event.mobileImg,
+    appleWalletImage: event.appleWalletImg,
+  };
+}
+
+function valuesEqual(a: unknown, b: unknown): boolean {
+  if (Array.isArray(a) && Array.isArray(b)) {
+    if (a.length !== b.length) return false;
+    return a.every((value, index) => value === b[index]);
+  }
+  return a === b;
+}
+
+function diffEventSnapshots(
+  before: EventSnapshot,
+  after: EventSnapshot,
+): Record<string, { from: unknown; to: unknown }> {
+  const changes: Record<string, { from: unknown; to: unknown }> = {};
+  for (const key of Object.keys(after)) {
+    if (!valuesEqual(before[key], after[key])) {
+      changes[key] = { from: before[key], to: after[key] };
+    }
+  }
+  return changes;
+}
+
 async function serializeEventWithImages(
   event: InferSelectModel<typeof events>,
 ) {
@@ -295,23 +356,12 @@ export async function POST(req: Request) {
       );
     }
 
-    let existingEvent: {
-      capacity: number;
-      reserved: number;
-      tickets: number;
-      imgVersion: number;
-    } | null = null;
+    let existingEvent: InferSelectModel<typeof events> | null = null;
 
     if (id) {
       existingEvent =
         (await db.query.events.findFirst({
           where: eq(events.id, id),
-          columns: {
-            capacity: true,
-            reserved: true,
-            tickets: true,
-            imgVersion: true,
-          },
         })) ?? null;
     }
 
@@ -512,11 +562,24 @@ export async function POST(req: Request) {
       }
     }
 
+    const auditMetadata: Record<string, unknown> = {};
+    if (id && existingEvent) {
+      const changes = diffEventSnapshots(
+        buildEventSnapshot(existingEvent),
+        buildEventSnapshot(savedEvent),
+      );
+      auditMetadata.changedFields = Object.keys(changes);
+      auditMetadata.changes = changes;
+    } else {
+      auditMetadata.initial = buildEventSnapshot(savedEvent);
+    }
+
     await logAuditEvent({
       action: id ? "event.edit" : "event.create",
       actor: auth.email!,
       eventId: savedEvent.id,
       eventName: savedEvent.name ?? null,
+      metadata: auditMetadata,
     });
 
     const eventWithImage = await serializeEventWithImages(savedEvent);
