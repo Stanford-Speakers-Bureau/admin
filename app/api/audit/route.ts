@@ -38,6 +38,7 @@ type AuditLogGroup = {
   metadata: Record<string, unknown> | null;
   entries: AuditLogEntry[];
   group_count: number;
+  failures: AuditLogEntry[];
 };
 
 type AuditLogItem = AuditLogEntry | AuditLogGroup;
@@ -115,6 +116,19 @@ function getMassEmailBatchId(
     : null;
 }
 
+function getFailureBatchId(
+  action: string,
+  metadata: Record<string, unknown> | null,
+): string | null {
+  if (action !== "email.send_failed") {
+    return null;
+  }
+  const batchId = metadata?.batchId;
+  return typeof batchId === "string" && batchId.trim().length > 0
+    ? batchId.trim()
+    : null;
+}
+
 function getMetadataNumber(
   metadata: Record<string, unknown> | null,
   key: string,
@@ -176,8 +190,9 @@ function summarizeMassEmailMetadata(
 function buildMassEmailGroup(
   batchId: string,
   entries: AuditLogEntry[],
+  failures: AuditLogEntry[],
 ): AuditLogItem {
-  if (entries.length === 1) {
+  if (entries.length === 1 && failures.length === 0) {
     return entries[0];
   }
 
@@ -196,39 +211,66 @@ function buildMassEmailGroup(
     metadata: summarizeMassEmailMetadata(batchId, entries),
     entries,
     group_count: entries.length,
+    failures,
   };
 }
 
 function groupAuditLogs(logs: AuditLogRow[]): AuditLogItem[] {
   const groupedEntries = new Map<string, AuditLogEntry[]>();
+  const failuresByBatch = new Map<string, AuditLogEntry[]>();
   const orderedItems: Array<
     | { kind: "log"; entry: AuditLogEntry }
     | { kind: "batch"; batchId: string }
   > = [];
 
+  // First pass: collect failures by batchId so we can attach them to their
+  // mass-email parent rather than render them as individual rows.
+  const allEntries: AuditLogEntry[] = [];
   for (const log of logs) {
     const entry = toAuditLogEntry(log);
-    const batchId = getMassEmailBatchId(entry.action, entry.metadata);
+    allEntries.push(entry);
+    const failureBatchId = getFailureBatchId(entry.action, entry.metadata);
+    if (failureBatchId) {
+      const existing = failuresByBatch.get(failureBatchId);
+      if (existing) {
+        existing.push(entry);
+      } else {
+        failuresByBatch.set(failureBatchId, [entry]);
+      }
+    }
+  }
 
-    if (!batchId) {
-      orderedItems.push({ kind: "log", entry });
+  for (const entry of allEntries) {
+    const massBatchId = getMassEmailBatchId(entry.action, entry.metadata);
+    if (massBatchId) {
+      const existingEntries = groupedEntries.get(massBatchId);
+      if (existingEntries) {
+        existingEntries.push(entry);
+        continue;
+      }
+      groupedEntries.set(massBatchId, [entry]);
+      orderedItems.push({ kind: "batch", batchId: massBatchId });
       continue;
     }
 
-    const existingEntries = groupedEntries.get(batchId);
-    if (existingEntries) {
-      existingEntries.push(entry);
+    // Skip per-recipient send_failed rows that belong to a mass-email batch
+    // visible on this page — they're folded into the group's expanded view.
+    const failureBatchId = getFailureBatchId(entry.action, entry.metadata);
+    if (failureBatchId && failuresByBatch.has(failureBatchId)) {
       continue;
     }
 
-    groupedEntries.set(batchId, [entry]);
-    orderedItems.push({ kind: "batch", batchId });
+    orderedItems.push({ kind: "log", entry });
   }
 
   return orderedItems.map((item) =>
     item.kind === "log"
       ? item.entry
-      : buildMassEmailGroup(item.batchId, groupedEntries.get(item.batchId) ?? [])
+      : buildMassEmailGroup(
+        item.batchId,
+        groupedEntries.get(item.batchId) ?? [],
+        failuresByBatch.get(item.batchId) ?? [],
+      )
   );
 }
 
@@ -252,10 +294,16 @@ export async function GET(req: Request) {
 
     const conditions: ReturnType<typeof eq>[] = [];
 
-    if (actions.length === 1) {
-      conditions.push(eq(auditLogs.action, actions[0]));
-    } else if (actions.length > 1) {
-      conditions.push(inArray(auditLogs.action, actions));
+    // When the filter includes mass emails, always also include the
+    // per-recipient failure rows so they can be folded into the group view.
+    const effectiveActions = actions.length > 0 && actions.includes("email.send_mass")
+      ? Array.from(new Set([...actions, "email.send_failed"]))
+      : actions;
+
+    if (effectiveActions.length === 1) {
+      conditions.push(eq(auditLogs.action, effectiveActions[0]));
+    } else if (effectiveActions.length > 1) {
+      conditions.push(inArray(auditLogs.action, effectiveActions));
     }
     if (actor) conditions.push(ilike(auditLogs.actor, `%${actor}%`));
     if (sources.length === 1) {

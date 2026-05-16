@@ -28,6 +28,7 @@ type AuditLogGroup = {
   metadata: Record<string, unknown> | null;
   entries: AuditLogEntry[];
   group_count: number;
+  failures?: AuditLogEntry[];
 };
 
 type AuditLogItem = AuditLogEntry | AuditLogGroup;
@@ -414,6 +415,115 @@ function SnapshotGrid({
           </p>
         </div>
       ))}
+    </div>
+  );
+}
+
+function FailedRecipients({ failures }: { failures: AuditLogEntry[] }) {
+  const [showAll, setShowAll] = useState(false);
+  const visible = showAll ? failures : failures.slice(0, 25);
+
+  const errorOf = (entry: AuditLogEntry): string => {
+    const err = entry.metadata?.error;
+    if (typeof err === "string" && err.trim().length > 0) return err;
+    if (isPlainObject(err)) {
+      const message = (err as Record<string, unknown>).message;
+      if (typeof message === "string" && message.trim().length > 0) return message;
+      try {
+        return JSON.stringify(err);
+      } catch {
+        return "Unknown error";
+      }
+    }
+    return "Unknown error";
+  };
+
+  const csv = () => {
+    const header = "email,error\n";
+    const body = failures
+      .map((f) => {
+        const email = f.target_email ?? "";
+        const error = errorOf(f).replace(/"/g, '""');
+        return `"${email}","${error}"`;
+      })
+      .join("\n");
+    return header + body;
+  };
+
+  const downloadCsv = () => {
+    const blob = new Blob([csv()], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `failed-recipients-${failures.length}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <div className="rounded-xl border border-rose-500/30 bg-rose-950/20 p-4">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <div>
+          <p className="text-sm font-semibold text-rose-200">
+            Failed recipients ({failures.length.toLocaleString()})
+          </p>
+          <p className="text-xs text-rose-300/70">
+            Per-recipient send errors recorded during this run.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={downloadCsv}
+          className="rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-1.5 text-xs font-medium text-rose-200 transition-colors hover:bg-rose-500/20"
+        >
+          Download CSV
+        </button>
+      </div>
+      <div className="overflow-hidden rounded-lg border border-rose-500/20">
+        <table className="w-full text-sm">
+          <thead className="bg-rose-500/10">
+            <tr>
+              <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-rose-200/80">
+                Email
+              </th>
+              <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-rose-200/80">
+                Error
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {visible.map((f) => (
+              <tr key={f.id} className="border-t border-rose-500/10">
+                <td className="px-3 py-2 align-top text-zinc-200 break-all">
+                  {f.target_email ?? "(unknown)"}
+                </td>
+                <td className="px-3 py-2 align-top text-zinc-400 break-words">
+                  {errorOf(f)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {failures.length > visible.length ? (
+        <button
+          type="button"
+          onClick={() => setShowAll(true)}
+          className="mt-3 text-xs font-medium text-rose-300 underline-offset-2 hover:underline"
+        >
+          Show all {failures.length.toLocaleString()} failures
+        </button>
+      ) : showAll && failures.length > 25 ? (
+        <button
+          type="button"
+          onClick={() => setShowAll(false)}
+          className="mt-3 text-xs font-medium text-rose-300 underline-offset-2 hover:underline"
+        >
+          Show fewer
+        </button>
+      ) : null}
     </div>
   );
 }
@@ -1159,6 +1269,10 @@ export default function AuditLogClient() {
                                   </div>
                                   <MetadataDetails metadata={log.metadata} />
                                 </div>
+
+                                {log.failures && log.failures.length > 0 ? (
+                                  <FailedRecipients failures={log.failures} />
+                                ) : null}
 
                                 <div className="space-y-3">
                                   {log.entries.map((entry, index) => (
