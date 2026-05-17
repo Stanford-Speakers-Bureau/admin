@@ -10,7 +10,7 @@ import {
 import { logAuditEvent } from "@/app/lib/audit";
 import { canonicalizeEmail } from "@/app/lib/validation";
 
-export type UnsubscribeScope = "announce" | "event";
+export type UnsubscribeScope = "announce" | "event" | "newsletter";
 
 export type UnsubscribeRecord = {
   id: string;
@@ -22,6 +22,10 @@ export type UnsubscribeRecord = {
   actor: string;
   createdAt: string;
 };
+
+export function isUnsubscribeScope(value: unknown): value is UnsubscribeScope {
+  return value === "announce" || value === "event" || value === "newsletter";
+}
 
 export type FilterResult = {
   kept: string[];
@@ -95,11 +99,11 @@ export async function isUnsubscribed(
   const normalized = canonicalizeEmail(email);
   if (!normalized) return false;
 
-  if (scope === "announce") {
+  if (scope === "announce" || scope === "newsletter") {
     const row = await db.query.emailUnsubscribes.findFirst({
       where: and(
         eq(emailUnsubscribes.email, normalized),
-        eq(emailUnsubscribes.scope, "announce"),
+        eq(emailUnsubscribes.scope, scope),
         isNull(emailUnsubscribes.eventId),
       ),
       columns: { id: true },
@@ -209,7 +213,9 @@ export async function filterUnsubscribed(
 
   const scopeClause = scope === "announce"
     ? sql`${emailUnsubscribes.scope} = 'announce' AND ${emailUnsubscribes.eventId} IS NULL`
-    : sql`${emailUnsubscribes.scope} = 'event' AND ${emailUnsubscribes.eventId} = ${eventId}`;
+    : scope === "newsletter"
+      ? sql`${emailUnsubscribes.scope} = 'newsletter' AND ${emailUnsubscribes.eventId} IS NULL`
+      : sql`${emailUnsubscribes.scope} = 'event' AND ${emailUnsubscribes.eventId} = ${eventId}`;
 
   const rows = await db
     .select({ email: emailUnsubscribes.email })
@@ -217,6 +223,48 @@ export async function filterUnsubscribed(
     .where(
       and(
         scopeClause,
+        sql`lower(trim(${emailUnsubscribes.email})) in (${sql.join(normalized.map((e) => sql`${e}`), sql`, `)})`,
+      ),
+    );
+
+  const optedOut = new Set(rows.map((r) => canonicalizeEmail(r.email)));
+
+  const kept: string[] = [];
+  const skipped: string[] = [];
+  for (const email of normalized) {
+    if (optedOut.has(email)) skipped.push(email);
+    else kept.push(email);
+  }
+  return { kept, skipped };
+}
+
+/**
+ * Newsletter-send filter. Newsletter is a narrower opt-out than announce, so
+ * a newsletter send must respect BOTH the newsletter opt-out (specific) and
+ * the announce opt-out (broad "stop all promo"). Conversely, announce-scope
+ * promo sends do NOT need to check newsletter — a newsletter-only opt-out
+ * still wants to hear about new speakers.
+ */
+export async function filterForNewsletter(
+  emails: string[],
+): Promise<FilterResult> {
+  const normalized = [
+    ...new Set(
+      emails
+        .map((e) => canonicalizeEmail(e))
+        .filter((e) => e.length > 0),
+    ),
+  ];
+
+  if (normalized.length === 0) return { kept: [], skipped: [] };
+
+  const rows = await db
+    .select({ email: emailUnsubscribes.email })
+    .from(emailUnsubscribes)
+    .where(
+      and(
+        sql`${emailUnsubscribes.scope} IN ('announce', 'newsletter')`,
+        sql`${emailUnsubscribes.eventId} IS NULL`,
         sql`lower(trim(${emailUnsubscribes.email})) in (${sql.join(normalized.map((e) => sql`${e}`), sql`, `)})`,
       ),
     );
@@ -299,16 +347,16 @@ export async function recordResubscribe(opts: {
     throw new Error("eventId required for event scope");
   }
 
-  const where = opts.scope === "announce"
+  const where = opts.scope === "event"
     ? and(
-      eq(emailUnsubscribes.email, email),
-      eq(emailUnsubscribes.scope, "announce"),
-      isNull(emailUnsubscribes.eventId),
-    )
-    : and(
       eq(emailUnsubscribes.email, email),
       eq(emailUnsubscribes.scope, "event"),
       eq(emailUnsubscribes.eventId, opts.eventId!),
+    )
+    : and(
+      eq(emailUnsubscribes.email, email),
+      eq(emailUnsubscribes.scope, opts.scope),
+      isNull(emailUnsubscribes.eventId),
     );
 
   const result = await db
@@ -429,6 +477,114 @@ export async function listAnnounceOptOuts(): Promise<UnsubscribeRecord[]> {
     id: r.id,
     email: r.email,
     scope: "announce" as const,
+    eventId: null,
+    source: r.source,
+    reason: r.reason,
+    actor: r.actor,
+    createdAt: r.createdAt.toISOString(),
+  }));
+}
+
+export async function listNewsletterMembers(opts: {
+  search?: string | null;
+  limit: number;
+  offset: number;
+}): Promise<
+  { rows: { email: string; displayEmail: string; source: string }[]; total: number }
+> {
+  const search = (opts.search ?? "").trim().toLowerCase();
+  const safeLimit = Math.max(1, Math.min(200, opts.limit));
+  const safeOffset = Math.max(0, opts.offset);
+
+  // Newsletter receivers = mailing_list MINUS announce opt-outs MINUS
+  // newsletter opt-outs. (Announce opt-outs block all promo, so they
+  // shouldn't see the newsletter either.)
+  const searchClause = search
+    ? sql`AND (m.email LIKE ${"%" + search + "%"} OR lower(m.display_email) LIKE ${"%" + search + "%"})`
+    : sql``;
+
+  const totalRows = await db.execute<{ total: string }>(sql`
+    SELECT count(*)::text AS total
+    FROM mailing_list m
+    WHERE NOT EXISTS (
+        SELECT 1 FROM email_unsubscribes u
+        WHERE u.scope IN ('announce', 'newsletter')
+          AND u.event_id IS NULL
+          AND u.email = m.email
+      )
+      ${searchClause}
+  `);
+
+  const dataRows = await db.execute<{
+    email: string;
+    display_email: string;
+    source: string;
+  }>(sql`
+    SELECT m.email, m.display_email, m.source
+    FROM mailing_list m
+    WHERE NOT EXISTS (
+        SELECT 1 FROM email_unsubscribes u
+        WHERE u.scope IN ('announce', 'newsletter')
+          AND u.event_id IS NULL
+          AND u.email = m.email
+      )
+      ${searchClause}
+    ORDER BY m.email
+    LIMIT ${safeLimit} OFFSET ${safeOffset}
+  `);
+
+  const total = Number.parseInt(totalRows[0]?.total ?? "0", 10) || 0;
+
+  return {
+    rows: dataRows.map((r) => ({
+      email: r.email,
+      displayEmail: r.display_email,
+      source: r.source,
+    })),
+    total,
+  };
+}
+
+export async function newsletterStats(): Promise<{
+  total: number;
+  optedOut: number;
+}> {
+  const totalRows = await db.execute<{ total: string }>(sql`
+    SELECT count(*)::text AS total
+    FROM mailing_list m
+    WHERE NOT EXISTS (
+      SELECT 1 FROM email_unsubscribes u
+      WHERE u.scope IN ('announce', 'newsletter')
+        AND u.event_id IS NULL
+        AND u.email = m.email
+    )
+  `);
+
+  const optOutRows = await db.execute<{ total: string }>(sql`
+    SELECT count(*)::text AS total
+    FROM email_unsubscribes
+    WHERE scope = 'newsletter' AND event_id IS NULL
+  `);
+
+  return {
+    total: Number.parseInt(totalRows[0]?.total ?? "0", 10) || 0,
+    optedOut: Number.parseInt(optOutRows[0]?.total ?? "0", 10) || 0,
+  };
+}
+
+export async function listNewsletterOptOuts(): Promise<UnsubscribeRecord[]> {
+  const rows = await db.query.emailUnsubscribes.findMany({
+    where: and(
+      eq(emailUnsubscribes.scope, "newsletter"),
+      isNull(emailUnsubscribes.eventId),
+    ),
+    orderBy: (t, { desc }) => desc(t.createdAt),
+  });
+
+  return rows.map((r) => ({
+    id: r.id,
+    email: r.email,
+    scope: "newsletter" as const,
     eventId: null,
     source: r.source,
     reason: r.reason,

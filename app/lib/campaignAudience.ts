@@ -4,7 +4,9 @@ import {
   eq,
   eventFeedback,
   isNull,
+  mailingList,
   notify,
+  sql,
   tickets,
   waitlist,
 } from "@ssb/db";
@@ -190,6 +192,23 @@ async function resolveAudience(
         where: eq(tickets.scanned, true),
         columns: { email: true },
       });
+      return rows.map((r) => r.email);
+    }
+
+    case "newsletter": {
+      // Mailing list members who haven't opted out of either announce
+      // (broad "no promo") or newsletter (narrow "no newsletters").
+      const rows = await db
+        .select({ email: mailingList.email })
+        .from(mailingList)
+        .where(
+          sql`NOT EXISTS (
+            SELECT 1 FROM email_unsubscribes u
+            WHERE u.scope IN ('announce', 'newsletter')
+              AND u.event_id IS NULL
+              AND u.email = ${mailingList.email}
+          )`,
+        );
       return rows.map((r) => r.email);
     }
 

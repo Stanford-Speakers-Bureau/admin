@@ -135,6 +135,7 @@ export async function POST(_req: Request, { params }: Params) {
       footerType: campaign.footerType as
         | "event_unsubscribe"
         | "announce_unsubscribe"
+        | "newsletter_unsubscribe"
         | "essential"
         | "none",
       eventName: campaign.event?.name ?? null,

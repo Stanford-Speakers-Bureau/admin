@@ -4,12 +4,15 @@ import { isValidEmail, isValidUUID, normalizeEmail } from "@/app/lib/validation"
 import { db, eq, events } from "@ssb/db";
 import {
   announceStats,
+  isUnsubscribeScope,
   listAnnounceMembers,
   listAnnounceOptOuts,
   listEventOptOuts,
+  listNewsletterMembers,
+  listNewsletterOptOuts,
+  newsletterStats,
   recordResubscribe,
   recordUnsubscribe,
-  type UnsubscribeScope,
 } from "@/app/lib/mailing-list";
 
 const MAX_LIMIT = 200;
@@ -38,6 +41,25 @@ export async function GET(req: Request) {
         listAnnounceMembers({ search, limit, offset }),
         listAnnounceOptOuts(),
         announceStats(),
+      ]);
+      return NextResponse.json({
+        rows,
+        total,
+        optOuts,
+        stats,
+        limit,
+        offset,
+      });
+    }
+
+    if (view === "newsletter") {
+      const search = url.searchParams.get("search");
+      const limit = clampInt(url.searchParams.get("limit"), DEFAULT_LIMIT, 1, MAX_LIMIT);
+      const offset = clampInt(url.searchParams.get("offset"), 0, 0, Number.MAX_SAFE_INTEGER);
+      const [{ rows, total }, optOuts, stats] = await Promise.all([
+        listNewsletterMembers({ search, limit, offset }),
+        listNewsletterOptOuts(),
+        newsletterStats(),
       ]);
       return NextResponse.json({
         rows,
@@ -108,11 +130,10 @@ export async function POST(req: Request) {
       );
     }
 
-    const scope: UnsubscribeScope | null =
-      body.scope === "announce" || body.scope === "event" ? body.scope : null;
+    const scope = isUnsubscribeScope(body.scope) ? body.scope : null;
     if (!scope) {
       return NextResponse.json(
-        { error: "scope must be 'announce' or 'event'" },
+        { error: "scope must be 'announce', 'event', or 'newsletter'" },
         { status: 400 },
       );
     }

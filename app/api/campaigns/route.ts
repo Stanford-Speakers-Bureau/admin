@@ -20,6 +20,7 @@ function validateCampaignSubject(subject: unknown): string | null {
 const VALID_FOOTER_TYPES = [
   "event_unsubscribe",
   "announce_unsubscribe",
+  "newsletter_unsubscribe",
   "essential",
   "none",
 ] as const;

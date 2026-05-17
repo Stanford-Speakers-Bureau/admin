@@ -23,6 +23,7 @@ import { sendCampaignEmail } from "@/app/lib/email";
 import { logAuditEvent } from "@/app/lib/audit";
 import { parseAudiences, resolveSegments } from "@/app/lib/campaignAudience";
 import {
+  filterForNewsletter,
   filterUnsubscribed,
   filterUnsubscribedHierarchical,
 } from "@/app/lib/mailing-list";
@@ -281,20 +282,25 @@ export async function POST(req: Request, { params }: Params) {
     //   - "event_unsubscribe" with an eventId: hierarchical filter.
     //   - "event_unsubscribe" without an eventId: behave like announce (fallback).
     //   - "announce_unsubscribe": announce-only filter.
+    //   - "newsletter_unsubscribe": exclude announce + newsletter opt-outs.
     const footerType = activeCampaign.footerType;
-    const filterMode: "hierarchical" | "announce" | "skip" =
+    const filterMode: "hierarchical" | "announce" | "newsletter" | "skip" =
       footerType === "essential" || footerType === "none"
         ? "skip"
-        : footerType === "event_unsubscribe" && activeCampaign.eventId
-          ? "hierarchical"
-          : "announce";
+        : footerType === "newsletter_unsubscribe"
+          ? "newsletter"
+          : footerType === "event_unsubscribe" && activeCampaign.eventId
+            ? "hierarchical"
+            : "announce";
 
     const { kept: filteredEmails, skipped: unsubSkipped } =
       filterMode === "skip"
         ? { kept: emails, skipped: [] as string[] }
         : filterMode === "hierarchical"
           ? await filterUnsubscribedHierarchical(emails, activeCampaign.eventId!)
-          : await filterUnsubscribed(emails, "announce", null);
+          : filterMode === "newsletter"
+            ? await filterForNewsletter(emails)
+            : await filterUnsubscribed(emails, "announce", null);
 
     // Drop hard-suppressed addresses up front so they don't count as "sent"
     // and so we can report a suppression count.
@@ -381,6 +387,7 @@ export async function POST(req: Request, { params }: Params) {
           footerType: activeCampaign.footerType as
             | "event_unsubscribe"
             | "announce_unsubscribe"
+            | "newsletter_unsubscribe"
             | "essential"
             | "none",
           eventName: activeCampaign.event?.name ?? null,

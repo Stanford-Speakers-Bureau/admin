@@ -8,7 +8,8 @@ export type AudienceType =
   | "event_waitlist"
   | "event_past_attendees"
   | "all_users"
-  | "past_attendees";
+  | "past_attendees"
+  | "newsletter";
 
 export type AudienceSegment = {
   type: AudienceType;
@@ -27,6 +28,7 @@ export const AUDIENCE_TYPE_LABELS: Record<AudienceType, string> = {
   event_past_attendees: "Checked-in attendees",
   all_users: "All registered users",
   past_attendees: "All past attendees",
+  newsletter: "Newsletter subscribers",
 };
 
 export const TICKET_TYPES = [
@@ -93,6 +95,11 @@ export const AUDIENCE_OPTIONS: AudienceOption[] = [
   {
     value: "past_attendees",
     label: AUDIENCE_TYPE_LABELS.past_attendees,
+    needsEvent: false,
+  },
+  {
+    value: "newsletter",
+    label: AUDIENCE_TYPE_LABELS.newsletter,
     needsEvent: false,
   },
 ];

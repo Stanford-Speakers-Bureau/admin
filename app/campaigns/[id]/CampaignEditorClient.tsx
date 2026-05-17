@@ -25,6 +25,7 @@ import {
 type FooterType =
   | "event_unsubscribe"
   | "announce_unsubscribe"
+  | "newsletter_unsubscribe"
   | "essential"
   | "none";
 
@@ -41,7 +42,12 @@ const FOOTER_TYPE_OPTIONS: Array<{
   {
     value: "announce_unsubscribe",
     label: "Announce unsubscribe link",
-    hint: "Lets recipients opt out of all SSB promotional email. Best for general newsletters not tied to a single event.",
+    hint: "Lets recipients opt out of all SSB promotional email. Best for general blasts not tied to a single event.",
+  },
+  {
+    value: "newsletter_unsubscribe",
+    label: "Newsletter unsubscribe link",
+    hint: "Lets recipients opt out of the newsletter only — they'll still get new-speaker announcements and event mail. Use for newsletter sends.",
   },
   {
     value: "essential",
@@ -59,6 +65,12 @@ function suggestFooterType(args: {
   segments: AudienceSegment[];
   hasEvent: boolean;
 }): FooterType {
+  if (
+    args.segments.length > 0 &&
+    args.segments.every((s) => s.type === "newsletter")
+  ) {
+    return "newsletter_unsubscribe";
+  }
   if (!args.hasEvent) return "announce_unsubscribe";
   if (args.segments.length === 0) return "event_unsubscribe";
   const allTicketHolders = args.segments.every((s) =>
@@ -1236,6 +1248,15 @@ export default function CampaignEditorClient({ campaignId }: CampaignEditorProps
                         <p style={{ color: "#71717a", fontSize: 12, margin: "12px 0 0 0" }}>
                           <span style={{ color: "#a1a1aa", textDecoration: "underline" }}>
                             Unsubscribe from announcements
+                          </span>
+                        </p>
+                      );
+                    }
+                    if (footerType === "newsletter_unsubscribe") {
+                      return (
+                        <p style={{ color: "#71717a", fontSize: 12, margin: "12px 0 0 0" }}>
+                          <span style={{ color: "#a1a1aa", textDecoration: "underline" }}>
+                            Unsubscribe from the newsletter
                           </span>
                         </p>
                       );

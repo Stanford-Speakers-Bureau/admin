@@ -6,6 +6,7 @@ import { IMPORTANT_NOTICE_ITEMS, PACIFIC_TIMEZONE } from "./constants";
 import {
   buildAnnounceUnsubscribeLink,
   buildEventUnsubscribeLink,
+  buildNewsletterUnsubscribeLink,
 } from "./unsubscribe-links";
 import { hasUnsafeHeaderChars, isValidEmail } from "./validation";
 import { buildAppleWalletLink } from "./wallet-links";
@@ -46,6 +47,17 @@ function announceUnsubFooter(input: { email: string }): FooterContext {
       email: input.email,
     }),
     label: "Unsubscribe from announcements",
+  };
+}
+
+function newsletterUnsubFooter(input: { email: string }): FooterContext {
+  return {
+    kind: "unsub",
+    url: buildNewsletterUnsubscribeLink({
+      baseUrl: getBaseUrl(),
+      email: input.email,
+    }),
+    label: "Unsubscribe from the newsletter",
   };
 }
 
@@ -3165,6 +3177,7 @@ export async function sendEventAnnouncedEmail(
 export type CampaignFooterType =
   | "event_unsubscribe"
   | "announce_unsubscribe"
+  | "newsletter_unsubscribe"
   | "essential"
   | "none";
 
@@ -3300,6 +3313,8 @@ function generateCampaignEmailHTML(data: CampaignEmailData): string {
     });
   } else if (data.footerType === "announce_unsubscribe") {
     footerCtx = announceUnsubFooter({ email: data.email });
+  } else if (data.footerType === "newsletter_unsubscribe") {
+    footerCtx = newsletterUnsubFooter({ email: data.email });
   } else if (data.footerType === "essential") {
     footerCtx = essentialFooter(data.eventName);
   }

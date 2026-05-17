@@ -12,7 +12,7 @@ type AnnounceRow = {
 type UnsubRow = {
   id: string;
   email: string;
-  scope: "announce" | "event";
+  scope: "announce" | "event" | "newsletter";
   eventId: string | null;
   source: string;
   reason: string | null;
@@ -36,17 +36,21 @@ type Props = {
   initialTotal: number;
   initialOptOuts: UnsubRow[];
   initialStats: Stats;
+  initialNewsletterOptOuts: UnsubRow[];
+  initialNewsletterStats: Stats;
   events: EventOption[];
   initialLimit: number;
 };
 
-type Tab = "announce" | "event";
+type Tab = "announce" | "newsletter" | "event";
 
 export default function MailingListsClient({
   initialRows,
   initialTotal,
   initialOptOuts,
   initialStats,
+  initialNewsletterOptOuts,
+  initialNewsletterStats,
   events,
   initialLimit,
 }: Props) {
@@ -63,6 +67,17 @@ export default function MailingListsClient({
   const [offset, setOffset] = useState(0);
   const [limit] = useState(initialLimit);
   const [loadingAnnounce, setLoadingAnnounce] = useState(false);
+
+  // Newsletter tab state
+  const [newsletterOptOuts, setNewsletterOptOuts] = useState<UnsubRow[]>(
+    initialNewsletterOptOuts,
+  );
+  const [newsletterStats, setNewsletterStats] = useState<Stats>(
+    initialNewsletterStats,
+  );
+  const [loadingNewsletter, setLoadingNewsletter] = useState(false);
+  const [newsletterAddEmail, setNewsletterAddEmail] = useState("");
+  const [newsletterAddReason, setNewsletterAddReason] = useState("");
 
   // Event tab state
   const [eventTabId, setEventTabId] = useState<string>(selectedEventId ?? "");
@@ -124,6 +139,32 @@ export default function MailingListsClient({
   }, [tab, debouncedSearch, offset, limit]);
 
   useEffect(() => {
+    if (tab !== "newsletter") return;
+    let cancelled = false;
+    (async () => {
+      setLoadingNewsletter(true);
+      setError(null);
+      try {
+        const res = await fetch(`/api/mailing-lists?view=newsletter&limit=1&offset=0`);
+        if (!res.ok) throw new Error((await res.json()).error || "Failed");
+        const data = await res.json();
+        if (cancelled) return;
+        setNewsletterOptOuts(data.optOuts);
+        setNewsletterStats(data.stats);
+      } catch (err) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : "Failed to load");
+        }
+      } finally {
+        if (!cancelled) setLoadingNewsletter(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [tab]);
+
+  useEffect(() => {
     if (tab !== "event" || !eventTabId) return;
     let cancelled = false;
     (async () => {
@@ -167,6 +208,14 @@ export default function MailingListsClient({
     setStats(data.stats);
   }
 
+  async function refreshNewsletter() {
+    const res = await fetch(`/api/mailing-lists?view=newsletter&limit=1&offset=0`);
+    if (!res.ok) return;
+    const data = await res.json();
+    setNewsletterOptOuts(data.optOuts);
+    setNewsletterStats(data.stats);
+  }
+
   async function refreshEvent(eventId: string) {
     const res = await fetch(
       `/api/mailing-lists?view=event&eventId=${encodeURIComponent(eventId)}`,
@@ -178,7 +227,7 @@ export default function MailingListsClient({
   }
 
   async function handleAdminUnsubscribe(opts: {
-    scope: "announce" | "event";
+    scope: "announce" | "event" | "newsletter";
     email: string;
     eventId?: string;
     reason?: string;
@@ -198,6 +247,7 @@ export default function MailingListsClient({
       }
       setSuccess(`${opts.email} unsubscribed`);
       if (opts.scope === "announce") await refreshAnnounce();
+      else if (opts.scope === "newsletter") await refreshNewsletter();
       else if (opts.eventId) await refreshEvent(opts.eventId);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed");
@@ -208,7 +258,7 @@ export default function MailingListsClient({
   }
 
   async function handleAdminResubscribe(opts: {
-    scope: "announce" | "event";
+    scope: "announce" | "event" | "newsletter";
     email: string;
     eventId?: string;
   }) {
@@ -227,6 +277,7 @@ export default function MailingListsClient({
       }
       setSuccess(`${opts.email} resubscribed`);
       if (opts.scope === "announce") await refreshAnnounce();
+      else if (opts.scope === "newsletter") await refreshNewsletter();
       else if (opts.eventId) await refreshEvent(opts.eventId);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed");
@@ -273,6 +324,12 @@ export default function MailingListsClient({
             onClick={() => setTab("announce")}
           >
             Announce
+          </TabButton>
+          <TabButton
+            active={tab === "newsletter"}
+            onClick={() => setTab("newsletter")}
+          >
+            Newsletter
           </TabButton>
           <TabButton active={tab === "event"} onClick={() => setTab("event")}>
             Per-event opt-outs
@@ -400,6 +457,95 @@ export default function MailingListsClient({
               }
               submitting={submitting}
             />
+          </section>
+        )}
+
+        {tab === "newsletter" && (
+          <section>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-6">
+              <StatCard
+                label="Receiving newsletter"
+                value={newsletterStats.total.toLocaleString()}
+                tone="emerald"
+              />
+              <StatCard
+                label="Opted out of newsletter"
+                value={newsletterStats.optedOut.toLocaleString()}
+                tone="rose"
+              />
+              <StatCard
+                label="Unique emails total"
+                value={(newsletterStats.total + newsletterStats.optedOut).toLocaleString()}
+                tone="zinc"
+              />
+            </div>
+
+            <p className="text-sm text-zinc-400 mb-4 leading-relaxed">
+              The newsletter list is everyone in the mailing list minus
+              announce opt-outs and newsletter opt-outs. People who opt out of
+              just the newsletter still receive new-speaker announcements and
+              event mail.
+            </p>
+
+            <div className="mb-4 rounded-lg border border-zinc-800 bg-zinc-900 p-4">
+              <h3 className="text-sm font-semibold text-white mb-3">
+                Manually opt someone out of the newsletter
+              </h3>
+              <div className="flex flex-col sm:flex-row gap-2">
+                <input
+                  type="email"
+                  placeholder="email@stanford.edu"
+                  value={newsletterAddEmail}
+                  onChange={(e) => setNewsletterAddEmail(e.target.value)}
+                  className="flex-1 rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm"
+                />
+                <input
+                  type="text"
+                  placeholder="Reason (optional)"
+                  value={newsletterAddReason}
+                  onChange={(e) => setNewsletterAddReason(e.target.value)}
+                  className="flex-1 rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm"
+                />
+                <button
+                  type="button"
+                  disabled={!newsletterAddEmail.trim() || submitting}
+                  onClick={async () => {
+                    await handleAdminUnsubscribe({
+                      scope: "newsletter",
+                      email: newsletterAddEmail.trim(),
+                      reason: newsletterAddReason.trim() || undefined,
+                    });
+                    setNewsletterAddEmail("");
+                    setNewsletterAddReason("");
+                  }}
+                  className="rounded-lg bg-rose-600 hover:bg-rose-500 disabled:bg-zinc-800 disabled:text-zinc-500 text-white px-4 py-2 text-sm font-medium"
+                >
+                  Add opt-out
+                </button>
+              </div>
+            </div>
+
+            <h2 className="text-base font-semibold text-white mb-3">
+              Newsletter opt-outs
+              <span className="ml-2 text-zinc-500 font-normal text-sm">
+                ({newsletterOptOuts.length})
+              </span>
+            </h2>
+            {loadingNewsletter ? (
+              <p className="text-sm text-zinc-500">Loading…</p>
+            ) : (
+              <OptOutTable
+                rows={newsletterOptOuts}
+                showEvent={false}
+                onResubscribe={(row) =>
+                  handleAdminResubscribe({
+                    scope: "newsletter",
+                    email: row.email,
+                  })
+                }
+                submitting={submitting}
+              />
+            )}
           </section>
         )}
 

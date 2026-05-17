@@ -86,6 +86,23 @@ export function buildAnnounceUnsubscribeLink(input: {
   return url.toString();
 }
 
+export function buildNewsletterUnsubscribeLink(input: {
+  baseUrl: string;
+  email: string;
+}): string {
+  const token = buildToken({
+    purpose: TOKEN_PURPOSE,
+    scope: "newsletter",
+    email: normalizeEmail(input.email),
+    iat: Math.floor(Date.now() / 1000),
+    exp: Math.floor((Date.now() + DEFAULT_TOKEN_TTL_MS) / 1000),
+  });
+
+  const url = new URL("/unsubscribe", input.baseUrl);
+  url.searchParams.set("token", token);
+  return url.toString();
+}
+
 export function buildEventUnsubscribeLink(input: {
   baseUrl: string;
   email: string;
