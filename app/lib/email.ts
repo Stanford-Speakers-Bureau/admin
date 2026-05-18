@@ -3528,3 +3528,137 @@ export async function sendSuggestionApprovedEmail(
   await sendRawEmailViaSES(lines.join("\r\n"), data.email);
   console.log(`Suggestion approved email sent to ${data.email}`);
 }
+
+export type EventQuestionApprovedEmailData = {
+  email: string;
+  question: string;
+  eventName: string;
+  eventRoute: string;
+};
+
+function generateEventQuestionApprovedEmailText(
+  data: EventQuestionApprovedEmailData,
+): string {
+  const baseUrl = getBaseUrl();
+  const leaderboardUrl = `${baseUrl}/events/${data.eventRoute}/questions`;
+  return `
+Your question for ${data.eventName} just went live.
+
+"${data.question}"
+
+It's now on the moderator Q&A leaderboard for ${data.eventName}. The moderator picks top-voted questions to ask the speaker — so the more votes, the better the chance.
+
+See all questions and rally votes: ${leaderboardUrl}
+
+Stanford Speakers Bureau
+Questions? ${FROM_EMAIL}
+  `.trim();
+}
+
+function generateEventQuestionApprovedEmailHTML(
+  data: EventQuestionApprovedEmailData,
+): string {
+  const baseUrl = getBaseUrl();
+  const leaderboardUrl = `${baseUrl}/events/${data.eventRoute}/questions`;
+  const escapedQuestion = escapeHtml(data.question);
+  const escapedEventName = escapeHtml(data.eventName);
+
+  const heroSection = `
+    <tr>
+      <td align="center" style="padding: 0;">
+        <div style="max-width: 600px; margin: 0 auto; overflow: hidden;">
+          <div style="background: linear-gradient(135deg, #A80D0C 0%, #C11211 100%); padding: 32px 24px; text-align: center;">
+            ${gmailBlendStart}
+              <p style="margin: 0 0 8px 0; color: #ffffff; font-size: 12px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; opacity: 0.85;">Moderator Q&amp;A · ${escapedEventName}</p>
+              <h1 style="margin: 0; color: #ffffff; font-size: 28px; font-weight: 700; font-family: Georgia, 'Times New Roman', Times, serif; line-height: 1.2;">Your question is live.</h1>
+            ${gmailBlendEnd}
+          </div>
+        </div>
+      </td>
+    </tr>`;
+
+  const contentSections: string[] = [];
+
+  contentSections.push(`
+    <table role="presentation" style="width: 100%; border-collapse: collapse; margin-bottom: 24px;">
+      <tr>
+        <td class="details-card" style="background-color: #18181b; border-left: 4px solid #A80D0C; border-radius: 8px; padding: 18px 22px;">
+          ${gmailBlendStart}
+            <p style="margin: 0; color: #f4f4f5; font-size: 18px; font-style: italic; font-family: Georgia, 'Times New Roman', Times, serif; line-height: 1.45;">&ldquo;${escapedQuestion}&rdquo;</p>
+          ${gmailBlendEnd}
+        </td>
+      </tr>
+    </table>`);
+
+  contentSections.push(buildParagraph(
+    `It&rsquo;s now on the moderator Q&amp;A leaderboard for <strong style="color: #ffffff;">${escapedEventName}</strong>. The moderator picks top-voted questions to ask the speaker &mdash; the more votes, the better the chance.`,
+    { color: "#a1a1aa" },
+  ));
+
+  contentSections.push(buildButton(leaderboardUrl, "See the leaderboard", {
+    style: " padding: 16px 40px; font-weight: 700; font-size: 16px; letter-spacing: 0.5px;",
+  }));
+
+  const bodyContent = `
+    ${heroSection}
+    <tr>
+      <td align="center" class="email-container" style="background-color: #27272a; padding: 32px 20px; max-width: 900px; width: 100%;">
+        <div style="padding: 0; max-width: 600px; margin: 0 auto;">
+          ${contentSections.join("\n")}
+        </div>
+      </td>
+    </tr>
+    ${buildFooter()}`;
+
+  return buildEmailShell(
+    "Your question is live",
+    buildEmailStyles(),
+    bodyContent,
+  );
+}
+
+export async function sendEventQuestionApprovedEmail(
+  data: EventQuestionApprovedEmailData,
+): Promise<void> {
+  if (!isValidEmail(data.email) || hasUnsafeHeaderChars(data.email)) {
+    console.error(
+      `Skipping event question approval email — invalid recipient: ${data.email}`,
+    );
+    return;
+  }
+
+  if (process.env.DISABLE_EMAIL?.toLowerCase().trim() === "true") {
+    console.log(
+      `Email disabled. Skipping event question approval email to ${data.email}`,
+    );
+    return;
+  }
+
+  if (await isEmailSuppressed(data.email)) {
+    console.log(
+      `Email suppression on for ${data.email} — skipping event question approval email`,
+    );
+    return;
+  }
+
+  const subject = `Your question for ${data.eventName} just went live`;
+  const textContent = generateEventQuestionApprovedEmailText(data);
+  const htmlContent = generateEventQuestionApprovedEmailHTML(data);
+  const altBoundary = `alt_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+  const lines: string[] = [
+    `From: ${FROM_EMAIL}`,
+    `To: ${data.email}`,
+    `Subject: ${subject}`,
+    `MIME-Version: 1.0`,
+    `Content-Type: multipart/alternative; boundary="${altBoundary}"`,
+    "",
+    `--${altBoundary}`,
+    ...buildUtf8MimeBodyPart("text/plain", textContent),
+    `--${altBoundary}`,
+    ...buildUtf8MimeBodyPart("text/html", htmlContent),
+    `--${altBoundary}--`,
+    "",
+  ];
+  await sendRawEmailViaSES(lines.join("\r\n"), data.email);
+  console.log(`Event question approved email sent to ${data.email}`);
+}
