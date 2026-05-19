@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { normalizeEmail, verifyAdminRequest } from "@/app/lib/auth";
 import { isValidEmail, isValidUUID } from "@/app/lib/validation";
-import { db, eq, ilike, roles } from "@ssb/db";
+import { auditLogs, db, eq, inArray, roles, sql } from "@ssb/db";
 import { logAuditEvent } from "@/app/lib/audit";
 
 type RoleType = "admin" | "ban" | "scanner" | "fee_waiver" | "email_suppression";
@@ -88,62 +88,82 @@ export async function POST(req: Request) {
 
       const created: SerializedUser[] = [];
 
-      for (const target of normalized) {
-        try {
-          const existing = await db.query.roles.findFirst({
-            where: eq(roles.email, target),
-          });
+      if (normalized.length > 0) {
+        const existingRows = await db.query.roles.findMany({
+          where: inArray(roles.email, normalized),
+        });
 
-          if (existing) {
-            const currentRoles = existing.roles
-              ? existing.roles.split(",")
-              : [];
-            if (currentRoles.includes(roleName)) {
-              errors.push({ email: target, error: ALREADY_HAS_ROLE[type] });
-              continue;
-            }
+        const existingByEmail = new Map(
+          existingRows
+            .filter((r) => r.email)
+            .map((r) => [r.email as string, r]),
+        );
 
-            const newRoles = [...currentRoles, roleName].join(",");
-            const [updated] = await db.update(roles)
-              .set({ roles: newRoles })
-              .where(eq(roles.id, existing.id))
-              .returning();
+        const emailsToUpdate: string[] = [];
+        const emailsToInsert: string[] = [];
 
-            await logAuditEvent({
-              action: "user.add_role",
-              actor: auth.email!,
-              targetEmail: target,
-              metadata: { role: roleName },
-            });
+        for (const target of normalized) {
+          const existing = existingByEmail.get(target);
+          if (!existing) {
+            emailsToInsert.push(target);
+            continue;
+          }
+          const currentRoles = existing.roles ? existing.roles.split(",") : [];
+          if (currentRoles.includes(roleName)) {
+            errors.push({ email: target, error: ALREADY_HAS_ROLE[type] });
+            continue;
+          }
+          emailsToUpdate.push(target);
+        }
 
+        if (emailsToUpdate.length > 0) {
+          const updatedRows = await db
+            .update(roles)
+            .set({
+              roles: sql`array_to_string(array_append(string_to_array(coalesce(${roles.roles}, ''), ','), ${roleName}), ',')`,
+            })
+            .where(inArray(roles.email, emailsToUpdate))
+            .returning();
+
+          for (const row of updatedRows) {
             created.push({
-              id: updated.id,
-              created_at: updated.createdAt.toISOString(),
-              email: updated.email,
-              roles: updated.roles,
-            });
-          } else {
-            const [createdRow] = await db.insert(roles)
-              .values({ email: target, roles: roleName })
-              .returning();
-
-            await logAuditEvent({
-              action: "user.add_role",
-              actor: auth.email!,
-              targetEmail: target,
-              metadata: { role: roleName },
-            });
-
-            created.push({
-              id: createdRow.id,
-              created_at: createdRow.createdAt.toISOString(),
-              email: createdRow.email,
-              roles: createdRow.roles,
+              id: row.id,
+              created_at: row.createdAt.toISOString(),
+              email: row.email,
+              roles: row.roles,
             });
           }
-        } catch (err) {
-          console.error(`Failed to add ${target}:`, err);
-          errors.push({ email: target, error: "Failed to add" });
+        }
+
+        if (emailsToInsert.length > 0) {
+          const insertedRows = await db
+            .insert(roles)
+            .values(
+              emailsToInsert.map((e) => ({ email: e, roles: roleName })),
+            )
+            .returning();
+
+          for (const row of insertedRows) {
+            created.push({
+              id: row.id,
+              created_at: row.createdAt.toISOString(),
+              email: row.email,
+              roles: row.roles,
+            });
+          }
+        }
+
+        if (created.length > 0) {
+          const metadata = JSON.stringify({ role: roleName });
+          await db.insert(auditLogs).values(
+            created.map((row) => ({
+              action: "user.add_role",
+              actor: auth.email!,
+              source: "admin",
+              targetEmail: row.email ?? null,
+              metadata,
+            })),
+          );
         }
       }
 
@@ -167,32 +187,28 @@ export async function POST(req: Request) {
         );
       }
 
-      const matches = await db.query.roles.findMany({
-        where: ilike(roles.roles, `%${roleName}%`),
-      });
+      const updated = await db
+        .update(roles)
+        .set({
+          roles: sql`array_to_string(array_remove(string_to_array(${roles.roles}, ','), ${roleName}), ',')`,
+        })
+        .where(sql`${roleName} = ANY(string_to_array(${roles.roles}, ','))`)
+        .returning({ email: roles.email });
 
-      let removed = 0;
-      for (const row of matches) {
-        const currentRoles = row.roles ? row.roles.split(",") : [];
-        if (!currentRoles.includes(roleName)) continue;
-
-        const newRoles = currentRoles.filter((r) => r !== roleName).join(",");
-
-        await db.update(roles)
-          .set({ roles: newRoles })
-          .where(eq(roles.id, row.id));
-
-        await logAuditEvent({
-          action: "user.remove_role",
-          actor: auth.email!,
-          targetEmail: row.email ?? undefined,
-          metadata: { role: roleName, bulk: true },
-        });
-
-        removed++;
+      if (updated.length > 0) {
+        const metadata = JSON.stringify({ role: roleName, bulk: true });
+        await db.insert(auditLogs).values(
+          updated.map((row) => ({
+            action: "user.remove_role",
+            actor: auth.email!,
+            source: "admin",
+            targetEmail: row.email ?? null,
+            metadata,
+          })),
+        );
       }
 
-      return NextResponse.json({ success: true, removed });
+      return NextResponse.json({ success: true, removed: updated.length });
     }
 
     // action === "remove"
