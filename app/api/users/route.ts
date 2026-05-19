@@ -1,8 +1,33 @@
 import { NextResponse } from "next/server";
 import { normalizeEmail, verifyAdminRequest } from "@/app/lib/auth";
 import { isValidEmail, isValidUUID } from "@/app/lib/validation";
-import { db, eq, roles } from "@ssb/db";
+import { db, eq, ilike, roles } from "@ssb/db";
 import { logAuditEvent } from "@/app/lib/audit";
+
+type RoleType = "admin" | "ban" | "scanner" | "fee_waiver" | "email_suppression";
+
+const ROLE_NAMES: Record<RoleType, string> = {
+  admin: "admin",
+  ban: "banned",
+  scanner: "scanner",
+  fee_waiver: "fee_waiver",
+  email_suppression: "email_suppression",
+};
+
+const ALREADY_HAS_ROLE: Record<RoleType, string> = {
+  admin: "This email is already an admin",
+  ban: "This email is already banned",
+  scanner: "This email is already a scanner",
+  fee_waiver: "This email is already marked as Fee Waiver",
+  email_suppression: "This email is already suppressed",
+};
+
+type SerializedUser = {
+  id: string;
+  created_at: string;
+  email: string | null;
+  roles: string | null;
+};
 
 export async function POST(req: Request) {
   try {
@@ -12,154 +37,200 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json();
-    const { email, id, type, action } = body;
+    const { email, emails, id, type, action } = body as {
+      email?: string;
+      emails?: string[];
+      id?: string;
+      type?: RoleType;
+      action?: "add" | "remove" | "clear_all";
+    };
 
-    if (
-      !type ||
-      !["admin", "ban", "scanner", "fee_waiver", "email_suppression"].includes(type)
-    ) {
+    if (!type || !(type in ROLE_NAMES)) {
       return NextResponse.json({ error: "Invalid type" }, { status: 400 });
     }
 
-    if (!action || !["add", "remove"].includes(action)) {
+    if (!action || !["add", "remove", "clear_all"].includes(action)) {
       return NextResponse.json({ error: "Invalid action" }, { status: 400 });
     }
 
-    let roleName = "admin";
-    if (type === "ban") roleName = "banned";
-    if (type === "scanner") roleName = "scanner";
-    if (type === "fee_waiver") roleName = "fee_waiver";
-    if (type === "email_suppression") roleName = "email_suppression";
+    const roleName = ROLE_NAMES[type];
 
     if (action === "add") {
-      if (!email) {
+      const inputEmails = Array.isArray(emails)
+        ? emails
+        : email
+          ? [email]
+          : [];
+
+      if (inputEmails.length === 0) {
         return NextResponse.json(
           { error: "Email is required" },
           { status: 400 },
         );
       }
 
-      const normalizedTargetEmail = normalizeEmail(email);
+      const seen = new Set<string>();
+      const normalized: string[] = [];
+      const errors: { email: string; error: string }[] = [];
 
-      // Validate email format
-      if (!isValidEmail(normalizedTargetEmail)) {
-        return NextResponse.json(
-          { error: "Invalid email format" },
-          { status: 400 },
-        );
-      }
-
-      // Check if user exists in roles table
-      const existing = await db.query.roles.findFirst({
-        where: eq(roles.email, normalizedTargetEmail),
-      });
-
-      if (existing) {
-        const currentRoles = existing.roles ? existing.roles.split(",") : [];
-        if (currentRoles.includes(roleName)) {
-          return NextResponse.json(
-            {
-              error:
-                type === "admin"
-                  ? "This email is already an admin"
-                  : type === "scanner"
-                    ? "This email is already a scanner"
-                    : type === "fee_waiver"
-                      ? "This email is already marked as Fee Waiver"
-                      : type === "email_suppression"
-                        ? "This email is already suppressed"
-                        : "This email is already banned",
-            },
-            { status: 400 },
-          );
+      for (const raw of inputEmails) {
+        if (typeof raw !== "string") continue;
+        const n = normalizeEmail(raw);
+        if (!n) continue;
+        if (!isValidEmail(n)) {
+          errors.push({ email: raw, error: "Invalid email format" });
+          continue;
         }
-
-        // Add role to existing user
-        const newRoles = [...currentRoles, roleName].join(",");
-        const [updated] = await db.update(roles)
-          .set({ roles: newRoles })
-          .where(eq(roles.id, existing.id))
-          .returning();
-
-        await logAuditEvent({
-          action: "user.add_role",
-          actor: auth.email!,
-          targetEmail: normalizedTargetEmail,
-          metadata: { role: roleName },
-        });
-
-        return NextResponse.json({
-          success: true,
-          user: {
-            id: updated.id,
-            created_at: updated.createdAt.toISOString(),
-            email: updated.email,
-            roles: updated.roles,
-          },
-        });
-      } else {
-        // Create new user with role
-        const [created] = await db.insert(roles)
-          .values({ email: normalizedTargetEmail, roles: roleName })
-          .returning();
-
-        await logAuditEvent({
-          action: "user.add_role",
-          actor: auth.email!,
-          targetEmail: normalizedTargetEmail,
-          metadata: { role: roleName },
-        });
-
-        return NextResponse.json({
-          success: true,
-          user: {
-            id: created.id,
-            created_at: created.createdAt.toISOString(),
-            email: created.email,
-            roles: created.roles,
-          },
-        });
-      }
-    } else {
-      // Remove
-      if (!id) {
-        return NextResponse.json({ error: "ID is required" }, { status: 400 });
+        if (seen.has(n)) continue;
+        seen.add(n);
+        normalized.push(n);
       }
 
-      // Validate UUID format
-      if (!isValidUUID(id)) {
+      const created: SerializedUser[] = [];
+
+      for (const target of normalized) {
+        try {
+          const existing = await db.query.roles.findFirst({
+            where: eq(roles.email, target),
+          });
+
+          if (existing) {
+            const currentRoles = existing.roles
+              ? existing.roles.split(",")
+              : [];
+            if (currentRoles.includes(roleName)) {
+              errors.push({ email: target, error: ALREADY_HAS_ROLE[type] });
+              continue;
+            }
+
+            const newRoles = [...currentRoles, roleName].join(",");
+            const [updated] = await db.update(roles)
+              .set({ roles: newRoles })
+              .where(eq(roles.id, existing.id))
+              .returning();
+
+            await logAuditEvent({
+              action: "user.add_role",
+              actor: auth.email!,
+              targetEmail: target,
+              metadata: { role: roleName },
+            });
+
+            created.push({
+              id: updated.id,
+              created_at: updated.createdAt.toISOString(),
+              email: updated.email,
+              roles: updated.roles,
+            });
+          } else {
+            const [createdRow] = await db.insert(roles)
+              .values({ email: target, roles: roleName })
+              .returning();
+
+            await logAuditEvent({
+              action: "user.add_role",
+              actor: auth.email!,
+              targetEmail: target,
+              metadata: { role: roleName },
+            });
+
+            created.push({
+              id: createdRow.id,
+              created_at: createdRow.createdAt.toISOString(),
+              email: createdRow.email,
+              roles: createdRow.roles,
+            });
+          }
+        } catch (err) {
+          console.error(`Failed to add ${target}:`, err);
+          errors.push({ email: target, error: "Failed to add" });
+        }
+      }
+
+      // Backwards-compatible single-email response shape.
+      if (!Array.isArray(emails) && created.length === 1 && errors.length === 0) {
+        return NextResponse.json({ success: true, user: created[0] });
+      }
+
+      return NextResponse.json({
+        success: errors.length === 0,
+        users: created,
+        errors,
+      });
+    }
+
+    if (action === "clear_all") {
+      if (type !== "fee_waiver") {
         return NextResponse.json(
-          { error: "Invalid user ID format" },
+          { error: "clear_all is only supported for fee_waiver" },
           { status: 400 },
         );
       }
 
-      const existing = await db.query.roles.findFirst({
-        where: eq(roles.id, id),
+      const matches = await db.query.roles.findMany({
+        where: ilike(roles.roles, `%${roleName}%`),
       });
 
-      if (!existing) {
-        return NextResponse.json({ error: "User not found" }, { status: 404 });
+      let removed = 0;
+      for (const row of matches) {
+        const currentRoles = row.roles ? row.roles.split(",") : [];
+        if (!currentRoles.includes(roleName)) continue;
+
+        const newRoles = currentRoles.filter((r) => r !== roleName).join(",");
+
+        await db.update(roles)
+          .set({ roles: newRoles })
+          .where(eq(roles.id, row.id));
+
+        await logAuditEvent({
+          action: "user.remove_role",
+          actor: auth.email!,
+          targetEmail: row.email ?? undefined,
+          metadata: { role: roleName, bulk: true },
+        });
+
+        removed++;
       }
 
-      const currentRoles = existing.roles ? existing.roles.split(",") : [];
-      const newRoles = currentRoles.filter((r: string) => r !== roleName);
-      const newRolesString = newRoles.join(",");
-
-      // Update roles
-      await db.update(roles)
-        .set({ roles: newRolesString })
-        .where(eq(roles.id, id));
-
-      await logAuditEvent({
-        action: "user.remove_role",
-        actor: auth.email!,
-        targetEmail: existing.email ?? undefined,
-        metadata: { role: roleName },
-      });
-
-      return NextResponse.json({ success: true });
+      return NextResponse.json({ success: true, removed });
     }
+
+    // action === "remove"
+    if (!id) {
+      return NextResponse.json({ error: "ID is required" }, { status: 400 });
+    }
+
+    if (!isValidUUID(id)) {
+      return NextResponse.json(
+        { error: "Invalid user ID format" },
+        { status: 400 },
+      );
+    }
+
+    const existing = await db.query.roles.findFirst({
+      where: eq(roles.id, id),
+    });
+
+    if (!existing) {
+      return NextResponse.json({ error: "User not found" }, { status: 404 });
+    }
+
+    const currentRoles = existing.roles ? existing.roles.split(",") : [];
+    const newRoles = currentRoles.filter((r: string) => r !== roleName);
+    const newRolesString = newRoles.join(",");
+
+    await db.update(roles)
+      .set({ roles: newRolesString })
+      .where(eq(roles.id, id));
+
+    await logAuditEvent({
+      action: "user.remove_role",
+      actor: auth.email!,
+      targetEmail: existing.email ?? undefined,
+      metadata: { role: roleName },
+    });
+
+    return NextResponse.json({ success: true });
   } catch (error) {
     console.error("Users action error:", error);
     return NextResponse.json(

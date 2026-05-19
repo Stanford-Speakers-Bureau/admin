@@ -85,51 +85,63 @@ export default function AdminUsersClient({
     setError(null);
     setSuccess(null);
 
-    let successCount = 0;
     const errors: string[] = [];
+    let successCount = 0;
 
-    for (const email of emails) {
-      try {
-        const response = await fetch("/api/users", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            email: email.toLowerCase(),
-            type,
-            action: "add",
-          }),
-        });
+    try {
+      const response = await fetch("/api/users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          emails: emails.map((e) => e.toLowerCase()),
+          type,
+          action: "add",
+        }),
+      });
 
-        const data = await response.json();
+      const data = await response.json();
 
-        if (!response.ok) {
-          errors.push(`${email}: ${data.error || "Failed to add"}`);
-          continue;
-        }
-
-        const created = data.user;
-
-        if (created) {
-          if (type === "admin") {
-            setAdmins((prev) => [created as Admin, ...prev]);
-          } else if (type === "fee_waiver") {
-            setFeeWaivers((prev) => [created as FeeWaiver, ...prev]);
-          } else if (type === "ban") {
-            setBans((prev) => [created as Ban, ...prev]);
-          } else if (type === "email_suppression") {
-            setEmailSuppressions((prev) => [
-              created as EmailSuppression,
-              ...prev,
-            ]);
-          } else {
-            setScanners((prev) => [created as Scanner, ...prev]);
-          }
-          successCount++;
-        }
-      } catch (error) {
-        console.error(`Failed to add user ${email}:`, error);
-        errors.push(`${email}: Failed to add`);
+      if (!response.ok) {
+        setError(data.error || "Failed to add");
+        setIsSubmitting(false);
+        return;
       }
+
+      const createdUsers = (data.users ?? []) as Array<
+        Admin | Ban | FeeWaiver | Scanner | EmailSuppression
+      >;
+
+      if (createdUsers.length > 0) {
+        if (type === "admin") {
+          setAdmins((prev) => [...(createdUsers as Admin[]), ...prev]);
+        } else if (type === "fee_waiver") {
+          setFeeWaivers((prev) => [...(createdUsers as FeeWaiver[]), ...prev]);
+        } else if (type === "ban") {
+          setBans((prev) => [...(createdUsers as Ban[]), ...prev]);
+        } else if (type === "email_suppression") {
+          setEmailSuppressions((prev) => [
+            ...(createdUsers as EmailSuppression[]),
+            ...prev,
+          ]);
+        } else {
+          setScanners((prev) => [...(createdUsers as Scanner[]), ...prev]);
+        }
+      }
+
+      successCount = createdUsers.length;
+
+      const serverErrors = (data.errors ?? []) as Array<{
+        email: string;
+        error: string;
+      }>;
+      for (const e of serverErrors) {
+        errors.push(`${e.email}: ${e.error}`);
+      }
+    } catch (err) {
+      console.error("Failed to add users:", err);
+      setError("Failed to add users. Please try again.");
+      setIsSubmitting(false);
+      return;
     }
 
     setIsSubmitting(false);
@@ -156,6 +168,39 @@ export default function AdminUsersClient({
       if (errors.length === 0) {
         setNewEmail("");
       }
+    }
+  }
+
+  async function handleClearAllFeeWaivers() {
+    if (feeWaivers.length === 0) return;
+    const confirmed = window.confirm(
+      `Remove fee waiver from all ${feeWaivers.length} user(s)? This cannot be undone.`,
+    );
+    if (!confirmed) return;
+
+    setIsSubmitting(true);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      const response = await fetch("/api/users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "fee_waiver", action: "clear_all" }),
+      });
+      const data = await response.json();
+
+      if (!response.ok) {
+        setError(data.error || "Failed to clear fee waivers");
+      } else {
+        setFeeWaivers([]);
+        setSuccess(`Cleared fee waiver from ${data.removed ?? 0} user(s)`);
+      }
+    } catch (err) {
+      console.error("Failed to clear fee waivers:", err);
+      setError("Failed to clear fee waivers. Please try again.");
+    } finally {
+      setIsSubmitting(false);
     }
   }
 
@@ -630,7 +675,30 @@ export default function AdminUsersClient({
               <p className="text-zinc-400">No fee waiver users</p>
             </div>
           ) : (
-            feeWaivers.map((feeWaiver) => (
+            <>
+              <div className="flex justify-end">
+                <button
+                  onClick={handleClearAllFeeWaivers}
+                  disabled={isSubmitting}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-rose-500/10 text-rose-400 border border-rose-500/30 hover:bg-rose-500/20 transition-colors disabled:opacity-50"
+                >
+                  <svg
+                    className="w-4 h-4"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                    />
+                  </svg>
+                  Clear All ({feeWaivers.length})
+                </button>
+              </div>
+              {feeWaivers.map((feeWaiver) => (
               <div
                 key={feeWaiver.id}
                 className="bg-zinc-900 rounded-xl border border-zinc-800 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:border-zinc-700 transition-colors"
@@ -681,7 +749,8 @@ export default function AdminUsersClient({
                   Remove Waiver
                 </button>
               </div>
-            ))
+              ))}
+            </>
           )
         ) : activeTab === "bans" ? (
           bans.length === 0 ? (
