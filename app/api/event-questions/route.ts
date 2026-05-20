@@ -3,7 +3,6 @@ import { verifyAdminRequest } from "@/app/lib/auth";
 import { getAdminEventQuestions } from "@/app/event-questions/data";
 import { isValidUUID, isValidEmail } from "@/app/lib/validation";
 import {
-  and,
   db,
   eq,
   eventQuestions,
@@ -15,6 +14,105 @@ import { sendEventQuestionApprovedEmail } from "@/app/lib/email";
 
 const MIN_LEN = 4;
 const MAX_LEN = 280;
+
+class RequestError extends Error {
+  constructor(
+    message: string,
+    public status = 400,
+  ) {
+    super(message);
+  }
+}
+
+async function mergeDuplicateQuestion(sourceId: string, targetId: string) {
+  if (sourceId === targetId) {
+    throw new RequestError("Cannot merge a question into itself");
+  }
+
+  return db.transaction(async (tx) => {
+    const source = await tx.query.eventQuestions.findFirst({
+      where: eq(eventQuestions.id, sourceId),
+      columns: {
+        id: true,
+        approved: true,
+        duplicate: true,
+        eventId: true,
+        question: true,
+      },
+    });
+    if (!source) throw new RequestError("Source question not found", 404);
+    if (source.duplicate) {
+      throw new RequestError("Source is already marked duplicate");
+    }
+
+    const target = await tx.query.eventQuestions.findFirst({
+      where: eq(eventQuestions.id, targetId),
+      columns: {
+        id: true,
+        approved: true,
+        hidden: true,
+        duplicate: true,
+        eventId: true,
+        question: true,
+      },
+    });
+    if (!target) throw new RequestError("Target question not found", 404);
+    if (!target.approved || target.hidden || target.duplicate) {
+      throw new RequestError("Target must be a visible approved question");
+    }
+    if (source.eventId !== target.eventId) {
+      throw new RequestError("Cannot merge questions across different events");
+    }
+
+    const sourceVotes = await tx.query.eventQuestionVotes.findMany({
+      where: eq(eventQuestionVotes.questionId, sourceId),
+      columns: { email: true },
+    });
+    const targetVotes = await tx.query.eventQuestionVotes.findMany({
+      where: eq(eventQuestionVotes.questionId, targetId),
+      columns: { email: true },
+    });
+    const targetVoterEmails = new Set(targetVotes.map((v) => v.email));
+    const toTransfer = sourceVotes.filter(
+      (v) => v.email && !targetVoterEmails.has(v.email),
+    );
+
+    if (toTransfer.length > 0) {
+      await tx.insert(eventQuestionVotes).values(
+        toTransfer.map((v) => ({
+          questionId: targetId,
+          email: v.email!,
+        })),
+      );
+    }
+
+    await tx
+      .delete(eventQuestionVotes)
+      .where(eq(eventQuestionVotes.questionId, sourceId));
+
+    await tx
+      .update(eventQuestions)
+      .set({ reviewed: true, approved: false, duplicate: true, hidden: true })
+      .where(eq(eventQuestions.id, sourceId));
+
+    return {
+      eventId: source.eventId,
+      sourceQuestion: source.question,
+      targetQuestion: target.question,
+      votesTransferred: toTransfer.length,
+    };
+  });
+}
+
+function requestErrorResponse(error: unknown) {
+  if (error instanceof RequestError) {
+    return NextResponse.json(
+      { error: error.message },
+      { status: error.status },
+    );
+  }
+  return null;
+}
 
 export async function POST(req: Request) {
   try {
@@ -116,11 +214,12 @@ export async function PATCH(req: Request) {
     }
 
     const body = await req.json();
-    const { id, question, duplicate, hidden } = body as {
+    const { id, question, duplicate, hidden, targetId } = body as {
       id?: string;
       question?: string;
       duplicate?: boolean;
       hidden?: boolean;
+      targetId?: string;
     };
 
     if (!id) {
@@ -160,15 +259,50 @@ export async function PATCH(req: Request) {
     }
 
     if (typeof duplicate === "boolean") {
+      if (duplicate) {
+        if (!targetId || typeof targetId !== "string") {
+          return NextResponse.json(
+            { error: "Target question is required to mark duplicate" },
+            { status: 400 },
+          );
+        }
+        if (!isValidUUID(targetId)) {
+          return NextResponse.json(
+            { error: "Invalid target question ID format" },
+            { status: 400 },
+          );
+        }
+        const result = await mergeDuplicateQuestion(id, targetId);
+        await logAuditEvent({
+          action: "event_question.merge",
+          actor: auth.email!,
+          eventId: result.eventId,
+          metadata: {
+            sourceId: id,
+            targetId,
+            eventId: result.eventId,
+            sourceQuestion: result.sourceQuestion,
+            targetQuestion: result.targetQuestion,
+            votesTransferred: result.votesTransferred,
+          },
+        });
+        const { questions } = await getAdminEventQuestions();
+        return NextResponse.json({ success: true, questions });
+      }
+
       await db
         .update(eventQuestions)
-        .set({ duplicate })
+        .set({ duplicate: false })
         .where(eq(eventQuestions.id, id));
       await logAuditEvent({
         action: "event_question.mark_duplicate",
         actor: auth.email!,
         eventId: existing.eventId,
-        metadata: { questionId: id, question: existing.question, duplicate },
+        metadata: {
+          questionId: id,
+          question: existing.question,
+          duplicate: false,
+        },
       });
       const { questions } = await getAdminEventQuestions();
       return NextResponse.json({ success: true, questions });
@@ -203,6 +337,8 @@ export async function PATCH(req: Request) {
     const { questions } = await getAdminEventQuestions();
     return NextResponse.json({ success: true, questions });
   } catch (error) {
+    const response = requestErrorResponse(error);
+    if (response) return response;
     console.error("Event question edit error:", error);
     return NextResponse.json(
       { error: "Internal server error" },
@@ -238,81 +374,27 @@ export async function PUT(req: Request) {
       );
     }
 
-    const source = await db.query.eventQuestions.findFirst({
-      where: eq(eventQuestions.id, sourceId),
-      columns: { id: true, approved: true, eventId: true },
-    });
-    if (!source || source.approved) {
-      return NextResponse.json(
-        { error: "Source must be pending or rejected" },
-        { status: 400 },
-      );
-    }
-
-    const target = await db.query.eventQuestions.findFirst({
-      where: eq(eventQuestions.id, targetId),
-      columns: { id: true, approved: true, eventId: true },
-    });
-    if (!target || !target.approved) {
-      return NextResponse.json(
-        { error: "Target must be approved" },
-        { status: 400 },
-      );
-    }
-
-    if (source.eventId !== target.eventId) {
-      return NextResponse.json(
-        { error: "Cannot merge questions across different events" },
-        { status: 400 },
-      );
-    }
-
-    const sourceVotes = await db.query.eventQuestionVotes.findMany({
-      where: eq(eventQuestionVotes.questionId, sourceId),
-      columns: { email: true },
-    });
-    const targetVotes = await db.query.eventQuestionVotes.findMany({
-      where: eq(eventQuestionVotes.questionId, targetId),
-      columns: { email: true },
-    });
-    const targetVoterEmails = new Set(targetVotes.map((v) => v.email));
-    const toTransfer = sourceVotes.filter(
-      (v) => v.email && !targetVoterEmails.has(v.email),
-    );
-
-    if (toTransfer.length > 0) {
-      await db.insert(eventQuestionVotes).values(
-        toTransfer.map((v) => ({
-          questionId: targetId,
-          email: v.email!,
-        })),
-      );
-    }
-
-    await db
-      .delete(eventQuestionVotes)
-      .where(eq(eventQuestionVotes.questionId, sourceId));
-
-    await db
-      .update(eventQuestions)
-      .set({ reviewed: true, approved: false, duplicate: true })
-      .where(eq(eventQuestions.id, sourceId));
+    const result = await mergeDuplicateQuestion(sourceId, targetId);
 
     await logAuditEvent({
       action: "event_question.merge",
       actor: auth.email!,
-      eventId: source.eventId,
+      eventId: result.eventId,
       metadata: {
         sourceId,
         targetId,
-        eventId: source.eventId,
-        votesTransferred: toTransfer.length,
+        eventId: result.eventId,
+        sourceQuestion: result.sourceQuestion,
+        targetQuestion: result.targetQuestion,
+        votesTransferred: result.votesTransferred,
       },
     });
 
     const { questions } = await getAdminEventQuestions();
     return NextResponse.json({ success: true, questions });
   } catch (error) {
+    const response = requestErrorResponse(error);
+    if (response) return response;
     console.error("Event question merge error:", error);
     return NextResponse.json(
       { error: "Internal server error" },

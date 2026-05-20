@@ -1,7 +1,6 @@
 import { verifyAdminRequest } from "@/app/lib/auth";
 import {
   db,
-  eventQuestions,
   eventQuestionVotes,
   events,
   inArray,

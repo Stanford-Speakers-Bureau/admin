@@ -72,7 +72,9 @@ export default function AdminEventQuestionsClient({
       case "pending":
         return scopedQuestions.filter((q) => !q.reviewed);
       case "approved":
-        return scopedQuestions.filter((q) => q.approved && !q.hidden);
+        return scopedQuestions.filter(
+          (q) => q.approved && !q.hidden && !q.duplicate,
+        );
       case "hidden":
         return scopedQuestions.filter((q) => q.hidden);
       case "rejected":
@@ -125,8 +127,6 @@ export default function AdminEventQuestionsClient({
   const handleReject = (id: string) => post({ id, action: "reject" });
   const handleHide = (id: string, hidden: boolean) =>
     post({ id, hidden }, "PATCH");
-  const handleMarkDuplicate = (id: string, duplicate: boolean) =>
-    post({ id, duplicate }, "PATCH");
 
   const handleEditSave = async () => {
     if (!editing) return;
@@ -171,7 +171,9 @@ export default function AdminEventQuestionsClient({
     {
       key: "approved",
       label: "Approved",
-      count: scopedQuestions.filter((q) => q.approved && !q.hidden).length,
+      count: scopedQuestions.filter(
+        (q) => q.approved && !q.hidden && !q.duplicate,
+      ).length,
     },
     {
       key: "hidden",
@@ -195,7 +197,7 @@ export default function AdminEventQuestionsClient({
 
   const eventApprovedTargets = merging
     ? scopedQuestions.filter(
-        (q) => q.approved && !q.hidden && q.id !== merging.id,
+        (q) => q.approved && !q.hidden && !q.duplicate && q.id !== merging.id,
       )
     : [];
 
@@ -407,7 +409,7 @@ export default function AdminEventQuestionsClient({
                       Edit text
                     </button>
                   )}
-                  {!q.duplicate && !q.approved && (
+                  {!q.duplicate && (
                     <button
                       disabled={state.busy}
                       onClick={() => setMerging(q)}
@@ -458,15 +460,6 @@ export default function AdminEventQuestionsClient({
                   >
                     Resync
                   </button>
-                  {!q.duplicate && (
-                    <button
-                      disabled={state.busy}
-                      onClick={() => handleMarkDuplicate(q.id, true)}
-                      className={`${buttonBase} ${tones.amber}`}
-                    >
-                      Mark duplicate
-                    </button>
-                  )}
                 </div>
               </div>
             </li>
@@ -484,7 +477,7 @@ export default function AdminEventQuestionsClient({
             className="w-full max-w-md rounded-2xl border border-zinc-800 bg-zinc-900 p-6 shadow-2xl"
           >
             <h3 className="text-base font-serif font-semibold text-white mb-2">
-              Merge into an approved question
+              Mark duplicate and merge votes
             </h3>
             <p className="text-sm text-zinc-400 mb-4 italic">
               &ldquo;{merging.question}&rdquo;
@@ -508,7 +501,7 @@ export default function AdminEventQuestionsClient({
                       disabled={state.busy}
                       className={`${buttonBase} ${tones.amber}`}
                     >
-                      Merge
+                      Merge votes
                     </button>
                   </li>
                 ))}
