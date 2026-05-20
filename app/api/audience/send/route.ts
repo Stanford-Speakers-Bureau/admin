@@ -76,10 +76,8 @@ export async function POST(req: Request) {
       ? new Date() >= new Date(event.ticketingDate)
       : false;
 
-    const { kept: filteredEmails, skipped } = await filterUnsubscribedHierarchical(
-      emails,
-      eventId,
-    );
+    const { kept: filteredEmails, skipped: optedOut } =
+      await filterUnsubscribedHierarchical(emails, eventId);
 
     const { sendable, suppressed } = await partitionBySuppression(filteredEmails);
     const batchId = randomUUID();
@@ -88,7 +86,7 @@ export async function POST(req: Request) {
       return NextResponse.json({
         sent: 0,
         failed: 0,
-        skipped: skipped.length,
+        skippedOptedOut: optedOut.length,
         suppressed: suppressed.length,
         batchId,
       });
@@ -149,9 +147,10 @@ export async function POST(req: Request) {
         type: "audienceSend",
         sent,
         failed,
-        skipped: skipped.length,
+        skipped: optedOut.length,
+        skippedOptedOut: optedOut.length,
         suppressed: suppressed.length,
-        total: sent + failed + skipped.length + suppressed.length,
+        total: sent + failed + optedOut.length + suppressed.length,
         batchId,
       },
     });
@@ -159,7 +158,7 @@ export async function POST(req: Request) {
     return NextResponse.json({
       sent,
       failed,
-      skipped: skipped.length,
+      skippedOptedOut: optedOut.length,
       suppressed: suppressed.length,
       batchId,
     });

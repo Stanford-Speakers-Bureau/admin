@@ -3,7 +3,18 @@ export type BulkSendProgressState = {
   total: number;
   sent: number;
   failed: number;
+  /**
+   * Generic skip count for endpoints whose skip has a single, self-evident
+   * meaning (e.g. feedback-analytics "ticket never scanned"). For email sends
+   * the reason is broken out into the categorized fields below — prefer those.
+   */
   skipped: number;
+  /** Recipients dropped because they already hold a ticket for the event. */
+  skippedHasTicket: number;
+  /** Recipients dropped because of a mailing-list opt-out (announce/event). */
+  skippedOptedOut: number;
+  /** Recipients dropped by the email-suppression kill-switch (hard block). */
+  suppressed: number;
   done: boolean;
   label: string;
 };
@@ -12,6 +23,9 @@ export type BulkSendChunkResult = {
   sent?: number;
   failed?: number;
   skipped?: number;
+  skippedHasTicket?: number;
+  skippedOptedOut?: number;
+  suppressed?: number;
 };
 
 export type BulkSendChunkContext = {
@@ -32,8 +46,42 @@ type RunChunkedSendOptions<T> = {
   ) => Promise<BulkSendChunkResult>;
 };
 
+/**
+ * Build human-readable segments for the non-zero "not sent" categories, kept
+ * distinct so admins can tell apart a recipient who already has a ticket, one
+ * who opted out of the mailing list, and one who is hard-suppressed.
+ */
+export function getSkipBreakdownSegments(counts: {
+  skipped?: number;
+  skippedHasTicket?: number;
+  skippedOptedOut?: number;
+  suppressed?: number;
+}): string[] {
+  const segments: string[] = [];
+  if ((counts.skippedHasTicket ?? 0) > 0) {
+    segments.push(`${counts.skippedHasTicket} already had a ticket`);
+  }
+  if ((counts.skippedOptedOut ?? 0) > 0) {
+    segments.push(`${counts.skippedOptedOut} opted out`);
+  }
+  if ((counts.suppressed ?? 0) > 0) {
+    segments.push(`${counts.suppressed} suppressed`);
+  }
+  if ((counts.skipped ?? 0) > 0) {
+    segments.push(`${counts.skipped} skipped`);
+  }
+  return segments;
+}
+
 export function getProcessedCount(state: BulkSendProgressState): number {
-  return state.sent + state.failed + state.skipped;
+  return (
+    state.sent +
+    state.failed +
+    state.skipped +
+    state.skippedHasTicket +
+    state.skippedOptedOut +
+    state.suppressed
+  );
 }
 
 export async function runChunkedSend<T>({
@@ -53,6 +101,9 @@ export async function runChunkedSend<T>({
     sent: 0,
     failed: 0,
     skipped: 0,
+    skippedHasTicket: 0,
+    skippedOptedOut: 0,
+    suppressed: 0,
     done: false,
     label,
   };
@@ -74,6 +125,9 @@ export async function runChunkedSend<T>({
         sent: state.sent + (result.sent ?? 0),
         failed: state.failed + (result.failed ?? 0),
         skipped: state.skipped + (result.skipped ?? 0),
+        skippedHasTicket: state.skippedHasTicket + (result.skippedHasTicket ?? 0),
+        skippedOptedOut: state.skippedOptedOut + (result.skippedOptedOut ?? 0),
+        suppressed: state.suppressed + (result.suppressed ?? 0),
       };
     } catch (error) {
       if (shouldAbortOnError?.(error)) {

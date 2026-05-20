@@ -146,7 +146,8 @@ export async function POST(req: Request) {
     }
 
     let recipients = emails;
-    let skipped = 0;
+    let skippedHasTicket = 0;
+    let skippedOptedOut = 0;
 
     if (kind !== "announcement") {
       const notifications = await db.query.notify.findMany({
@@ -175,7 +176,7 @@ export async function POST(req: Request) {
         );
         const originalCount = recipients.length;
         recipients = recipients.filter((email) => !ticketEmailSet.has(email));
-        skipped = originalCount - recipients.length;
+        skippedHasTicket = originalCount - recipients.length;
       }
     }
 
@@ -183,7 +184,7 @@ export async function POST(req: Request) {
       recipients,
       eventId,
     );
-    skipped += unsubSkipped.length;
+    skippedOptedOut = unsubSkipped.length;
     recipients = kept;
 
     const { sendable, suppressed: suppressedList } =
@@ -195,7 +196,8 @@ export async function POST(req: Request) {
       return NextResponse.json({
         sent: 0,
         failed: 0,
-        skipped,
+        skippedHasTicket,
+        skippedOptedOut,
         suppressed: suppressedCount,
       });
     }
@@ -308,9 +310,15 @@ export async function POST(req: Request) {
         kind,
         sent,
         failed,
-        skipped,
+        // `skipped` keeps the summed total so existing audit-log rendering
+        // still shows a single skip count; the broken-out reasons live
+        // alongside it.
+        skipped: skippedHasTicket + skippedOptedOut,
+        skippedHasTicket,
+        skippedOptedOut,
         suppressed: suppressedCount,
-        total: sent + failed + skipped + suppressedCount,
+        total:
+          sent + failed + skippedHasTicket + skippedOptedOut + suppressedCount,
         ...(normalizedAuditBatchId ? { batchId: normalizedAuditBatchId } : {}),
       },
     });
@@ -318,7 +326,8 @@ export async function POST(req: Request) {
     return NextResponse.json({
       sent,
       failed,
-      skipped,
+      skippedHasTicket,
+      skippedOptedOut,
       suppressed: suppressedCount,
     });
   } catch (err) {

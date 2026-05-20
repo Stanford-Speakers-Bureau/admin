@@ -171,6 +171,18 @@ function summarizeMassEmailMetadata(
     (sum, entry) => sum + getMetadataNumber(entry.metadata, "skipped"),
     0,
   );
+  const skippedHasTicket = entries.reduce(
+    (sum, entry) => sum + getMetadataNumber(entry.metadata, "skippedHasTicket"),
+    0,
+  );
+  const skippedOptedOut = entries.reduce(
+    (sum, entry) => sum + getMetadataNumber(entry.metadata, "skippedOptedOut"),
+    0,
+  );
+  const suppressed = entries.reduce(
+    (sum, entry) => sum + getMetadataNumber(entry.metadata, "suppressed"),
+    0,
+  );
   const explicitTotal = entries.reduce(
     (sum, entry) => sum + getMetadataNumber(entry.metadata, "total"),
     0,
@@ -182,7 +194,10 @@ function summarizeMassEmailMetadata(
     sent,
     failed,
     skipped,
-    total: explicitTotal > 0 ? explicitTotal : sent + failed + skipped,
+    skippedHasTicket,
+    skippedOptedOut,
+    suppressed,
+    total: explicitTotal > 0 ? explicitTotal : sent + failed + skipped + suppressed,
     chunkCount: entries.length,
   };
 }

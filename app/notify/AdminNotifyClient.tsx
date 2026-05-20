@@ -6,6 +6,7 @@ import { useConfirmationDialog } from "@/app/components/ConfirmationDialog";
 import { useEventContext } from "@/app/EventContext";
 import {
   BulkSendProgressState,
+  getSkipBreakdownSegments,
   runChunkedSend,
 } from "@/app/lib/bulkSend";
 
@@ -291,7 +292,9 @@ export default function AdminNotifyClient() {
           error?: string;
           sent?: number;
           failed?: number;
-          skipped?: number;
+          skippedHasTicket?: number;
+          skippedOptedOut?: number;
+          suppressed?: number;
         };
 
         if (!res.ok) {
@@ -300,8 +303,14 @@ export default function AdminNotifyClient() {
 
         if ((data.failed ?? 0) > 0) {
           setNotifyError("Failed to send email.");
-        } else if ((data.skipped ?? 0) > 0) {
+        } else if ((data.skippedHasTicket ?? 0) > 0) {
           setNotifySuccess("Email skipped because this person already has a ticket.");
+          setTimeout(closeSendEmailModal, 1500);
+        } else if ((data.skippedOptedOut ?? 0) > 0) {
+          setNotifySuccess("Email skipped because this person opted out of these emails.");
+          setTimeout(closeSendEmailModal, 1500);
+        } else if ((data.suppressed ?? 0) > 0) {
+          setNotifySuccess("Email skipped because this address is suppressed.");
           setTimeout(closeSendEmailModal, 1500);
         } else {
           setNotifySuccess("Email sent.");
@@ -332,7 +341,9 @@ export default function AdminNotifyClient() {
               error?: string;
               sent?: number;
               failed?: number;
-              skipped?: number;
+              skippedHasTicket?: number;
+              skippedOptedOut?: number;
+              suppressed?: number;
             };
 
             if (!res.ok) {
@@ -343,8 +354,9 @@ export default function AdminNotifyClient() {
           },
         });
 
-        const skippedMsg = finalState.skipped > 0
-          ? `, ${finalState.skipped} skipped (already have ticket)`
+        const skipSegments = getSkipBreakdownSegments(finalState);
+        const skippedMsg = skipSegments.length > 0
+          ? `, ${skipSegments.join(", ")}`
           : "";
         setNotifySuccess(
           `Emails sent: ${finalState.sent} sent, ${finalState.failed} failed${skippedMsg}.`,

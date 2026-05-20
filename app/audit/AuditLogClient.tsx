@@ -316,13 +316,27 @@ function getDetailsSummary(log: AuditLogItem): string {
     const sent = getMetadataNumber(log.metadata, "sent");
     const failed = getMetadataNumber(log.metadata, "failed");
     const skipped = getMetadataNumber(log.metadata, "skipped");
+    const skippedHasTicket = getMetadataNumber(log.metadata, "skippedHasTicket");
+    const skippedOptedOut = getMetadataNumber(log.metadata, "skippedOptedOut");
+    const suppressed = getMetadataNumber(log.metadata, "suppressed");
     const chunkCount = isAuditLogGroup(log) ? log.group_count : 1;
     const segments = [`${label}`, `${sent.toLocaleString()} sent`];
 
     if (failed > 0) {
       segments.push(`${failed.toLocaleString()} failed`);
     }
-    if (skipped > 0) {
+    if (skippedHasTicket > 0) {
+      segments.push(`${skippedHasTicket.toLocaleString()} already had a ticket`);
+    }
+    if (skippedOptedOut > 0) {
+      segments.push(`${skippedOptedOut.toLocaleString()} opted out`);
+    }
+    if (suppressed > 0) {
+      segments.push(`${suppressed.toLocaleString()} suppressed`);
+    }
+    // Fall back to the summed skip count for older rows that predate the
+    // broken-out categories.
+    if (skippedHasTicket === 0 && skippedOptedOut === 0 && skipped > 0) {
       segments.push(`${skipped.toLocaleString()} skipped`);
     }
     if (isAuditLogGroup(log)) {
@@ -1143,6 +1157,10 @@ export default function AuditLogClient() {
                   const sent = getMetadataNumber(log.metadata, "sent");
                   const failed = getMetadataNumber(log.metadata, "failed");
                   const skipped = getMetadataNumber(log.metadata, "skipped");
+                  const skippedHasTicket = getMetadataNumber(log.metadata, "skippedHasTicket");
+                  const skippedOptedOut = getMetadataNumber(log.metadata, "skippedOptedOut");
+                  const suppressed = getMetadataNumber(log.metadata, "suppressed");
+                  const hasBrokenOutSkips = skippedHasTicket > 0 || skippedOptedOut > 0;
                   const totalRecipients = getMetadataNumber(log.metadata, "total");
 
                   return (
@@ -1232,12 +1250,41 @@ export default function AuditLogClient() {
                                       {failed.toLocaleString()}
                                     </p>
                                   </div>
+                                  {hasBrokenOutSkips ? (
+                                    <>
+                                      <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-3">
+                                        <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
+                                          Had ticket
+                                        </p>
+                                        <p className="mt-1 text-lg font-semibold text-white">
+                                          {skippedHasTicket.toLocaleString()}
+                                        </p>
+                                      </div>
+                                      <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-3">
+                                        <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
+                                          Opted out
+                                        </p>
+                                        <p className="mt-1 text-lg font-semibold text-white">
+                                          {skippedOptedOut.toLocaleString()}
+                                        </p>
+                                      </div>
+                                    </>
+                                  ) : (
+                                    <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-3">
+                                      <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
+                                        Skipped
+                                      </p>
+                                      <p className="mt-1 text-lg font-semibold text-white">
+                                        {skipped.toLocaleString()}
+                                      </p>
+                                    </div>
+                                  )}
                                   <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-3">
                                     <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
-                                      Skipped
+                                      Suppressed
                                     </p>
                                     <p className="mt-1 text-lg font-semibold text-white">
-                                      {skipped.toLocaleString()}
+                                      {suppressed.toLocaleString()}
                                     </p>
                                   </div>
                                   <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-3">
