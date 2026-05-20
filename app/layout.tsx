@@ -208,7 +208,7 @@ async function getEvents() {
       doors_open: e.doorsOpen?.toISOString() ?? null,
       venue: e.venue ?? null,
       venue_link: e.venueLink ?? null,
-      questionsEnabled: e.questionsEnabled ?? true,
+      questionsEnabled: e.questionsEnabled ?? false,
       route: e.route ?? null,
     }));
   } catch (error) {

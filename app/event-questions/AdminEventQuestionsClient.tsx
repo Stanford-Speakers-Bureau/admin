@@ -214,7 +214,7 @@ export default function AdminEventQuestionsClient({
     );
   }
 
-  const enabled = currentEvent.questionsEnabled ?? true;
+  const enabled = currentEvent.questionsEnabled ?? false;
   const toggleEnabled = async () => {
     if (togglingEnable) return;
     setTogglingEnable(true);
