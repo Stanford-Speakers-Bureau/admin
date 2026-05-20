@@ -475,6 +475,7 @@ export async function POST(req: Request, { params }: Params) {
         sent,
         failed,
         skipped: skippedCount,
+        skippedOptedOut: skippedCount,
         suppressed: suppressedCount,
         footerType,
         filterMode,
@@ -497,7 +498,8 @@ export async function POST(req: Request, { params }: Params) {
     return NextResponse.json({
       sent,
       failed,
-      skipped: skippedCount,
+      // Campaign skips are mailing-list opt-outs (no ticket filter here).
+      skippedOptedOut: skippedCount,
       suppressed: suppressedCount,
       status: updatedCampaign.status,
       recipientCount: updatedCampaign.recipientCount,

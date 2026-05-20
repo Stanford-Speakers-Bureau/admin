@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import {
   BulkSendProgressState,
   getProcessedCount,
+  getSkipBreakdownSegments,
 } from "@/app/lib/bulkSend";
 
 type BulkSendProgressProps = {
@@ -30,6 +31,12 @@ export default function BulkSendProgress({
       ? "bg-emerald-500"
       : "bg-amber-500"
     : "bg-rose-500";
+  const skipSegments = getSkipBreakdownSegments(state);
+  const completeSummary = [
+    `${state.sent} sent`,
+    ...(state.failed > 0 ? [`${state.failed} failed`] : []),
+    ...skipSegments,
+  ].join(", ");
 
   return (
     <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
@@ -37,7 +44,7 @@ export default function BulkSendProgress({
         <p className="text-sm font-medium text-zinc-200">
           {state.active
             ? `${state.label}... ${processed}/${state.total}`
-            : `${state.label} complete. ${state.sent} sent${state.failed > 0 ? `, ${state.failed} failed` : ""}${state.skipped > 0 ? `, ${state.skipped} skipped` : ""}`}
+            : `${state.label} complete. ${completeSummary}`}
         </p>
         {state.done && onDismiss ? (
           <button
@@ -59,9 +66,9 @@ export default function BulkSendProgress({
         {state.failed > 0 ? (
           <span className="text-rose-400"> • {state.failed} failed</span>
         ) : null}
-        {state.skipped > 0 ? (
-          <span className="text-amber-400"> • {state.skipped} skipped</span>
-        ) : null}
+        {skipSegments.map((segment) => (
+          <span key={segment} className="text-amber-400"> • {segment}</span>
+        ))}
       </p>
       {state.active && (
         <p className="mt-2 text-xs text-amber-400">

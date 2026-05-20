@@ -498,8 +498,11 @@ export default function TicketManagementClient({
       },
     });
 
+    const suppressedMsg = finalState.suppressed > 0
+      ? `, ${finalState.suppressed} suppressed`
+      : "";
     setSuccess(
-      `${options.successLabel} ${finalState.sent} sent, ${finalState.failed} failed.`,
+      `${options.successLabel} ${finalState.sent} sent, ${finalState.failed} failed${suppressedMsg}.`,
     );
   }
 
