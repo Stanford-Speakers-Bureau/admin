@@ -45,6 +45,7 @@ export default function AdminEventQuestionsClient({
   const { events, selectedEventId, updateEvent } = useEventContext();
   const [questions, setQuestions] = useState(initialQuestions);
   const [togglingEnable, setTogglingEnable] = useState(false);
+  const [togglingRankings, setTogglingRankings] = useState(false);
   const [tab, setTab] = useState<FilterTab>("pending");
   const [editing, setEditing] = useState<{ id: string; text: string } | null>(
     null,
@@ -245,6 +246,41 @@ export default function AdminEventQuestionsClient({
     }
   };
 
+  const rankingsHidden = currentEvent.questionsRankingsHidden ?? false;
+  const toggleRankings = async () => {
+    if (togglingRankings) return;
+    setTogglingRankings(true);
+    setState({ busy: false, error: null });
+    const nextHidden = !rankingsHidden;
+    try {
+      const res = await fetch("/api/event-questions/rankings-toggle", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          eventId: currentEvent.id,
+          rankingsHidden: nextHidden,
+        }),
+      });
+      const data = (await res.json()) as {
+        questions?: AdminEventQuestion[];
+        error?: string;
+      };
+      if (!res.ok) throw new Error(data.error || "Toggle failed");
+      updateEvent(currentEvent.id, { questionsRankingsHidden: nextHidden });
+      if (data.questions) refresh(data.questions);
+    } catch (err) {
+      setState({
+        busy: false,
+        error:
+          err instanceof Error
+            ? err.message
+            : `Failed to ${nextHidden ? "hide" : "show"} rankings`,
+      });
+    } finally {
+      setTogglingRankings(false);
+    }
+  };
+
   return (
     <div className="px-4 sm:px-6 py-8 max-w-7xl mx-auto w-full text-sm">
       <header className="mb-6 flex flex-wrap items-start justify-between gap-3">
@@ -257,23 +293,43 @@ export default function AdminEventQuestionsClient({
             will ask the top-voted approved questions during the Q&amp;A.
           </p>
         </div>
-        <button
-          onClick={toggleEnabled}
-          disabled={togglingEnable}
-          className={`shrink-0 inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors disabled:opacity-50 ${
-            enabled
-              ? "bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 border border-emerald-500/30"
-              : "bg-zinc-800 text-zinc-300 hover:bg-zinc-700 border border-zinc-700"
-          }`}
-        >
-          <span
-            className={`h-1.5 w-1.5 rounded-full ${
-              enabled ? "bg-emerald-400" : "bg-zinc-500"
+        <div className="flex shrink-0 flex-col items-stretch gap-2 sm:items-end">
+          <button
+            onClick={toggleEnabled}
+            disabled={togglingEnable}
+            className={`shrink-0 inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors disabled:opacity-50 ${
+              enabled
+                ? "bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 border border-emerald-500/30"
+                : "bg-zinc-800 text-zinc-300 hover:bg-zinc-700 border border-zinc-700"
             }`}
-          />
-          Questions {enabled ? "enabled" : "disabled"} · click to{" "}
-          {enabled ? "disable" : "enable"}
-        </button>
+          >
+            <span
+              className={`h-1.5 w-1.5 rounded-full ${
+                enabled ? "bg-emerald-400" : "bg-zinc-500"
+              }`}
+            />
+            Questions {enabled ? "enabled" : "disabled"} · click to{" "}
+            {enabled ? "disable" : "enable"}
+          </button>
+          <button
+            onClick={toggleRankings}
+            disabled={togglingRankings}
+            title="When rankings are hidden, the public sees approved questions in a random order with no rank numbers. You still see votes and ranking here."
+            className={`shrink-0 inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors disabled:opacity-50 ${
+              rankingsHidden
+                ? "bg-zinc-800 text-zinc-300 hover:bg-zinc-700 border border-zinc-700"
+                : "bg-sky-500/20 text-sky-400 hover:bg-sky-500/30 border border-sky-500/30"
+            }`}
+          >
+            <span
+              className={`h-1.5 w-1.5 rounded-full ${
+                rankingsHidden ? "bg-zinc-500" : "bg-sky-400"
+              }`}
+            />
+            Public rankings {rankingsHidden ? "hidden" : "shown"} · click to{" "}
+            {rankingsHidden ? "show" : "hide"}
+          </button>
+        </div>
       </header>
 
       <div className="flex flex-wrap gap-2 mb-5">
