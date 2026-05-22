@@ -225,7 +225,7 @@ export async function POST(req: Request) {
             eventVenueLink: event.venueLink || null,
             doorsOpenTime: event.doorsOpen?.toISOString() || null,
             ticketingOpen,
-          });
+          }, { skipSuppressionCheck: true });
         }
 
         if (kind === "ticketsAvailableNow") {
@@ -240,7 +240,7 @@ export async function POST(req: Request) {
             eventVenue: event.venue || null,
             eventVenueLink: event.venueLink || null,
             doorsOpenTime: event.doorsOpen?.toISOString() || null,
-          });
+          }, { skipSuppressionCheck: true });
         }
 
         if (kind === "claimTicket") {
@@ -253,7 +253,7 @@ export async function POST(req: Request) {
             imgVersion: event.imgVersion,
             eventTagline: event.tagline || null,
             doorsOpenTime: event.doorsOpen?.toISOString() || null,
-          });
+          }, { skipSuppressionCheck: true });
         }
 
         return sendTicketsAvailableInEmail({
@@ -269,7 +269,7 @@ export async function POST(req: Request) {
           eventVenueLink: event.venueLink || null,
           doorsOpenTime: event.doorsOpen?.toISOString() || null,
           ticketDropTime: event.ticketingDate?.toISOString() || event.releaseDate?.toISOString() || null,
-        });
+        }, { skipSuppressionCheck: true });
       }),
     );
 

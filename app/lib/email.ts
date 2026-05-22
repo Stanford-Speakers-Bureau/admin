@@ -225,8 +225,12 @@ async function getSignatureKey(
 async function sendRawEmailViaSES(
   rawMessage: string,
   recipientEmail: string,
+  skipSuppressionCheck = false,
 ): Promise<void> {
-  if (await isEmailSuppressed(recipientEmail)) {
+  // Mass-send routes partition recipients via `partitionBySuppression` up front,
+  // so they pass `skipSuppressionCheck` to avoid an extra per-recipient DB query
+  // (see email-suppression.ts). One-off sends keep the per-send safety net.
+  if (!skipSuppressionCheck && (await isEmailSuppressed(recipientEmail))) {
     console.log(
       `[email] Skipping send to suppressed address: ${recipientEmail}`,
     );
@@ -2565,6 +2569,7 @@ async function generateTicketsAvailableNowEmailHTML(
 
 export async function sendTicketsAvailableNowEmail(
   data: NotifyTicketsAvailableNowData,
+  opts?: { skipSuppressionCheck?: boolean },
 ): Promise<void> {
   if (process.env.DISABLE_EMAIL?.toLowerCase().trim() === "true") {
     console.log(`Email disabled. Skipping tickets-available-now to ${data.email}`);
@@ -2588,7 +2593,7 @@ export async function sendTicketsAvailableNowEmail(
     `--${altBoundary}--`,
     "",
   ];
-  await sendRawEmailViaSES(lines.join("\r\n"), data.email);
+  await sendRawEmailViaSES(lines.join("\r\n"), data.email, opts?.skipSuppressionCheck);
   console.log(`Tickets available now email sent to ${data.email}`);
 }
 
@@ -2721,6 +2726,7 @@ async function generateTicketsAvailableInEmailHTML(
 
 export async function sendTicketsAvailableInEmail(
   data: NotifyTicketsAvailableInData,
+  opts?: { skipSuppressionCheck?: boolean },
 ): Promise<void> {
   if (process.env.DISABLE_EMAIL?.toLowerCase().trim() === "true") {
     console.log(`Email disabled. Skipping tickets-available-in to ${data.email}`);
@@ -2744,7 +2750,7 @@ export async function sendTicketsAvailableInEmail(
     `--${altBoundary}--`,
     "",
   ];
-  await sendRawEmailViaSES(lines.join("\r\n"), data.email);
+  await sendRawEmailViaSES(lines.join("\r\n"), data.email, opts?.skipSuppressionCheck);
   console.log(`Tickets available in email sent to ${data.email}`);
 }
 
@@ -2856,6 +2862,7 @@ async function generateClaimTicketEmailHTML(
 
 export async function sendClaimTicketEmail(
   data: ClaimTicketEmailData,
+  opts?: { skipSuppressionCheck?: boolean },
 ): Promise<void> {
   if (process.env.DISABLE_EMAIL?.toLowerCase().trim() === "true") {
     console.log(`Email disabled. Skipping claim-ticket to ${data.email}`);
@@ -2879,7 +2886,7 @@ export async function sendClaimTicketEmail(
     `--${altBoundary}--`,
     "",
   ];
-  await sendRawEmailViaSES(lines.join("\r\n"), data.email);
+  await sendRawEmailViaSES(lines.join("\r\n"), data.email, opts?.skipSuppressionCheck);
   console.log(`Claim ticket email sent to ${data.email}`);
 }
 
@@ -3250,6 +3257,7 @@ async function generateEventAnnouncedEmailHTML(
 
 export async function sendEventAnnouncedEmail(
   data: EventAnnouncedEmailData,
+  opts?: { skipSuppressionCheck?: boolean },
 ): Promise<void> {
   if (process.env.DISABLE_EMAIL?.toLowerCase().trim() === "true") {
     console.log(`Email disabled. Skipping event-announced to ${data.email}`);
@@ -3273,7 +3281,7 @@ export async function sendEventAnnouncedEmail(
     `--${altBoundary}--`,
     "",
   ];
-  await sendRawEmailViaSES(lines.join("\r\n"), data.email);
+  await sendRawEmailViaSES(lines.join("\r\n"), data.email, opts?.skipSuppressionCheck);
   console.log(`Event announced email sent to ${data.email}`);
 }
 
