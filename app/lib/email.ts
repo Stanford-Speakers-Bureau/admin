@@ -2,6 +2,7 @@ import QRCode from "qrcode";
 import { db, eq, roles } from "@ssb/db";
 import { buildCancellationLink } from "./cancellation-links";
 import { IMPORTANT_NOTICE_ITEMS, PACIFIC_TIMEZONE } from "./constants";
+import { buildEventImageToken } from "./image-links";
 import {
   buildAnnounceUnsubscribeLink,
   buildEventUnsubscribeLink,
@@ -569,8 +570,11 @@ function buildHeroCard(data: {
   isExternal?: boolean;
 }): string {
   const baseUrl = getBaseUrl();
+  // Carry a signed token so the hero image still renders for unreleased
+  // ("mystery") events: the web image route 404s those unless the token
+  // verifies. See app/lib/image-links.ts.
   const imageUrl = data.eventId
-    ? `${baseUrl}/api/images/${data.eventId}?v=${data.imgVersion || 1}`
+    ? `${baseUrl}/api/images/${data.eventId}?v=${data.imgVersion || 1}&t=${buildEventImageToken(data.eventId)}`
     : null;
 
   const accentBorder = data.isVIP
