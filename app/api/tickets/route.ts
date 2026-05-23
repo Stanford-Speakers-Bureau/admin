@@ -903,6 +903,14 @@ export async function PATCH(req: Request) {
         );
       }
 
+      // Revert the wallet pass: un-void it and flip the status back to Active.
+      await pushWalletUpdate([id], {
+        actor: auth.email ?? undefined,
+        reason: "ticket.unscan",
+        eventId: ticket?.eventId,
+        eventName: ticket?.event?.name ?? null,
+      });
+
       await logAuditEvent({
         action: "ticket.unscan",
         actor: auth.email!,
@@ -1085,6 +1093,14 @@ export async function PATCH(req: Request) {
           { status: 500 },
         );
       }
+
+      // Reflect the checked-in/active flip on any installed wallet passes.
+      await pushWalletUpdate([id], {
+        actor: auth.email ?? undefined,
+        reason: "ticket.update_scanned",
+        eventId: ticket?.eventId,
+        eventName: ticket?.event?.name ?? null,
+      });
 
       return NextResponse.json({
         success: true,

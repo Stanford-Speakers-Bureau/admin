@@ -62,6 +62,8 @@ export type Event = {
   external_ticketing_enabled?: boolean;
   external_ticketing_url?: string | null;
   banner_eligible?: boolean;
+  identity_verification_enabled?: boolean;
+  allow_admitting_standby?: boolean;
   tickets_sold?: number;
   waitlist_count?: number;
   standby_count?: number;

@@ -50,6 +50,8 @@ export type Event = {
   external_ticketing_enabled?: boolean;
   external_ticketing_url?: string | null;
   banner_eligible?: boolean;
+  identity_verification_enabled?: boolean;
+  allow_admitting_standby?: boolean;
 };
 
 /**
@@ -91,6 +93,8 @@ export function serializeEvent(e: DBEvent): Event {
     external_ticketing_enabled: e.externalTicketingEnabled ?? false,
     external_ticketing_url: e.externalTicketingUrl ?? null,
     banner_eligible: e.bannerEligible ?? true,
+    identity_verification_enabled: e.identityVerificationEnabled ?? true,
+    allow_admitting_standby: e.allowAdmittingStandby ?? false,
   };
 }
 

@@ -69,6 +69,8 @@ type FormData = {
   external_ticketing_enabled: boolean;
   external_ticketing_url: string;
   banner_eligible: boolean;
+  identity_verification_enabled: boolean;
+  allow_admitting_standby: boolean;
 };
 
 const emptyForm: FormData = {
@@ -98,6 +100,8 @@ const emptyForm: FormData = {
   external_ticketing_enabled: false,
   external_ticketing_url: "",
   banner_eligible: true,
+  identity_verification_enabled: true,
+  allow_admitting_standby: false,
 };
 
 const sortEvents = sortByStartDate<Event>;
@@ -162,6 +166,8 @@ function eventToFormData(event: Event): FormData {
     external_ticketing_enabled: event.external_ticketing_enabled || false,
     external_ticketing_url: event.external_ticketing_url || "",
     banner_eligible: event.banner_eligible ?? true,
+    identity_verification_enabled: event.identity_verification_enabled ?? true,
+    allow_admitting_standby: event.allow_admitting_standby ?? false,
   };
 }
 
@@ -492,6 +498,14 @@ export default function EditEventClient({ allEvents }: EditEventClientProps) {
         formData.referrals_enabled.toString(),
       );
       submitData.append("standby_enabled", formData.standby_enabled.toString());
+      submitData.append(
+        "identity_verification_enabled",
+        formData.identity_verification_enabled.toString(),
+      );
+      submitData.append(
+        "allow_admitting_standby",
+        formData.allow_admitting_standby.toString(),
+      );
       submitData.append("livestream", formData.livestream);
       submitData.append("latitude", formData.latitude);
       submitData.append("longitude", formData.longitude);
@@ -1216,6 +1230,65 @@ export default function EditEventClient({ allEvents }: EditEventClientProps) {
                         Enable Referrals
                       </span>
                     </label>
+                  </div>
+
+                  <div className="rounded-xl border border-zinc-800 bg-zinc-950/40 p-4">
+                    <div className="mb-3">
+                      <label className="block text-sm font-medium text-zinc-300">
+                        Door Scanning
+                      </label>
+                      <p className="mt-1 text-sm text-zinc-500">
+                        Controls how the check-in scanner behaves at the door.
+                      </p>
+                    </div>
+                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                      <label className="flex items-start gap-3 rounded-xl border border-zinc-800 bg-zinc-900/70 px-4 py-3 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={formData.identity_verification_enabled}
+                          onChange={(e) =>
+                            setFormData({
+                              ...formData,
+                              identity_verification_enabled: e.target.checked,
+                            })
+                          }
+                          className="mt-0.5 h-5 w-5 rounded border-zinc-600 bg-zinc-800 text-emerald-500 focus:ring-emerald-500/50"
+                        />
+                        <span>
+                          <span className="block text-sm font-medium text-zinc-300">
+                            Require Identity Verification
+                          </span>
+                          <span className="mt-0.5 block text-xs text-zinc-500">
+                            Scanners get a prompt to check the guest&apos;s photo
+                            ID before admitting. Turn off to admit instantly on
+                            scan.
+                          </span>
+                        </span>
+                      </label>
+                      <label className="flex items-start gap-3 rounded-xl border border-zinc-800 bg-zinc-900/70 px-4 py-3 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={formData.allow_admitting_standby}
+                          onChange={(e) =>
+                            setFormData({
+                              ...formData,
+                              allow_admitting_standby: e.target.checked,
+                            })
+                          }
+                          className="mt-0.5 h-5 w-5 rounded border-zinc-600 bg-zinc-800 text-emerald-500 focus:ring-emerald-500/50"
+                        />
+                        <span>
+                          <span className="block text-sm font-medium text-zinc-300">
+                            Allow Admitting Standby
+                          </span>
+                          <span className="mt-0.5 block text-xs text-zinc-500">
+                            When off, scanners hold standby guests (&ldquo;not
+                            admitted yet&rdquo;). Turn on once there is space to
+                            start letting them in.
+                          </span>
+                        </span>
+                      </label>
+                    </div>
                   </div>
                 </div>
               )}

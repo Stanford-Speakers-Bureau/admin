@@ -187,6 +187,12 @@ export async function POST(req: Request) {
     const hide_ticketing_date = formData.get("hide_ticketing_date") === "true";
     const referrals_enabled = formData.get("referrals_enabled") === "true";
     const standby_enabled = formData.get("standby_enabled") === "true";
+    // identity verification defaults to true: only an explicit "false" disables
+    // it, so older form payloads keep the verify-by-default behavior.
+    const identity_verification_enabled =
+      formData.get("identity_verification_enabled") !== "false";
+    const allow_admitting_standby =
+      formData.get("allow_admitting_standby") === "true";
     const livestream = formData.get("livestream") as string;
     const latitude = formData.get("latitude") as string;
     const longitude = formData.get("longitude") as string;
@@ -436,6 +442,8 @@ export async function POST(req: Request) {
       hideTicketingDate: hide_ticketing_date,
       referralsEnabled: referrals_enabled,
       standbyEnabled: standby_enabled,
+      identityVerificationEnabled: identity_verification_enabled,
+      allowAdmittingStandby: allow_admitting_standby,
       livestream: livestream || null,
       latitude: latitude || "0",
       longitude: longitude || "0",

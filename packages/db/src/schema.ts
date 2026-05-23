@@ -74,6 +74,12 @@ export const events = pgTable(
     questionsRankingsHidden: boolean("questions_rankings_hidden")
       .notNull()
       .default(false),
+    identityVerificationEnabled: boolean("identity_verification_enabled")
+      .notNull()
+      .default(true),
+    allowAdmittingStandby: boolean("allow_admitting_standby")
+      .notNull()
+      .default(false),
   },
   (t) => [
     index("events_route_idx").on(t.route),
