@@ -31,21 +31,25 @@ export default function ReferralLeaderboardClient() {
   };
 
   useEffect(() => {
-    async function fetchLeaderboard() {
-      if (!selectedEventId) {
-        setLeaderboard([]);
-        setReferralsEnabled(false);
-        return;
-      }
+    if (!selectedEventId) {
+      setLeaderboard([]);
+      setReferralsEnabled(false);
+      return;
+    }
 
+    const eventId = selectedEventId;
+    const controller = new AbortController();
+    const { signal } = controller;
+
+    async function fetchLeaderboard() {
       setIsLoading(true);
       setError(null);
 
       try {
         const params = new URLSearchParams();
-        params.append("eventId", selectedEventId);
+        params.append("eventId", eventId);
 
-        const response = await fetch(`/api/referrals?${params}`);
+        const response = await fetch(`/api/referrals?${params}`, { signal });
 
         if (!response.ok) {
           let errorMessage = "Failed to fetch leaderboard";
@@ -64,19 +68,28 @@ export default function ReferralLeaderboardClient() {
         }
 
         const data = await response.json();
+        if (signal.aborted) return;
         setLeaderboard(data.leaderboard || []);
         setReferralsEnabled(data.event?.referrals_enabled ?? false);
       } catch (err) {
+        if (
+          signal.aborted ||
+          (err as { name?: string } | null)?.name === "AbortError"
+        ) {
+          return;
+        }
         console.error("Error fetching leaderboard:", err);
         setError(
           err instanceof Error ? err.message : "Failed to load leaderboard",
         );
       } finally {
-        setIsLoading(false);
+        if (!signal.aborted) setIsLoading(false);
       }
     }
 
     fetchLeaderboard();
+
+    return () => controller.abort();
   }, [selectedEventId, refreshKey]);
 
   async function handleToggleReferrals() {

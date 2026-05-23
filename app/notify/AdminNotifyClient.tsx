@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import BulkSendProgress from "@/app/components/BulkSendProgress";
 import { useConfirmationDialog } from "@/app/components/ConfirmationDialog";
 import { useEventContext } from "@/app/EventContext";
+import { useEventScopedFetch } from "@/app/lib/useEventScopedFetch";
 import {
   BulkSendProgressState,
   getSkipBreakdownSegments,
@@ -96,8 +97,11 @@ function getVariantLabel(
   return "Tickets available now emails";
 }
 
-async function fetchNotificationsForEvent(eventId: string): Promise<NotifyResponse> {
-  const response = await fetch(`/api/notify?eventId=${eventId}`);
+async function fetchNotificationsForEvent(
+  eventId: string,
+  signal: AbortSignal,
+): Promise<NotifyResponse> {
+  const response = await fetch(`/api/notify?eventId=${eventId}`, { signal });
 
   if (!response.ok) {
     let errorMessage = "Failed to fetch notifications";
@@ -113,46 +117,16 @@ async function fetchNotificationsForEvent(eventId: string): Promise<NotifyRespon
   return response.json() as Promise<NotifyResponse>;
 }
 
-async function loadNotificationsForSelection(
-  eventId: string | null,
-  options: {
-    setNotifications: (notifications: Notification[]) => void;
-    setEventData: (eventData: EventData | null) => void;
-    setIsLoading: (isLoading: boolean) => void;
-    setError: (error: string | null) => void;
-  },
-) {
-  const { setNotifications, setEventData, setIsLoading, setError } = options;
-
-  if (!eventId) {
-    setNotifications([]);
-    setEventData(null);
-    return;
-  }
-
-  setIsLoading(true);
-  setError(null);
-
-  try {
-    const data = await fetchNotificationsForEvent(eventId);
-    setNotifications(data.notifications || []);
-    setEventData(data.eventData || null);
-  } catch (err) {
-    console.error("Error fetching notifications:", err);
-    setError(err instanceof Error ? err.message : "Failed to load notifications");
-  } finally {
-    setIsLoading(false);
-  }
-}
-
 export default function AdminNotifyClient() {
   const { events, selectedEventId } = useEventContext();
   const { confirm: confirmAction, confirmationDialog } =
     useConfirmationDialog();
-  const [notifications, setNotifications] = useState<Notification[]>([]);
-  const [eventData, setEventData] = useState<EventData | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { data, isLoading, error, refetch } =
+    useEventScopedFetch<NotifyResponse>(selectedEventId, (id, signal) =>
+      fetchNotificationsForEvent(id, signal),
+    );
+  const notifications = data?.notifications ?? [];
+  const eventData = data?.eventData ?? null;
   const [searchTerm, setSearchTerm] = useState("");
   const [affiliationFilter, setAffiliationFilter] = useState<string | null>(null);
 
@@ -165,24 +139,6 @@ export default function AdminNotifyClient() {
   const [sendState, setSendState] = useState<BulkSendProgressState | null>(null);
   const [notifySuccess, setNotifySuccess] = useState<string | null>(null);
   const [notifyError, setNotifyError] = useState<string | null>(null);
-
-  async function fetchNotifications() {
-    await loadNotificationsForSelection(selectedEventId, {
-      setNotifications,
-      setEventData,
-      setIsLoading,
-      setError,
-    });
-  }
-
-  useEffect(() => {
-    void loadNotificationsForSelection(selectedEventId, {
-      setNotifications,
-      setEventData,
-      setIsLoading,
-      setError,
-    });
-  }, [selectedEventId]);
 
   useEffect(() => {
     setSendState(null);
@@ -500,7 +456,7 @@ export default function AdminNotifyClient() {
             </>
           )}
           <button
-            onClick={fetchNotifications}
+            onClick={refetch}
             disabled={isLoading}
             className="flex items-center gap-2 px-5 py-2.5 bg-zinc-800 text-white rounded-xl font-medium hover:bg-zinc-700 transition-colors disabled:opacity-50"
           >

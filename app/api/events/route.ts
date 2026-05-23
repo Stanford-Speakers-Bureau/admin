@@ -592,7 +592,12 @@ export async function POST(req: Request) {
             where: eq(ticketsTable.eventId, savedEvent.id),
             columns: { id: true },
           });
-          await pushWalletUpdate(eventTickets.map((t) => t.id));
+          await pushWalletUpdate(eventTickets.map((t) => t.id), {
+            actor: auth.email ?? undefined,
+            reason: "event.edit",
+            eventId: savedEvent.id,
+            eventName: savedEvent.name ?? null,
+          });
         } catch (pushError) {
           console.error(
             "Wallet event-change push failed (non-fatal):",

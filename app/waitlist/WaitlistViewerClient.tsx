@@ -1,9 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import { ConfirmationDialog } from "@/app/components/ConfirmationDialog";
 import { PACIFIC_TIMEZONE } from "@/app/lib/constants";
 import { useEventContext } from "@/app/EventContext";
+import { useEventScopedFetch } from "@/app/lib/useEventScopedFetch";
 
 type WaitlistEntry = {
   id: string;
@@ -37,6 +38,12 @@ type StandbyTicketsResponse = {
   total?: number;
 };
 
+type WaitlistData = {
+  waitlist: WaitlistEntry[];
+  standbyTickets: StandbyTicket[];
+  ticketsStillAvailable: boolean;
+};
+
 function formatDisplayDate(dateString: string | null): string {
   if (!dateString) return "N/A";
   const date = new Date(dateString);
@@ -55,9 +62,6 @@ function formatDisplayDate(dateString: string | null): string {
 
 export default function WaitlistViewerClient() {
   const { events, selectedEventId, updateEvent } = useEventContext();
-  const [waitlist, setWaitlist] = useState<WaitlistEntry[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [showSendDialog, setShowSendDialog] = useState(false);
   const [showStandbyConfirm, setShowStandbyConfirm] = useState(false);
   const [isSendingEmails, setIsSendingEmails] = useState(false);
@@ -66,28 +70,17 @@ export default function WaitlistViewerClient() {
   const [expectedCapacity, setExpectedCapacity] = useState("100-200");
   const [notifySuccess, setNotifySuccess] = useState<string | null>(null);
   const [notifyError, setNotifyError] = useState<string | null>(null);
-  const [standbyTickets, setStandbyTickets] = useState<StandbyTicket[]>([]);
-  const [ticketsStillAvailable, setTicketsStillAvailable] = useState(false);
 
   const selectedEvent = events.find((e) => e.id === selectedEventId);
   const isStandbyMode = selectedEvent?.standbyEnabled ?? false;
 
-  const fetchWaitlist = useCallback(async () => {
-    if (!selectedEventId) {
-      setWaitlist([]);
-      setStandbyTickets([]);
-      setTicketsStillAvailable(false);
-      return;
-    }
-
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      // Fetch waitlist entries, standby tickets, and ticket counts in parallel
+  const { data, isLoading, error, refetch } = useEventScopedFetch<WaitlistData>(
+    selectedEventId,
+    async (id, signal) => {
+      // Fetch waitlist entries and standby tickets in parallel.
       const [waitlistRes, standbyRes] = await Promise.all([
-        fetch(`/api/waitlist?eventId=${selectedEventId}`),
-        fetch(`/api/tickets?eventId=${selectedEventId}&type=STANDBY&limit=1000`),
+        fetch(`/api/waitlist?eventId=${id}`, { signal }),
+        fetch(`/api/tickets?eventId=${id}&type=STANDBY&limit=1000`, { signal }),
       ]);
 
       if (!waitlistRes.ok) {
@@ -107,45 +100,37 @@ export default function WaitlistViewerClient() {
       }
 
       const waitlistData = (await waitlistRes.json()) as WaitlistResponse;
-      setWaitlist(waitlistData.waitlist || []);
+      const standbyData = standbyRes.ok
+        ? ((await standbyRes.json()) as StandbyTicketsResponse)
+        : null;
 
-      // Check ticket availability using event capacity from waitlist response
+      // total from the standby response is the unfiltered ticket count.
       const eventData = waitlistData.event;
-      if (eventData) {
-        const maxPublic = Math.max(0, (eventData.capacity || 0) - (eventData.reserved || 0));
-        // We need total ticket count — use standby response which has total
-        if (standbyRes.ok) {
-          const standbyData = (await standbyRes.json()) as StandbyTicketsResponse;
-          const standbyList = standbyData.tickets || [];
-          setStandbyTickets(standbyList);
-
-          // total from the standby response is the total ticket count for the event (unfiltered)
-          const totalTickets = standbyData.total ?? 0;
-          setTicketsStillAvailable(
-            !eventData.standbyMode && totalTickets < maxPublic,
-          );
-        }
-      } else {
-        if (standbyRes.ok) {
-          const standbyData = (await standbyRes.json()) as StandbyTicketsResponse;
-          setStandbyTickets(standbyData.tickets || []);
-        }
-        setTicketsStillAvailable(false);
+      let ticketsStillAvailable = false;
+      if (eventData && standbyData) {
+        const maxPublic = Math.max(
+          0,
+          (eventData.capacity || 0) - (eventData.reserved || 0),
+        );
+        const totalTickets = standbyData.total ?? 0;
+        ticketsStillAvailable =
+          !eventData.standbyMode && totalTickets < maxPublic;
       }
-    } catch (err) {
-      console.error("Error fetching waitlist:", err);
-      setError(err instanceof Error ? err.message : "Failed to load waitlist");
-    } finally {
-      setIsLoading(false);
-    }
-  }, [selectedEventId]);
 
-  useEffect(() => {
-    fetchWaitlist();
-  }, [fetchWaitlist]);
+      return {
+        waitlist: waitlistData.waitlist || [],
+        standbyTickets: standbyData?.tickets || [],
+        ticketsStillAvailable,
+      };
+    },
+  );
+
+  const waitlist = data?.waitlist ?? [];
+  const standbyTickets = data?.standbyTickets ?? [];
+  const ticketsStillAvailable = data?.ticketsStillAvailable ?? false;
 
   function handleRefresh() {
-    fetchWaitlist();
+    refetch();
   }
 
   async function handleToggleStandby(enable: boolean) {
@@ -223,7 +208,7 @@ export default function WaitlistViewerClient() {
         `Successfully sent ${data.emailsSent} email${data.emailsSent !== 1 ? "s" : ""} to waitlist entries${data.errors > 0 ? ` (${data.errors} failed)` : ""}`,
       );
       setShowSendDialog(false);
-      fetchWaitlist();
+      refetch();
     } catch (err) {
       console.error("Error sending standby emails:", err);
       setNotifyError(

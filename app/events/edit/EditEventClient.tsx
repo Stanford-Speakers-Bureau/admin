@@ -293,11 +293,24 @@ export default function EditEventClient({ allEvents }: EditEventClientProps) {
       return;
     }
 
+    // The URL is the source of truth here (EventSync reconciles context to it),
+    // so only canonicalize when the URL has no usable event id — the bare
+    // /events/edit route, or an id that no longer exists. When the URL already
+    // points at a valid event, leave it alone; otherwise this redirect would
+    // fight EventSync and ping-pong the selection.
+    const urlId = pathname.startsWith("/events/edit/")
+      ? pathname.slice("/events/edit/".length).split("/")[0]
+      : null;
+    const urlHasValidEvent = !!urlId && events.some((e) => e.id === urlId);
+    if (urlHasValidEvent) {
+      return;
+    }
+
     const canonicalPath = `/events/edit/${currentEvent.id}`;
     if (pathname !== canonicalPath) {
       router.replace(canonicalPath);
     }
-  }, [currentEvent, isCreating, pathname, router]);
+  }, [currentEvent, events, isCreating, pathname, router]);
 
   // Sync form when selected event changes
   useEffect(() => {

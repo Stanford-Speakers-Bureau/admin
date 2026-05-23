@@ -46,7 +46,8 @@ type AuditAction =
   | "mailing_list.unsubscribe"
   | "mailing_list.resubscribe"
   | "mailing_list.admin_unsubscribe"
-  | "mailing_list.admin_resubscribe";
+  | "mailing_list.admin_resubscribe"
+  | "wallet.push";
 
 type AuditLogParams = {
   action: AuditAction;

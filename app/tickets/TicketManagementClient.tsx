@@ -169,6 +169,9 @@ export default function TicketManagementClient({
   const [emailLookups, setEmailLookups] = useState<Record<number, EmailLookupResult>>({});
   const lookupTimers = useRef<Record<number, ReturnType<typeof setTimeout>>>({});
   const lookupAbortControllers = useRef<Record<number, AbortController>>({});
+  // Tracks the in-flight main-list request so a newer fetch (e.g. after an
+  // event switch) supersedes and discards the stale one — last call wins.
+  const fetchAbortRef = useRef<AbortController | null>(null);
   const [offset, setOffset] = useState(0);
   const limit = 50;
   const [resendingEmailId, setResendingEmailId] = useState<string | null>(null);
@@ -341,8 +344,13 @@ export default function TicketManagementClient({
   }
 
   async function fetchTickets() {
+    // Supersede any in-flight request so a newer fetch (event switch, filter
+    // change, manual refresh) always wins and stale responses are discarded.
+    fetchAbortRef.current?.abort();
+
     // Don't fetch if no event is selected
     if (!selectedEventId) {
+      fetchAbortRef.current = null;
       setTickets([]);
       setTotal(0);
       setScannedCount(0);
@@ -356,6 +364,10 @@ export default function TicketManagementClient({
       setAffiliationCounts(createEmptyAffiliationCounts());
       return;
     }
+
+    const controller = new AbortController();
+    fetchAbortRef.current = controller;
+    const { signal } = controller;
 
     setIsLoading(true);
     setError(null);
@@ -388,7 +400,7 @@ export default function TicketManagementClient({
         params.append("affiliation", affiliationFilter);
       }
 
-      const response = await fetch(`/api/tickets?${params}`);
+      const response = await fetch(`/api/tickets?${params}`, { signal });
 
       if (!response.ok) {
         const errorData = await response.json();
@@ -396,6 +408,7 @@ export default function TicketManagementClient({
       }
 
       const data = await response.json();
+      if (signal.aborted) return;
       setTickets(data.tickets || []);
       setTotal(data.total || 0);
       setScannedCount(data.scannedCount || 0);
@@ -408,10 +421,16 @@ export default function TicketManagementClient({
       setStandbyCount(data.standbyCount || 0);
       setAffiliationCounts(data.affiliationCounts || createEmptyAffiliationCounts());
     } catch (err) {
+      if (
+        signal.aborted ||
+        (err as { name?: string } | null)?.name === "AbortError"
+      ) {
+        return;
+      }
       console.error("Error fetching tickets:", err);
       setError(err instanceof Error ? err.message : "Failed to load tickets");
     } finally {
-      setIsLoading(false);
+      if (!signal.aborted) setIsLoading(false);
     }
   }
 
@@ -509,6 +528,11 @@ export default function TicketManagementClient({
   useEffect(() => {
     fetchTicketsForEffect();
   }, [selectedEventId, offset, ticketTypeFilter, scannedFilter, feeWaiverFilter, affiliationFilter]);
+
+  // Abort any in-flight tickets request on unmount.
+  useEffect(() => {
+    return () => fetchAbortRef.current?.abort();
+  }, []);
 
   // Debounced search
   useEffect(() => {

@@ -84,6 +84,9 @@ const ACTION_LABELS: Record<string, string> = {
   "waitlist.pull": "Pulled From Waitlist",
   "waitlist.issue_standby": "Issued Standby Tickets",
   "referral.toggle": "Toggled Referrals",
+  "wallet.install": "Installed Wallet Pass",
+  "wallet.uninstall": "Removed Wallet Pass",
+  "wallet.push": "Pushed Wallet Update",
 };
 
 const ACTION_OPTIONS = [
@@ -98,6 +101,7 @@ const ACTION_OPTIONS = [
   { group: "Waitlist", actions: ["waitlist.join", "waitlist.leave", "waitlist.pull", "waitlist.issue_standby"] },
   { group: "Referrals", actions: ["referral.toggle"] },
   { group: "Notify", actions: ["notify.signup"] },
+  { group: "Wallet", actions: ["wallet.install", "wallet.uninstall", "wallet.push"] },
 ];
 
 const ACTION_FILTER_OPTIONS = ACTION_OPTIONS.flatMap((group) =>
@@ -120,6 +124,7 @@ const DEFAULT_ACTION_VALUES = ACTION_VALUES.filter(
 const SOURCE_FILTER_OPTIONS = [
   { value: "admin", label: "Admin" },
   { value: "web", label: "Web" },
+  { value: "wallet", label: "Wallet" },
 ] as const;
 const SOURCE_VALUES = SOURCE_FILTER_OPTIONS.map((option) => option.value);
 
@@ -142,6 +147,7 @@ function getActionColor(action: string) {
   if (action.startsWith("waitlist.")) return "bg-cyan-500/15 text-cyan-400 border-cyan-500/30";
   if (action.startsWith("referral.")) return "bg-indigo-500/15 text-indigo-400 border-indigo-500/30";
   if (action.startsWith("notify.")) return "bg-purple-500/15 text-purple-400 border-purple-500/30";
+  if (action.startsWith("wallet.")) return "bg-sky-500/15 text-sky-400 border-sky-500/30";
   return "bg-zinc-500/15 text-zinc-400 border-zinc-500/30";
 }
 

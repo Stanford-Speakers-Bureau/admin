@@ -178,24 +178,43 @@ function SummaryContent({ eventId }: { eventId: string }) {
   const checkinDebounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   useEffect(() => {
+    if (!eventId) return;
+    let cancelled = false;
+    const controller = new AbortController();
+
     async function fetchData() {
       try {
         setIsLoading(true);
         setError(null);
-        const res = await fetch(`/api/events/${eventId}/summary`);
+        const res = await fetch(`/api/events/${eventId}/summary`, {
+          signal: controller.signal,
+        });
         if (!res.ok) {
           const errData = await res.json();
           throw new Error(errData.error || "Failed to fetch summary data");
         }
-        setData(await res.json());
+        const json = await res.json();
+        if (!cancelled) setData(json);
       } catch (err) {
+        if (
+          cancelled ||
+          (err as { name?: string } | null)?.name === "AbortError"
+        ) {
+          return;
+        }
         console.error("Error fetching summary:", err);
         setError(err instanceof Error ? err.message : "Failed to load data");
       } finally {
-        setIsLoading(false);
+        if (!cancelled) setIsLoading(false);
       }
     }
-    if (eventId) fetchData();
+
+    fetchData();
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
   }, [eventId]);
 
   useEffect(() => {

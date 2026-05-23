@@ -186,6 +186,9 @@ export default function NotifyAnalyticsClient() {
       setData(null);
       return;
     }
+    let cancelled = false;
+    const controller = new AbortController();
+
     async function fetchData() {
       setIsLoading(true);
       setError(null);
@@ -193,19 +196,33 @@ export default function NotifyAnalyticsClient() {
       try {
         const res = await fetch(
           `/api/notify/analytics?eventId=${selectedEventId}`,
+          { signal: controller.signal },
         );
         if (!res.ok) {
           const err = await res.json();
           throw new Error(err.error || "Failed to fetch analytics");
         }
-        setData(await res.json());
+        const json = await res.json();
+        if (!cancelled) setData(json);
       } catch (err) {
+        if (
+          cancelled ||
+          (err as { name?: string } | null)?.name === "AbortError"
+        ) {
+          return;
+        }
         setError(err instanceof Error ? err.message : "Failed to load data");
       } finally {
-        setIsLoading(false);
+        if (!cancelled) setIsLoading(false);
       }
     }
+
     fetchData();
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
   }, [selectedEventId]);
 
   // ── Pre-parse timestamps, filtered to release date ──

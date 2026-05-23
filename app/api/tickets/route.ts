@@ -705,7 +705,11 @@ export async function DELETE(req: Request) {
             eventId: ticketToDelete.eventId,
           })
           .onConflictDoNothing();
-        await pushWalletUpdate([id]);
+        await pushWalletUpdate([id], {
+          actor: auth.email ?? undefined,
+          reason: "ticket.cancel",
+          eventId: ticketToDelete.eventId,
+        });
       } catch (voidError) {
         console.error("Wallet voided-pass push failed (non-fatal):", voidError);
       }
@@ -855,7 +859,12 @@ export async function PATCH(req: Request) {
       });
 
       // Push the new attendee name to any installed wallet passes.
-      await pushWalletUpdate([id]);
+      await pushWalletUpdate([id], {
+        actor: auth.email ?? undefined,
+        reason: "ticket.update_name",
+        eventId: ticket?.eventId,
+        eventName: ticket?.event?.name ?? null,
+      });
 
       await logAuditEvent({
         action: "ticket.update_name",
@@ -1018,7 +1027,12 @@ export async function PATCH(req: Request) {
 
       // Push the new ticket type to any installed wallet passes.
       if (typeChanged) {
-        await pushWalletUpdate([id]);
+        await pushWalletUpdate([id], {
+          actor: auth.email ?? undefined,
+          reason: "ticket.update_type",
+          eventId: ticket?.eventId,
+          eventName: ticket?.event?.name ?? null,
+        });
       }
 
       await logAuditEvent({
@@ -1746,7 +1760,15 @@ export async function POST(req: Request) {
       }
 
       if (typeChanged || nameChanged) {
-        await pushWalletUpdate([existingTicket.id]);
+        await pushWalletUpdate([existingTicket.id], {
+          actor: auth.email ?? undefined,
+          reason: nameChanged && typeChanged
+            ? "ticket.update_existing"
+            : nameChanged
+              ? "ticket.update_name"
+              : "ticket.update_type",
+          eventId,
+        });
       }
 
       await logAuditEvent({

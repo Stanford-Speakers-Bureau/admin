@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import BulkSendProgress from "@/app/components/BulkSendProgress";
 import { useConfirmationDialog } from "@/app/components/ConfirmationDialog";
 import { useEventContext } from "@/app/EventContext";
+import { useEventScopedFetch } from "@/app/lib/useEventScopedFetch";
 import {
   BulkSendProgressState,
   runChunkedSend,
@@ -377,7 +378,18 @@ export default function AudienceClient() {
   const { confirm: confirmAction, confirmationDialog } =
     useConfirmationDialog();
   const filterDropdownRef = useRef<HTMLDivElement | null>(null);
-  const [data, setData] = useState<AudienceResponse | null>(null);
+  const {
+    data,
+    isLoading,
+    error,
+  } = useEventScopedFetch<AudienceResponse>(selectedEventId, async (id, signal) => {
+    const response = await fetch(`/api/events/${id}/audience`, { signal });
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error || "Failed to fetch audience data");
+    }
+    return (await response.json()) as AudienceResponse;
+  });
   const [detailsByEmail, setDetailsByEmail] = useState<
     Record<string, AudienceUserDetails>
   >({});
@@ -385,8 +397,6 @@ export default function AudienceClient() {
   const [loadingDetailEmail, setLoadingDetailEmail] = useState<string | null>(
     null,
   );
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [selectedStatuses, setSelectedStatuses] = useState<EventStatusOption[]>(
     EVENT_STATUS_VALUES,
@@ -413,42 +423,11 @@ export default function AudienceClient() {
     setSelectedActivity(ACTIVITY_VALUES);
   }
 
+  // Reset per-user detail lookups whenever the selected event changes.
   useEffect(() => {
-    async function fetchAudienceData() {
-      if (!selectedEventId) {
-        setData(null);
-        setDetailsByEmail({});
-        setDetailErrors({});
-        setIsLoading(false);
-        return;
-      }
-
-      try {
-        setIsLoading(true);
-        setError(null);
-        setDetailsByEmail({});
-        setDetailErrors({});
-        setExpandedEmail(null);
-
-        const response = await fetch(`/api/events/${selectedEventId}/audience`);
-
-        if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.error || "Failed to fetch audience data");
-        }
-
-        setData(await response.json());
-      } catch (err) {
-        console.error("Error fetching audience data:", err);
-        setError(
-          err instanceof Error ? err.message : "Failed to load audience data",
-        );
-      } finally {
-        setIsLoading(false);
-      }
-    }
-
-    fetchAudienceData();
+    setDetailsByEmail({});
+    setDetailErrors({});
+    setExpandedEmail(null);
   }, [selectedEventId]);
 
   async function loadUserDetails(email: string) {

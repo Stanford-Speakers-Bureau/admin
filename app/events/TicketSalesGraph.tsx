@@ -186,24 +186,43 @@ export default function TicketSalesGraph({
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   useEffect(() => {
+    if (!eventId) return;
+    let cancelled = false;
+    const controller = new AbortController();
+
     async function fetchSalesData() {
       try {
         setIsLoading(true);
         setError(null);
-        const response = await fetch(`/api/events/${eventId}/sales`);
+        const response = await fetch(`/api/events/${eventId}/sales`, {
+          signal: controller.signal,
+        });
         if (!response.ok) {
           const errorData = await response.json();
           throw new Error(errorData.error || "Failed to fetch sales data");
         }
-        setSalesData(await response.json());
+        const json = await response.json();
+        if (!cancelled) setSalesData(json);
       } catch (err) {
+        if (
+          cancelled ||
+          (err as { name?: string } | null)?.name === "AbortError"
+        ) {
+          return;
+        }
         console.error("Error fetching sales data:", err);
         setError(err instanceof Error ? err.message : "Failed to load data");
       } finally {
-        setIsLoading(false);
+        if (!cancelled) setIsLoading(false);
       }
     }
-    if (eventId) fetchSalesData();
+
+    fetchSalesData();
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
   }, [eventId]);
 
   // Pre-parse timestamps to epoch ms once

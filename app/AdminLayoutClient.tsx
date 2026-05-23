@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useTransition } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEventContext } from "./EventContext";
@@ -46,6 +47,14 @@ export default function AdminLayoutClient({
   const pathname = usePathname();
   const router = useRouter();
   const { events, selectedEventId, setSelectedEventId } = useEventContext();
+  const [isPending, startTransition] = useTransition();
+  // Optimistic selection so the dropdown reflects the user's pick instantly
+  // while the route transition is in flight (the URL is the source of truth).
+  // We only honor it while pending; once navigation settles, the committed
+  // route (synced into context by EventSync) drives the value again.
+  const [pendingEventId, setPendingEventId] = useState<string | null>(null);
+  const displayedEventId =
+    isPending && pendingEventId ? pendingEventId : selectedEventId;
 
   const topItems = navItems.filter((i) => i.group === "top");
   const eventItems = navItems.filter((i) => i.group === "events");
@@ -53,16 +62,26 @@ export default function AdminLayoutClient({
   const adminItems = navItems.filter((i) => i.group === "admin");
 
   function handleEventChange(newEventId: string) {
-    setSelectedEventId(newEventId);
-    if (!newEventId) return;
+    // On an event-scoped page the URL is the single source of truth: navigate
+    // only and let EventSync write context when the route commits. Writing
+    // context here as well would create a second writer that races navigation.
+    const currentSection = newEventId
+      ? EVENT_SCOPED_PATHS.find(
+          (p) => pathname === p || pathname.startsWith(p + "/"),
+        )
+      : undefined;
 
-    // Find which event-scoped section we're currently in
-    const currentSection = EVENT_SCOPED_PATHS.find(
-      (p) => pathname === p || pathname.startsWith(p + "/"),
-    );
-    if (currentSection) {
-      router.push(`${currentSection}/${newEventId}`);
+    if (currentSection && newEventId) {
+      setPendingEventId(newEventId);
+      startTransition(() => {
+        router.push(`${currentSection}/${newEventId}`);
+      });
+      return;
     }
+
+    // Non-scoped page (or cleared selection): just update the remembered
+    // selection used to build event-scoped nav links.
+    setSelectedEventId(newEventId);
   }
 
   function navHref(item: { href: string }): string {
@@ -246,7 +265,7 @@ export default function AdminLayoutClient({
               Event
             </label>
             <select
-              value={selectedEventId}
+              value={displayedEventId}
               onChange={(e) => handleEventChange(e.target.value)}
               className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-sm focus:outline-none focus:border-rose-500/50 focus:ring-1 focus:ring-rose-500/50"
             >
@@ -280,7 +299,7 @@ export default function AdminLayoutClient({
               <div className="bg-zinc-800 border border-zinc-700 rounded-lg shadow-xl p-2 min-w-[200px]">
                 <p className="px-2 pb-1 text-xs font-semibold text-zinc-500 uppercase">Event</p>
                 <select
-                  value={selectedEventId}
+                  value={displayedEventId}
                   onChange={(e) => handleEventChange(e.target.value)}
                   className="w-full px-2 py-1.5 bg-zinc-900 border border-zinc-600 rounded text-white text-sm focus:outline-none"
                 >
@@ -329,7 +348,7 @@ export default function AdminLayoutClient({
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
           </svg>
           <select
-            value={selectedEventId}
+            value={displayedEventId}
             onChange={(e) => handleEventChange(e.target.value)}
             className="flex-1 min-w-0 bg-zinc-800 border border-zinc-700 rounded-md px-2 py-1.5 text-white text-sm focus:outline-none focus:border-rose-500/50 truncate"
           >
