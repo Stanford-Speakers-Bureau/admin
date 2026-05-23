@@ -32,6 +32,7 @@ const EVENT_SCOPED_PATHS = [
   "/referrals",
   "/notify",
   "/audience",
+  "/event-questions",
 ];
 
 function isEventScoped(href: string): boolean {
