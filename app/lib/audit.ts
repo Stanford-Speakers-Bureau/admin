@@ -5,6 +5,8 @@ type AuditAction =
   | "ticket.delete"
   | "ticket.update_name"
   | "ticket.update_type"
+  | "ticket.cancel"
+  | "ticket.uncancel"
   | "ticket.unscan"
   | "email.send"
   | "email.send_mass"

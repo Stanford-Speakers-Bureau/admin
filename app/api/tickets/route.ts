@@ -37,9 +37,11 @@ import {
   tickets,
   events,
   userProfiles,
+  walletVoidedPasses,
 } from "@ssb/db";
 import { isValidUUID } from "@/app/lib/validation";
 import { logAuditEvent } from "@/app/lib/audit";
+import { pushWalletUpdate } from "@/app/lib/wallet-push";
 import { recordMailingListMember } from "@/app/lib/mailing-list";
 import {
   logSendFailures,
@@ -688,6 +690,27 @@ export async function DELETE(req: Request) {
       },
     });
 
+    // Tombstone the cancelled pass so any installed wallet passes flip to a
+    // voided "CANCELLED" state, then push. The ticket row is gone, but the
+    // event still exists, so the voided pass renders from it. Non-fatal.
+    if (ticketToDelete.eventId) {
+      try {
+        await db
+          .insert(walletVoidedPasses)
+          .values({
+            serialNumber: id,
+            email: ticketToDelete.email,
+            name: ticketToDelete.name ?? null,
+            ticketType: ticketToDelete.type,
+            eventId: ticketToDelete.eventId,
+          })
+          .onConflictDoNothing();
+        await pushWalletUpdate([id]);
+      } catch (voidError) {
+        console.error("Wallet voided-pass push failed (non-fatal):", voidError);
+      }
+    }
+
     if (shouldSendCancellationEmail && ticketToDelete.eventId && ticketToDelete.event) {
       try {
         await sendCancellationEmail({
@@ -830,6 +853,9 @@ export async function PATCH(req: Request) {
         columns: TICKET_COLUMNS,
         with: TICKET_WITH_EVENT,
       });
+
+      // Push the new attendee name to any installed wallet passes.
+      await pushWalletUpdate([id]);
 
       await logAuditEvent({
         action: "ticket.update_name",
@@ -988,6 +1014,11 @@ export async function PATCH(req: Request) {
             waitlistError,
           );
         }
+      }
+
+      // Push the new ticket type to any installed wallet passes.
+      if (typeChanged) {
+        await pushWalletUpdate([id]);
       }
 
       await logAuditEvent({
@@ -1607,12 +1638,16 @@ export async function POST(req: Request) {
     // Check if user already has a ticket for this event
     const existingTicket = await db.query.tickets.findFirst({
       where: and(eq(tickets.eventId, eventId), eq(tickets.email, email)),
-      columns: { id: true, type: true },
+      columns: { id: true, type: true, name: true },
     });
 
     if (existingTicket) {
       const newType = type || "VIP";
       const typeChanged = existingTicket.type !== newType;
+      const nameChanged =
+        typeof name === "string" &&
+        name.length > 0 &&
+        existingTicket.name !== name;
 
       // If upgrading to VIP from non-VIP, check VIP capacity
       if (
@@ -1708,6 +1743,10 @@ export async function POST(req: Request) {
             waitlistError,
           );
         }
+      }
+
+      if (typeChanged || nameChanged) {
+        await pushWalletUpdate([existingTicket.id]);
       }
 
       await logAuditEvent({
