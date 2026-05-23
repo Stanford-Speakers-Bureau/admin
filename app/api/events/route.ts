@@ -9,8 +9,9 @@ import {
 import { verifyAdminRequest } from "@/app/lib/auth";
 import { PACIFIC_TIMEZONE } from "@/app/lib/constants";
 import { pullFromWaitlist } from "@/app/lib/waitlist";
-import { db, eq, ne, events } from "@ssb/db";
+import { db, eq, ne, events, tickets as ticketsTable } from "@ssb/db";
 import { logAuditEvent } from "@/app/lib/audit";
+import { pushWalletUpdate } from "@/app/lib/wallet-push";
 import type { InferInsertModel, InferSelectModel } from "@ssb/db";
 import {
   isTicketingRole,
@@ -562,6 +563,45 @@ export async function POST(req: Request) {
       }
     }
 
+    // If a wallet-visible event field changed, refresh every installed pass for
+    // this event (the pass is rebuilt live from the event row, so we only need
+    // to bump the timestamp + push — no event data is duplicated onto tickets).
+    if (id && existingEvent && savedEvent) {
+      const norm = (v: unknown) =>
+        v instanceof Date ? v.getTime() : v == null ? null : String(v);
+      const walletFields: (keyof InferSelectModel<typeof events>)[] = [
+        "name",
+        "doorsOpen",
+        "startTimeDate",
+        "venue",
+        "venueLink",
+        "latitude",
+        "longitude",
+        "address",
+        "route",
+        "appleWalletImg",
+        "img",
+        "imgVersion",
+      ];
+      const walletFieldChanged = walletFields.some(
+        (f) => norm(existingEvent![f]) !== norm(savedEvent![f]),
+      );
+      if (walletFieldChanged) {
+        try {
+          const eventTickets = await db.query.tickets.findMany({
+            where: eq(ticketsTable.eventId, savedEvent.id),
+            columns: { id: true },
+          });
+          await pushWalletUpdate(eventTickets.map((t) => t.id));
+        } catch (pushError) {
+          console.error(
+            "Wallet event-change push failed (non-fatal):",
+            pushError,
+          );
+        }
+      }
+    }
+
     const auditMetadata: Record<string, unknown> = {};
     if (id && existingEvent) {
       const changes = diffEventSnapshots(
@@ -714,17 +754,32 @@ export async function DELETE(req: Request) {
       );
     }
 
-    // Get the event first to delete its image
     const event = await db.query.events.findFirst({
       where: eq(events.id, id),
       columns: { name: true, img: true, mobileImg: true, appleWalletImg: true },
     });
 
-    // Delete the image from storage if it exists (Supabase Storage)
+    if (!event) {
+      return NextResponse.json({ error: "Event not found" }, { status: 404 });
+    }
+
+    const activeTicket = await db.query.tickets.findFirst({
+      where: eq(ticketsTable.eventId, id),
+      columns: { id: true },
+    });
+
+    if (activeTicket) {
+      return NextResponse.json(
+        { error: "Cannot delete an event with active tickets." },
+        { status: 409 },
+      );
+    }
+
+    // Delete storage images only after confirming deletion is allowed.
     const imagesToDelete = [
-      event?.img,
-      event?.mobileImg,
-      event?.appleWalletImg,
+      event.img,
+      event.mobileImg,
+      event.appleWalletImg,
     ].filter((value): value is string => !!value);
     if (imagesToDelete.length > 0) {
       const adminClient = auth.adminClient!;
