@@ -193,6 +193,7 @@ async function getEvents() {
         venueLink: true,
         route: true,
         questionsEnabled: true,
+        questionsRankingsHidden: true,
       },
       orderBy: desc(events.startTimeDate),
     });
@@ -209,6 +210,7 @@ async function getEvents() {
       venue: e.venue ?? null,
       venue_link: e.venueLink ?? null,
       questionsEnabled: e.questionsEnabled ?? false,
+      questionsRankingsHidden: e.questionsRankingsHidden ?? false,
       route: e.route ?? null,
     }));
   } catch (error) {

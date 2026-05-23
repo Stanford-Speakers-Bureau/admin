@@ -17,6 +17,7 @@ export type EventOption = {
   venue_link?: string | null;
   route?: string | null;
   questionsEnabled?: boolean;
+  questionsRankingsHidden?: boolean;
 };
 
 type EventContextType = {

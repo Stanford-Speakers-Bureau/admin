@@ -56,7 +56,29 @@ const ACTION_LABELS: Record<string, string> = {
   "suggestion.reject": "Rejected Suggestion",
   "suggestion.edit": "Edited Suggestion",
   "suggestion.mark_duplicate": "Marked Duplicate",
+  "suggestion.mark_spoke": "Marked Spoke",
   "suggestion.merge": "Merged Suggestions",
+  "event_question.approve": "Approved Question",
+  "event_question.reject": "Rejected Question",
+  "event_question.edit": "Edited Question",
+  "event_question.hide": "Hid Question",
+  "event_question.unhide": "Unhid Question",
+  "event_question.mark_duplicate": "Marked Question Duplicate",
+  "event_question.merge": "Merged Questions",
+  "event_question.sync_votes": "Synced Q&A Votes",
+  "event_question.edit_votes": "Edited Q&A Votes",
+  "event_question.event_enabled": "Enabled Q&A",
+  "event_question.event_disabled": "Disabled Q&A",
+  "event_question.rankings_shown": "Showed Q&A Rankings",
+  "event_question.rankings_hidden": "Hid Q&A Rankings",
+  "campaign.create": "Created Campaign",
+  "campaign.send": "Sent Campaign",
+  "email.send_failed": "Email Send Failed",
+  "mailing_list.subscribe": "Subscribed to Mailing List",
+  "mailing_list.unsubscribe": "Unsubscribed from Mailing List",
+  "mailing_list.resubscribe": "Resubscribed to Mailing List",
+  "mailing_list.admin_unsubscribe": "Admin Unsubscribed (Mailing List)",
+  "mailing_list.admin_resubscribe": "Admin Resubscribed (Mailing List)",
   "waitlist.join": "Joined Waitlist",
   "waitlist.leave": "Left Waitlist",
   "waitlist.pull": "Pulled From Waitlist",
@@ -69,7 +91,10 @@ const ACTION_OPTIONS = [
   { group: "Email", actions: ["email.send", "email.send_mass"] },
   { group: "Events", actions: ["event.create", "event.edit", "event.toggle_live", "event.toggle_standby", "event.delete"] },
   { group: "Users", actions: ["user.add_role", "user.remove_role"] },
-  { group: "Suggestions", actions: ["suggestion.approve", "suggestion.reject", "suggestion.edit", "suggestion.mark_duplicate", "suggestion.merge"] },
+  { group: "Suggestions", actions: ["suggestion.approve", "suggestion.reject", "suggestion.edit", "suggestion.mark_duplicate", "suggestion.mark_spoke", "suggestion.merge"] },
+  { group: "Moderator Q&A", actions: ["event_question.approve", "event_question.reject", "event_question.edit", "event_question.hide", "event_question.unhide", "event_question.mark_duplicate", "event_question.merge", "event_question.sync_votes", "event_question.edit_votes", "event_question.event_enabled", "event_question.event_disabled", "event_question.rankings_shown", "event_question.rankings_hidden"] },
+  { group: "Campaigns", actions: ["campaign.create", "campaign.send"] },
+  { group: "Mailing List", actions: ["mailing_list.subscribe", "mailing_list.unsubscribe", "mailing_list.resubscribe", "mailing_list.admin_unsubscribe", "mailing_list.admin_resubscribe"] },
   { group: "Waitlist", actions: ["waitlist.join", "waitlist.leave", "waitlist.pull", "waitlist.issue_standby"] },
   { group: "Referrals", actions: ["referral.toggle"] },
   { group: "Notify", actions: ["notify.signup"] },
@@ -108,9 +133,12 @@ type FilterOption = {
 function getActionColor(action: string) {
   if (action.startsWith("ticket.")) return "bg-emerald-500/15 text-emerald-400 border-emerald-500/30";
   if (action.startsWith("email.")) return "bg-blue-500/15 text-blue-400 border-blue-500/30";
+  if (action.startsWith("event_question.")) return "bg-violet-500/15 text-violet-400 border-violet-500/30";
   if (action.startsWith("event.")) return "bg-amber-500/15 text-amber-400 border-amber-500/30";
   if (action.startsWith("user.")) return "bg-pink-500/15 text-pink-400 border-pink-500/30";
   if (action.startsWith("suggestion.")) return "bg-orange-500/15 text-orange-400 border-orange-500/30";
+  if (action.startsWith("campaign.")) return "bg-teal-500/15 text-teal-400 border-teal-500/30";
+  if (action.startsWith("mailing_list.")) return "bg-lime-500/15 text-lime-400 border-lime-500/30";
   if (action.startsWith("waitlist.")) return "bg-cyan-500/15 text-cyan-400 border-cyan-500/30";
   if (action.startsWith("referral.")) return "bg-indigo-500/15 text-indigo-400 border-indigo-500/30";
   if (action.startsWith("notify.")) return "bg-purple-500/15 text-purple-400 border-purple-500/30";

@@ -34,6 +34,8 @@ type AuditAction =
   | "event_question.edit_votes"
   | "event_question.event_enabled"
   | "event_question.event_disabled"
+  | "event_question.rankings_shown"
+  | "event_question.rankings_hidden"
   | "waitlist.pull"
   | "waitlist.issue_standby"
   | "referral.toggle"
