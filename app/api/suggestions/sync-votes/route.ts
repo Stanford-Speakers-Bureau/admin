@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { verifyAdminRequest } from "@/app/lib/auth";
 import { getAdminSuggestions } from "@/app/suggest/data";
 import { db, eq, count as dbCount, suggest, votes } from "@ssb/db";
+import { logAuditEvent } from "@/app/lib/audit";
 
 export async function POST() {
   try {
@@ -30,6 +31,12 @@ export async function POST() {
         updatedCount++;
       }
     }
+
+    await logAuditEvent({
+      action: "suggestion.sync_votes",
+      actor: auth.email!,
+      metadata: { scope: "all", updated: updatedCount },
+    });
 
     // Return fresh suggestions using the same logic as the initial page load
     const { suggestions: freshSuggestions } = await getAdminSuggestions();

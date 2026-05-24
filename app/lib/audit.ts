@@ -23,6 +23,8 @@ type AuditAction =
   | "suggestion.mark_duplicate"
   | "suggestion.mark_spoke"
   | "suggestion.merge"
+  | "suggestion.sync_votes"
+  | "suggestion.edit_votes"
   | "event_question.approve"
   | "event_question.reject"
   | "event_question.edit"

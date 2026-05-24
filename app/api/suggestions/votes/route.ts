@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { verifyAdminRequest } from "@/app/lib/auth";
 import { getAdminSuggestions } from "@/app/suggest/data";
 import { db, eq, suggest } from "@ssb/db";
+import { logAuditEvent } from "@/app/lib/audit";
 
 export async function PATCH(req: Request) {
   try {
@@ -32,7 +33,7 @@ export async function PATCH(req: Request) {
     // Verify the suggestion exists
     const suggestion = await db.query.suggest.findFirst({
       where: eq(suggest.id, speaker_id),
-      columns: { id: true },
+      columns: { id: true, speaker: true, votes: true },
     });
 
     if (!suggestion) {
@@ -46,6 +47,17 @@ export async function PATCH(req: Request) {
     await db.update(suggest)
       .set({ votes })
       .where(eq(suggest.id, speaker_id));
+
+    await logAuditEvent({
+      action: "suggestion.edit_votes",
+      actor: auth.email!,
+      metadata: {
+        suggestionId: speaker_id,
+        speaker: suggestion.speaker,
+        oldVotes: suggestion.votes,
+        newVotes: votes,
+      },
+    });
 
     // Return fresh suggestions
     const { suggestions } = await getAdminSuggestions();

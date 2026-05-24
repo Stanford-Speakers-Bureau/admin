@@ -52,12 +52,16 @@ const ACTION_LABELS: Record<string, string> = {
   "event.delete": "Deleted Event",
   "user.add_role": "Added Role",
   "user.remove_role": "Removed Role",
+  "suggestion.submit": "Submitted Suggestion",
   "suggestion.approve": "Approved Suggestion",
   "suggestion.reject": "Rejected Suggestion",
   "suggestion.edit": "Edited Suggestion",
   "suggestion.mark_duplicate": "Marked Duplicate",
   "suggestion.mark_spoke": "Marked Spoke",
   "suggestion.merge": "Merged Suggestions",
+  "suggestion.sync_votes": "Synced Suggestion Votes",
+  "suggestion.edit_votes": "Edited Suggestion Votes",
+  "event_question.submit": "Submitted Question",
   "event_question.approve": "Approved Question",
   "event_question.reject": "Rejected Question",
   "event_question.edit": "Edited Question",
@@ -94,8 +98,8 @@ const ACTION_OPTIONS = [
   { group: "Email", actions: ["email.send", "email.send_mass"] },
   { group: "Events", actions: ["event.create", "event.edit", "event.toggle_live", "event.toggle_standby", "event.delete"] },
   { group: "Users", actions: ["user.add_role", "user.remove_role"] },
-  { group: "Suggestions", actions: ["suggestion.approve", "suggestion.reject", "suggestion.edit", "suggestion.mark_duplicate", "suggestion.mark_spoke", "suggestion.merge"] },
-  { group: "Moderator Q&A", actions: ["event_question.approve", "event_question.reject", "event_question.edit", "event_question.hide", "event_question.unhide", "event_question.mark_duplicate", "event_question.merge", "event_question.sync_votes", "event_question.edit_votes", "event_question.event_enabled", "event_question.event_disabled", "event_question.rankings_shown", "event_question.rankings_hidden"] },
+  { group: "Suggestions", actions: ["suggestion.submit", "suggestion.approve", "suggestion.reject", "suggestion.edit", "suggestion.mark_duplicate", "suggestion.mark_spoke", "suggestion.merge", "suggestion.sync_votes", "suggestion.edit_votes"] },
+  { group: "Moderator Q&A", actions: ["event_question.submit", "event_question.approve", "event_question.reject", "event_question.edit", "event_question.hide", "event_question.unhide", "event_question.mark_duplicate", "event_question.merge", "event_question.sync_votes", "event_question.edit_votes", "event_question.event_enabled", "event_question.event_disabled", "event_question.rankings_shown", "event_question.rankings_hidden"] },
   { group: "Campaigns", actions: ["campaign.create", "campaign.send"] },
   { group: "Mailing List", actions: ["mailing_list.subscribe", "mailing_list.unsubscribe", "mailing_list.resubscribe", "mailing_list.admin_unsubscribe", "mailing_list.admin_resubscribe"] },
   { group: "Waitlist", actions: ["waitlist.join", "waitlist.leave", "waitlist.pull", "waitlist.issue_standby"] },
@@ -116,6 +120,11 @@ const DEFAULT_EXCLUDED_ACTIONS = new Set([
   "notify.signup",
   "ticket.get",
   "waitlist.join",
+  "mailing_list.subscribe",
+  "mailing_list.unsubscribe",
+  "mailing_list.resubscribe",
+  "suggestion.submit",
+  "event_question.submit",
 ]);
 const DEFAULT_ACTION_VALUES = ACTION_VALUES.filter(
   (action) => !DEFAULT_EXCLUDED_ACTIONS.has(action),
@@ -906,7 +915,7 @@ export default function AuditLogClient() {
     selectedActions,
     DEFAULT_ACTION_VALUES,
   )
-    ? "All except Signed up for Notify, Got Ticket, and Joined Waitlist"
+    ? "All except high-volume user actions (signups, ticket claims, waitlist joins, mailing list subscriptions, and submissions)"
     : summarizeSelection(
         ACTION_FILTER_OPTIONS,
         selectedActions,
