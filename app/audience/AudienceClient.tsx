@@ -883,7 +883,7 @@ export default function AudienceClient() {
             <span className="text-zinc-200 font-medium">
               {data.event.name || "Unnamed event"}
             </span>
-            {data.event.date ? ` • ${formatDate(data.event.date)}` : ""}
+            {data.event.date ? ` · ${formatDate(data.event.date)}` : ""}
           </p>
         </div>
         {allAudienceEmails.length > 0 && (
@@ -893,7 +893,7 @@ export default function AudienceClient() {
               setShowSendModal(true);
             }}
             disabled={sendState?.active}
-            className="shrink-0 flex items-center gap-2 px-4 py-2.5 bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-lg transition-colors"
+            className="shrink-0 flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 text-white text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" />
@@ -915,7 +915,7 @@ export default function AudienceClient() {
       {showSendModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
           <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 max-w-md w-full mx-4 shadow-2xl">
-            <h2 className="text-lg font-bold text-white mb-2">Send Announcement</h2>
+            <h2 className="text-lg font-serif font-bold text-white mb-2">Send Announcement</h2>
             <p className="text-sm text-zinc-400 mb-4">
               Send an announcement email to <span className="text-white font-semibold">{announcementRecipients.length.toLocaleString()}</span> users
               for{" "}
@@ -971,7 +971,7 @@ export default function AudienceClient() {
               <button
                 onClick={sendAnnouncementToAll}
                 disabled={announcementRecipients.length === 0}
-                className="px-4 py-2 bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-lg transition-colors"
+                className="px-4 py-2 rounded-lg bg-gradient-to-r from-emerald-500 to-teal-500 text-white text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Send {announcementRecipients.length.toLocaleString()} Emails
               </button>
@@ -991,13 +991,13 @@ export default function AudienceClient() {
         style={getAnalyticsCardGridStyle(4)}
       >
         <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
-          <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-1">
+          <p className="text-xs font-medium tracking-wide text-zinc-400 mb-1">
             Total Users
           </p>
           <p className="text-2xl font-bold text-white">{data.stats.totalUsers}</p>
         </div>
         <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
-          <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-1">
+          <p className="text-xs font-medium tracking-wide text-zinc-400 mb-1">
             Current Event Engaged
           </p>
           <p className="text-2xl font-bold text-blue-400">
@@ -1006,7 +1006,7 @@ export default function AudienceClient() {
           <p className="text-[10px] text-zinc-600">Notify, waitlisted, ticketed, or attended</p>
         </div>
         <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
-          <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-1">
+          <p className="text-xs font-medium tracking-wide text-zinc-400 mb-1">
             Signed Up for Notify
           </p>
           <p className="text-2xl font-bold text-amber-400">
@@ -1014,7 +1014,7 @@ export default function AudienceClient() {
           </p>
         </div>
         <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
-          <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-1">
+          <p className="text-xs font-medium tracking-wide text-zinc-400 mb-1">
             No Event History
           </p>
           <p className="text-2xl font-bold text-zinc-300">{usersWithoutHistory}</p>
@@ -1040,7 +1040,7 @@ export default function AudienceClient() {
                 key={affiliation}
                 className="rounded-xl border border-zinc-800 bg-zinc-950/30 p-4 text-left"
               >
-                <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-1">
+                <p className="text-xs font-medium tracking-wide text-zinc-400 mb-1">
                   {formatAffiliationLabel(affiliation)}
                 </p>
                 <p className="text-2xl font-bold text-white">
@@ -1082,7 +1082,7 @@ export default function AudienceClient() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Name or email. Comma-separated works too."
-              className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-sm placeholder-zinc-500 focus:outline-none focus:border-zinc-600"
+              className="w-full rounded-xl border border-zinc-800 bg-zinc-900 px-3 py-2.5 text-sm text-white placeholder-zinc-500 focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 focus:outline-none"
             />
           </div>
           <div className="grid grid-cols-1 xl:grid-cols-[repeat(3,minmax(0,240px))] gap-4">

@@ -429,6 +429,13 @@ export default function AdminNotifyClient() {
           </h1>
           <p className="text-zinc-400">
             View users who signed up for event notifications.
+            {selectedEventId && notifications.length > 0 && (
+              <span className="text-zinc-600">
+                {" "}
+                · {notifications.length.toLocaleString()} signup
+                {notifications.length === 1 ? "" : "s"}
+              </span>
+            )}
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -437,7 +444,7 @@ export default function AdminNotifyClient() {
               <button
                 onClick={() => openSendEmailModal()}
                 disabled={Boolean(sendState?.active)}
-                className="flex items-center gap-2 px-5 py-2.5 bg-rose-500/20 text-rose-400 border border-rose-500/30 rounded-xl font-medium hover:bg-rose-500/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-medium bg-gradient-to-r from-emerald-500 to-teal-500 text-white hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
@@ -535,13 +542,15 @@ export default function AdminNotifyClient() {
                 {statCards.map((stat) => (
                   <div
                     key={stat.key}
-                    className="rounded-xl border border-zinc-800 bg-zinc-950/70 px-4 py-3"
+                    className="rounded-xl border border-zinc-800 bg-zinc-900 px-3.5 py-3"
                   >
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
+                    <p className="truncate text-xs font-medium tracking-wide text-zinc-400">
                       {stat.label}
                     </p>
-                    <p className={`mt-2 text-2xl font-bold ${stat.tone}`}>
-                      {stat.value}
+                    <p
+                      className={`mt-1 text-2xl font-bold tabular-nums ${stat.tone}`}
+                    >
+                      {stat.value.toLocaleString()}
                     </p>
                   </div>
                 ))}
@@ -611,7 +620,7 @@ export default function AdminNotifyClient() {
                     placeholder="Search name, email, or affiliation..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
-                    className="pl-9 pr-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:border-rose-500/50 text-sm w-full lg:w-72"
+                    className="w-full lg:w-72 rounded-xl border border-zinc-800 bg-zinc-900 py-2.5 pr-3 pl-9 text-sm text-white placeholder-zinc-500 focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 focus:outline-none"
                   />
                 </div>
               </div>
@@ -731,10 +740,10 @@ export default function AdminNotifyClient() {
             }}
           >
             <div
-              className="bg-zinc-900 border border-zinc-800 rounded-xl shadow-xl max-w-md w-full p-6"
+              className="bg-zinc-900 border border-zinc-800 rounded-2xl shadow-2xl max-w-md w-full p-6"
               onClick={(e) => e.stopPropagation()}
             >
-              <h3 className="text-lg font-semibold text-white mb-1">
+              <h3 className="text-lg font-serif font-semibold text-white mb-1">
                 Send email
               </h3>
               <p className="text-zinc-500 text-sm mb-4">
@@ -753,7 +762,7 @@ export default function AdminNotifyClient() {
                       name="variant"
                       checked={sendVariant === "claim"}
                       onChange={() => setSendVariant("claim")}
-                      className="rounded-full border-zinc-600 text-rose-500 focus:ring-rose-500"
+                      className="rounded-full border-zinc-600 text-emerald-500 focus:ring-emerald-500"
                     />
                     <div>
                       <span className="text-white">Claim your ticket</span>
@@ -770,7 +779,7 @@ export default function AdminNotifyClient() {
                       name="variant"
                       checked={sendVariant === "claim"}
                       onChange={() => setSendVariant("claim")}
-                      className="rounded-full border-zinc-600 text-rose-500 focus:ring-rose-500"
+                      className="rounded-full border-zinc-600 text-emerald-500 focus:ring-emerald-500"
                     />
                     <span className="text-white">Claim your ticket</span>
                   </label>
@@ -781,7 +790,7 @@ export default function AdminNotifyClient() {
                     name="variant"
                     checked={sendVariant === "now"}
                     onChange={() => setSendVariant("now")}
-                    className="rounded-full border-zinc-600 text-rose-500 focus:ring-rose-500"
+                    className="rounded-full border-zinc-600 text-emerald-500 focus:ring-emerald-500"
                   />
                   <span className="text-white">Tickets available now</span>
                 </label>
@@ -791,7 +800,7 @@ export default function AdminNotifyClient() {
                     name="variant"
                     checked={sendVariant === "in"}
                     onChange={() => setSendVariant("in")}
-                    className="rounded-full border-zinc-600 text-rose-500 focus:ring-rose-500"
+                    className="rounded-full border-zinc-600 text-emerald-500 focus:ring-emerald-500"
                   />
                   <span className="text-white">
                     Tickets available in (approx time)
@@ -803,7 +812,7 @@ export default function AdminNotifyClient() {
                     value={sendApproxTime}
                     onChange={(e) => setSendApproxTime(e.target.value)}
                     placeholder="e.g. 2 hours, or Mon Feb 17 at 10am PT"
-                    className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:border-rose-500/50 text-sm ml-6"
+                    className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500/50 text-sm ml-6"
                   />
                 )}
               </div>
@@ -829,7 +838,7 @@ export default function AdminNotifyClient() {
                     isSendingNotify ||
                     (sendVariant === "in" && !sendApproxTime.trim())
                   }
-                  className="px-4 py-2 rounded-lg bg-rose-500 text-white hover:bg-rose-600 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                  className="px-4 py-2 rounded-lg bg-gradient-to-r from-emerald-500 to-teal-500 text-white hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                 >
                   {isSendingNotify ? (
                     <>

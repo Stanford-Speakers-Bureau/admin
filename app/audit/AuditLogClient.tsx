@@ -815,6 +815,152 @@ function FilterDropdown({
   );
 }
 
+// Expanded details for a single log entry / group. Shared by every list
+// layout variant (table row, feed, cards, console lines).
+function ExpandedDetails({ log }: { log: AuditLogItem }) {
+  const sent = getMetadataNumber(log.metadata, "sent");
+  const failed = getMetadataNumber(log.metadata, "failed");
+  const skipped = getMetadataNumber(log.metadata, "skipped");
+  const skippedHasTicket = getMetadataNumber(log.metadata, "skippedHasTicket");
+  const skippedOptedOut = getMetadataNumber(log.metadata, "skippedOptedOut");
+  const suppressed = getMetadataNumber(log.metadata, "suppressed");
+  const hasBrokenOutSkips = skippedHasTicket > 0 || skippedOptedOut > 0;
+  const totalRecipients = getMetadataNumber(log.metadata, "total");
+
+  return isAuditLogGroup(log) ? (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+        <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-3">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
+            Sent
+          </p>
+          <p className="mt-1 text-lg font-semibold text-white">
+            {sent.toLocaleString()}
+          </p>
+        </div>
+        <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-3">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
+            Failed
+          </p>
+          <p className="mt-1 text-lg font-semibold text-white">
+            {failed.toLocaleString()}
+          </p>
+        </div>
+        {hasBrokenOutSkips ? (
+          <>
+            <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-3">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
+                Had ticket
+              </p>
+              <p className="mt-1 text-lg font-semibold text-white">
+                {skippedHasTicket.toLocaleString()}
+              </p>
+            </div>
+            <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-3">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
+                Opted out
+              </p>
+              <p className="mt-1 text-lg font-semibold text-white">
+                {skippedOptedOut.toLocaleString()}
+              </p>
+            </div>
+          </>
+        ) : (
+          <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-3">
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
+              Skipped
+            </p>
+            <p className="mt-1 text-lg font-semibold text-white">
+              {skipped.toLocaleString()}
+            </p>
+          </div>
+        )}
+        <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-3">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
+            Suppressed
+          </p>
+          <p className="mt-1 text-lg font-semibold text-white">
+            {suppressed.toLocaleString()}
+          </p>
+        </div>
+        <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-3">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
+            Recipients
+          </p>
+          <p className="mt-1 text-lg font-semibold text-white">
+            {totalRecipients.toLocaleString()}
+          </p>
+        </div>
+        <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-3">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
+            Chunks
+          </p>
+          <p className="mt-1 text-lg font-semibold text-white">
+            {log.group_count.toLocaleString()}
+          </p>
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
+        <div className="mb-3">
+          <p className="text-sm font-semibold text-white">
+            {getMassEmailLabel(log.metadata)}
+          </p>
+          <p className="text-xs text-zinc-500">Grouped mass-email run</p>
+        </div>
+        <MetadataDetails metadata={log.metadata} />
+      </div>
+
+      {log.failures && log.failures.length > 0 ? (
+        <FailedRecipients failures={log.failures} />
+      ) : null}
+
+      <div className="space-y-3">
+        {log.entries.map((entry, index) => (
+          <div
+            key={entry.id}
+            className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4"
+          >
+            <div className="mb-3 flex items-start justify-between gap-3">
+              <div>
+                <p className="text-sm font-medium text-white">
+                  Chunk {index + 1} of {log.entries.length}
+                </p>
+                <p className="text-xs text-zinc-500">
+                  {formatTimestamp(entry.created_at)}
+                </p>
+              </div>
+              <p className="text-xs text-zinc-500">
+                {getDetailsSummary(entry)}
+              </p>
+            </div>
+            <MetadataDetails metadata={entry.metadata} />
+          </div>
+        ))}
+      </div>
+    </div>
+  ) : (
+    <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
+      <div className="mb-3 flex items-start justify-between gap-3">
+        <div>
+          <p className="text-sm font-semibold text-white">
+            {ACTION_LABELS[log.action] || log.action}
+          </p>
+          <p className="text-xs text-zinc-500">
+            {formatTimestamp(log.created_at)}
+          </p>
+        </div>
+        <span
+          className={`inline-block border rounded-full px-2 py-0.5 text-xs font-medium ${getSourceColor(log.source)}`}
+        >
+          {log.source === "admin" ? "Admin" : "Web"}
+        </span>
+      </div>
+      <MetadataDetails metadata={log.metadata} />
+    </div>
+  );
+}
+
 export default function AuditLogClient() {
   const filterDropdownRef = useRef<HTMLDivElement | null>(null);
   const [logs, setLogs] = useState<AuditLogItem[]>([]);
@@ -1167,29 +1313,29 @@ export default function AuditLogClient() {
           <table className="w-full">
             <thead>
               <tr className="border-b border-zinc-800 bg-zinc-800/50">
-                <th className="text-left px-4 py-3 text-xs font-semibold text-zinc-500 uppercase tracking-wider">Time</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-zinc-500 uppercase tracking-wider">Action</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-zinc-500 uppercase tracking-wider">Actor</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-zinc-500 uppercase tracking-wider">Event</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-zinc-500 uppercase tracking-wider">Target</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-zinc-500 uppercase tracking-wider">Source</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-zinc-500 uppercase tracking-wider">Details</th>
+                <th className="text-left px-3 py-2 text-xs font-semibold text-zinc-500 uppercase tracking-wider">Time</th>
+                <th className="text-left px-3 py-2 text-xs font-semibold text-zinc-500 uppercase tracking-wider">Action</th>
+                <th className="text-left px-3 py-2 text-xs font-semibold text-zinc-500 uppercase tracking-wider">Actor</th>
+                <th className="text-left px-3 py-2 text-xs font-semibold text-zinc-500 uppercase tracking-wider">Event</th>
+                <th className="text-left px-3 py-2 text-xs font-semibold text-zinc-500 uppercase tracking-wider">Target</th>
+                <th className="text-left px-3 py-2 text-xs font-semibold text-zinc-500 uppercase tracking-wider">Source</th>
+                <th className="text-left px-3 py-2 text-xs font-semibold text-zinc-500 uppercase tracking-wider">Details</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                Array.from({ length: 8 }).map((_, i) => (
+                Array.from({ length: 10 }).map((_, i) => (
                   <tr key={i} className="border-t border-zinc-800/50">
                     {Array.from({ length: 7 }).map((_, j) => (
-                      <td key={j} className="px-4 py-3">
-                        <div className="h-4 bg-zinc-800 rounded animate-pulse" />
+                      <td key={j} className="px-3 py-2">
+                        <div className="h-3.5 bg-zinc-800 rounded animate-pulse" />
                       </td>
                     ))}
                   </tr>
                 ))
               ) : logs.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-12 text-center text-zinc-500">
+                  <td colSpan={7} className="px-3 py-12 text-center text-zinc-500">
                     {isFiltered ? "No entries match your filters." : "No audit log entries yet."}
                   </td>
                 </tr>
@@ -1197,64 +1343,61 @@ export default function AuditLogClient() {
                 logs.map((log) => {
                   const isExpanded = expandedItems.includes(log.id);
                   const summary = getDetailsSummary(log);
-                  const sent = getMetadataNumber(log.metadata, "sent");
-                  const failed = getMetadataNumber(log.metadata, "failed");
-                  const skipped = getMetadataNumber(log.metadata, "skipped");
-                  const skippedHasTicket = getMetadataNumber(log.metadata, "skippedHasTicket");
-                  const skippedOptedOut = getMetadataNumber(log.metadata, "skippedOptedOut");
-                  const suppressed = getMetadataNumber(log.metadata, "suppressed");
-                  const hasBrokenOutSkips = skippedHasTicket > 0 || skippedOptedOut > 0;
-                  const totalRecipients = getMetadataNumber(log.metadata, "total");
 
                   return (
                     <Fragment key={log.id}>
                       <tr
-                        className="border-t border-zinc-800/50 hover:bg-zinc-800/20 transition-colors"
+                        onClick={() => toggleExpandedItem(log.id)}
+                        className="cursor-pointer border-t border-zinc-800/50 hover:bg-zinc-800/20 transition-colors"
                       >
                         <td
-                          className="px-4 py-3 text-sm text-zinc-400 whitespace-nowrap"
+                          className="px-3 py-1.5 text-xs text-zinc-400 whitespace-nowrap"
                           title={formatTimestamp(log.created_at)}
                         >
                           {timeAgo(log.created_at)}
                         </td>
-                        <td className="px-4 py-3 whitespace-nowrap">
-                          <div className="space-y-1">
-                            <span className={`inline-block border rounded-full px-2.5 py-0.5 text-xs font-medium ${getActionColor(log.action)}`}>
-                              {ACTION_LABELS[log.action] || log.action}
+                        <td className="px-3 py-1.5 whitespace-nowrap">
+                          <span className={`inline-block border rounded-full px-2 py-0.5 text-xs font-medium ${getActionColor(log.action)}`}>
+                            {ACTION_LABELS[log.action] || log.action}
+                          </span>
+                          {isAuditLogGroup(log) ? (
+                            <span
+                              className="ml-2 text-[11px] text-zinc-500"
+                              title={`Grouped from ${log.group_count.toLocaleString()} chunks`}
+                            >
+                              \u00d7{log.group_count.toLocaleString()}
                             </span>
-                            {isAuditLogGroup(log) ? (
-                              <p className="text-[11px] text-zinc-500">
-                                Grouped from {log.group_count.toLocaleString()} chunks
-                              </p>
-                            ) : null}
-                          </div>
+                          ) : null}
                         </td>
-                        <td className="px-4 py-3 text-sm text-zinc-300 max-w-[200px] truncate" title={log.actor}>
+                        <td className="px-3 py-1.5 text-xs text-zinc-300 max-w-[180px] truncate" title={log.actor}>
                           {log.actor}
                         </td>
-                        <td className="px-4 py-3 text-sm text-zinc-400 max-w-[180px] truncate" title={log.event_name ?? undefined}>
+                        <td className="px-3 py-1.5 text-xs text-zinc-400 max-w-[160px] truncate" title={log.event_name ?? undefined}>
                           {log.event_name || "\u2014"}
                         </td>
-                        <td className="px-4 py-3 text-sm text-zinc-400 max-w-[200px] truncate" title={log.target_email ?? undefined}>
+                        <td className="px-3 py-1.5 text-xs text-zinc-400 max-w-[180px] truncate" title={log.target_email ?? undefined}>
                           {log.target_email || "\u2014"}
                         </td>
-                        <td className="px-4 py-3">
+                        <td className="px-3 py-1.5">
                           <span className={`inline-block border rounded-full px-2 py-0.5 text-xs font-medium ${getSourceColor(log.source)}`}>
                             {log.source === "admin" ? "Admin" : "Web"}
                           </span>
                         </td>
-                        <td className="px-4 py-3 max-w-[260px]">
+                        <td className="px-3 py-1.5 max-w-[260px]">
                           <button
                             type="button"
-                            onClick={() => toggleExpandedItem(log.id)}
-                            className="flex w-full items-center justify-between gap-3 rounded-lg border border-zinc-800 bg-zinc-950/40 px-3 py-2 text-left transition-colors hover:border-zinc-700 hover:bg-zinc-900/70"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleExpandedItem(log.id);
+                            }}
+                            className="flex w-full items-center justify-between gap-2 rounded-lg border border-zinc-800 bg-zinc-950/40 px-2.5 py-1 text-left transition-colors hover:border-zinc-700 hover:bg-zinc-900/70"
                             title={summary}
                           >
-                            <span className="min-w-0 flex-1 truncate text-sm text-zinc-400">
+                            <span className="min-w-0 flex-1 truncate text-xs text-zinc-400">
                               {summary}
                             </span>
                             <svg
-                              className={`h-4 w-4 shrink-0 text-zinc-500 transition-transform ${
+                              className={`h-3.5 w-3.5 shrink-0 text-zinc-500 transition-transform ${
                                 isExpanded ? "rotate-180" : ""
                               }`}
                               fill="none"
@@ -1273,139 +1416,8 @@ export default function AuditLogClient() {
                       </tr>
                       {isExpanded ? (
                         <tr className="border-t border-zinc-800/50 bg-zinc-950/40">
-                          <td colSpan={7} className="px-4 py-4">
-                            {isAuditLogGroup(log) ? (
-                              <div className="space-y-4">
-                                <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
-                                  <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-3">
-                                    <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
-                                      Sent
-                                    </p>
-                                    <p className="mt-1 text-lg font-semibold text-white">
-                                      {sent.toLocaleString()}
-                                    </p>
-                                  </div>
-                                  <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-3">
-                                    <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
-                                      Failed
-                                    </p>
-                                    <p className="mt-1 text-lg font-semibold text-white">
-                                      {failed.toLocaleString()}
-                                    </p>
-                                  </div>
-                                  {hasBrokenOutSkips ? (
-                                    <>
-                                      <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-3">
-                                        <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
-                                          Had ticket
-                                        </p>
-                                        <p className="mt-1 text-lg font-semibold text-white">
-                                          {skippedHasTicket.toLocaleString()}
-                                        </p>
-                                      </div>
-                                      <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-3">
-                                        <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
-                                          Opted out
-                                        </p>
-                                        <p className="mt-1 text-lg font-semibold text-white">
-                                          {skippedOptedOut.toLocaleString()}
-                                        </p>
-                                      </div>
-                                    </>
-                                  ) : (
-                                    <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-3">
-                                      <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
-                                        Skipped
-                                      </p>
-                                      <p className="mt-1 text-lg font-semibold text-white">
-                                        {skipped.toLocaleString()}
-                                      </p>
-                                    </div>
-                                  )}
-                                  <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-3">
-                                    <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
-                                      Suppressed
-                                    </p>
-                                    <p className="mt-1 text-lg font-semibold text-white">
-                                      {suppressed.toLocaleString()}
-                                    </p>
-                                  </div>
-                                  <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-3">
-                                    <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
-                                      Recipients
-                                    </p>
-                                    <p className="mt-1 text-lg font-semibold text-white">
-                                      {totalRecipients.toLocaleString()}
-                                    </p>
-                                  </div>
-                                  <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-3">
-                                    <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
-                                      Chunks
-                                    </p>
-                                    <p className="mt-1 text-lg font-semibold text-white">
-                                      {log.group_count.toLocaleString()}
-                                    </p>
-                                  </div>
-                                </div>
-
-                                <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
-                                  <div className="mb-3">
-                                    <p className="text-sm font-semibold text-white">
-                                      {getMassEmailLabel(log.metadata)}
-                                    </p>
-                                    <p className="text-xs text-zinc-500">
-                                      Grouped mass-email run
-                                    </p>
-                                  </div>
-                                  <MetadataDetails metadata={log.metadata} />
-                                </div>
-
-                                {log.failures && log.failures.length > 0 ? (
-                                  <FailedRecipients failures={log.failures} />
-                                ) : null}
-
-                                <div className="space-y-3">
-                                  {log.entries.map((entry, index) => (
-                                    <div
-                                      key={entry.id}
-                                      className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4"
-                                    >
-                                      <div className="mb-3 flex items-start justify-between gap-3">
-                                        <div>
-                                          <p className="text-sm font-medium text-white">
-                                            Chunk {index + 1} of {log.entries.length}
-                                          </p>
-                                          <p className="text-xs text-zinc-500">
-                                            {formatTimestamp(entry.created_at)}
-                                          </p>
-                                        </div>
-                                        <p className="text-xs text-zinc-500">
-                                          {getDetailsSummary(entry)}
-                                        </p>
-                                      </div>
-                                      <MetadataDetails metadata={entry.metadata} />
-                                    </div>
-                                  ))}
-                                </div>
-                              </div>
-                            ) : (
-                              <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
-                                <div className="mb-3 flex items-start justify-between gap-3">
-                                  <div>
-                                    <p className="text-sm font-semibold text-white">
-                                      {ACTION_LABELS[log.action] || log.action}
-                                    </p>
-                                    <p className="text-xs text-zinc-500">
-                                      {formatTimestamp(log.created_at)}
-                                    </p>
-                                  </div>
-                                  <span className={`inline-block border rounded-full px-2 py-0.5 text-xs font-medium ${getSourceColor(log.source)}`}>
-                                    {log.source === "admin" ? "Admin" : "Web"}
-                                  </span>
-                                </div>
-                                <MetadataDetails metadata={log.metadata} />
-                              </div>
-                            )}
+                          <td colSpan={7} className="px-3 py-3">
+                            <ExpandedDetails log={log} />
                           </td>
                         </tr>
                       ) : null}

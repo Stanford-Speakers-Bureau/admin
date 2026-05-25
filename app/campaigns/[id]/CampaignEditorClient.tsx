@@ -602,7 +602,7 @@ export default function CampaignEditorClient({ campaignId }: CampaignEditorProps
   if (loading) {
     return (
       <div className="p-8 text-center">
-        <div className="w-8 h-8 border-2 border-zinc-600 border-t-rose-400 rounded-full animate-spin mx-auto mb-4" />
+        <div className="w-8 h-8 border-2 border-zinc-600 border-t-emerald-400 rounded-full animate-spin mx-auto mb-4" />
         <p className="text-zinc-500 text-sm">Loading campaign...</p>
       </div>
     );

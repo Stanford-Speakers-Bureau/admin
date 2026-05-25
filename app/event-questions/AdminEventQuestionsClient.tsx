@@ -20,7 +20,7 @@ type ActionState = {
 };
 
 const buttonBase =
-  "px-3 py-1.5 text-xs font-semibold rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed";
+  "px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed";
 
 const tones = {
   approve:
@@ -337,7 +337,7 @@ export default function AdminEventQuestionsClient({
           <button
             key={t.key}
             onClick={() => setTab(t.key)}
-            className={`rounded px-3 py-1.5 text-xs font-semibold transition-colors ${
+            className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
               tab === t.key
                 ? "bg-rose-500/20 text-rose-400 border border-rose-500/30"
                 : "bg-zinc-900 text-zinc-400 border border-zinc-800 hover:bg-zinc-800"
