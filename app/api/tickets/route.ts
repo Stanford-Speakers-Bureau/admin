@@ -7,8 +7,11 @@ import {
   getFeeWaiverEmailSetForEmails,
   hasFeeWaiverForEmail,
   normalizeEmail,
-  verifyAdminRequest,
 } from "@/app/lib/auth";
+import {
+  requireAnyPermission,
+  requirePermission,
+} from "@/app/lib/permissions";
 import {
   sendCancellationEmail,
   sendDayOfReminderEmail,
@@ -399,13 +402,14 @@ async function sendReminderBatch(options: {
 
 export async function GET(req: Request) {
   try {
-    const auth = await verifyAdminRequest();
+    const { searchParams } = new URL(req.url);
+    const eventId = searchParams.get("eventId");
+
+    const auth = await requirePermission("tickets.view", eventId);
     if (!auth.authorized) {
       return NextResponse.json({ error: auth.error }, { status: 401 });
     }
 
-    const { searchParams } = new URL(req.url);
-    const eventId = searchParams.get("eventId");
     const search = searchParams.get("search");
     const type = searchParams.get("type");
     const scanned = searchParams.get("scanned");
@@ -554,11 +558,6 @@ export async function GET(req: Request) {
 
 export async function DELETE(req: Request) {
   try {
-    const auth = await verifyAdminRequest();
-    if (!auth.authorized) {
-      return NextResponse.json({ error: auth.error }, { status: 401 });
-    }
-
     const body = await req.json();
     const { id, sendCancellationEmail: shouldSendCancellationEmail } = body;
 
@@ -591,6 +590,14 @@ export async function DELETE(req: Request) {
 
     if (!ticketToDelete) {
       return NextResponse.json({ error: "Ticket not found" }, { status: 404 });
+    }
+
+    const auth = await requirePermission(
+      "tickets.delete",
+      ticketToDelete.eventId,
+    );
+    if (!auth.authorized) {
+      return NextResponse.json({ error: auth.error }, { status: 401 });
     }
 
     if (!ticketToDelete.eventId) {
@@ -818,13 +825,37 @@ async function syncEventScannedCounts() {
 
 export async function PATCH(req: Request) {
   try {
-    const auth = await verifyAdminRequest();
+    const body = await req.json();
+    const { id, action, type, scanned, promo, name, ticketIds, auditBatchId } = body;
+
+    // Resolve the event this request touches so we can scope the permission
+    // check: batch reminders carry eventId on the query string, single-ticket
+    // actions inherit it from the ticket row.
+    const batchReminderActions = ["sendDayOfReminders", "sendEarlyReminders"];
+    let scopeEventId: string | null = null;
+    if (batchReminderActions.includes(action)) {
+      scopeEventId = new URL(req.url).searchParams.get("eventId");
+    } else if (id && typeof id === "string") {
+      const scopeTicket = await db.query.tickets.findFirst({
+        where: eq(tickets.id, id),
+        columns: { eventId: true },
+      });
+      scopeEventId = scopeTicket?.eventId ?? null;
+    }
+
+    // Check-in / unscan map to the scan capability (an editor may also do it);
+    // everything else is an edit.
+    const isScanAction =
+      action === "updateScanned" ||
+      action === "unscan" ||
+      typeof scanned === "boolean";
+    const auth = isScanAction
+      ? await requireAnyPermission(["tickets.scan", "tickets.edit"], scopeEventId)
+      : await requirePermission("tickets.edit", scopeEventId);
     if (!auth.authorized) {
       return NextResponse.json({ error: auth.error }, { status: 401 });
     }
 
-    const body = await req.json();
-    const { id, action, type, scanned, promo, name, ticketIds, auditBatchId } = body;
     const normalizedAuditBatchId =
       typeof auditBatchId === "string" && auditBatchId.trim().length > 0
         ? auditBatchId.trim()
@@ -1618,11 +1649,6 @@ export async function PATCH(req: Request) {
 
 export async function POST(req: Request) {
   try {
-    const auth = await verifyAdminRequest();
-    if (!auth.authorized) {
-      return NextResponse.json({ error: auth.error }, { status: 401 });
-    }
-
     const body = await req.json();
     const { email, eventId, type, name } = body;
 
@@ -1635,6 +1661,11 @@ export async function POST(req: Request) {
         { error: "Event ID is required" },
         { status: 400 },
       );
+    }
+
+    const auth = await requirePermission("tickets.edit", eventId);
+    if (!auth.authorized) {
+      return NextResponse.json({ error: auth.error }, { status: 401 });
     }
 
     // Check if event exists

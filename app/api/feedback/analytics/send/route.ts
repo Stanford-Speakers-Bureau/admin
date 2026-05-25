@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { verifyAdminRequest } from "@/app/lib/auth";
+import { requirePermission } from "@/app/lib/permissions";
 import { buildEventFeedbackLink } from "@/app/lib/feedback-links";
 import { sendCampaignEmail } from "@/app/lib/email";
 import { logAuditEvent } from "@/app/lib/audit";
@@ -19,11 +19,6 @@ const MAX_TICKETS_PER_REQUEST = REMINDER_EMAIL_BATCH_SIZE;
 
 export async function POST(req: Request) {
   try {
-    const auth = await verifyAdminRequest();
-    if (!auth.authorized) {
-      return NextResponse.json({ error: auth.error }, { status: 401 });
-    }
-
     let body: {
       eventId?: unknown;
       ticketIds?: unknown;
@@ -40,6 +35,11 @@ export async function POST(req: Request) {
         { error: "Valid eventId is required" },
         { status: 400 },
       );
+    }
+
+    const auth = await requirePermission("campaigns.send", eventId);
+    if (!auth.authorized) {
+      return NextResponse.json({ error: auth.error }, { status: 401 });
     }
 
     if (!Array.isArray(body.ticketIds) || body.ticketIds.length === 0) {

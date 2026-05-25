@@ -18,11 +18,13 @@
   },
   "dependencies": {
     "@aws-sdk/client-sesv2": "^3.953.0",
+    "@heroicons/react": "^2.2.0",
     "@node-saml/node-saml": "^5.1.0",
     "@opennextjs/cloudflare": "^1.19.10",
     "@ssb/db": "file:./packages/db",
     "@supabase/supabase-js": "^2.88.0",
     "@types/qrcode": "^1.5.6",
+    "clsx": "^2.1.1",
     "date-fns-tz": "^3.2.0",
     "echarts": "^6.0.0",
     "echarts-for-react": "^3.0.6",
@@ -35,6 +37,7 @@
     "react-markdown": "^10.1.0",
     "rehype-raw": "^7.0.0",
     "rehype-sanitize": "^6.0.0",
+    "tailwind-merge": "^3.6.0",
     "wrangler": "^4.55.0"
   },
   "devDependencies": {

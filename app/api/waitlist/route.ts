@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { verifyAdminRequest } from "@/app/lib/auth";
+import { requirePermission } from "@/app/lib/permissions";
 import { isValidUUID } from "@/app/lib/validation";
 import { sendStandbyLineEmail } from "@/app/lib/email";
 import { PACIFIC_TIMEZONE } from "@/app/lib/constants";
@@ -26,13 +26,13 @@ async function sendWithRetry(
 
 export async function GET(req: Request) {
   try {
-    const auth = await verifyAdminRequest();
+    const { searchParams } = new URL(req.url);
+    const eventId = searchParams.get("eventId");
+
+    const auth = await requirePermission("tickets.view", eventId);
     if (!auth.authorized) {
       return NextResponse.json({ error: auth.error }, { status: 401 });
     }
-
-    const { searchParams } = new URL(req.url);
-    const eventId = searchParams.get("eventId");
 
     // If eventId is provided, validate and return single event waitlist
     if (eventId) {
@@ -199,11 +199,6 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
-    const auth = await verifyAdminRequest();
-    if (!auth.authorized) {
-      return NextResponse.json({ error: auth.error }, { status: 401 });
-    }
-
     const body = await req.json();
     const { eventId, waitlistOpenTime, expectedCapacity } = body;
 
@@ -219,6 +214,11 @@ export async function POST(req: Request) {
         { error: "Invalid event ID format" },
         { status: 400 },
       );
+    }
+
+    const auth = await requirePermission("tickets.edit", eventId);
+    if (!auth.authorized) {
+      return NextResponse.json({ error: auth.error }, { status: 401 });
     }
 
     // Fetch event details

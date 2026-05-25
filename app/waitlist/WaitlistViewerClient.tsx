@@ -5,6 +5,22 @@ import { ConfirmationDialog } from "@/app/components/ConfirmationDialog";
 import { PACIFIC_TIMEZONE } from "@/app/lib/constants";
 import { useEventContext } from "@/app/EventContext";
 import { useEventScopedFetch } from "@/app/lib/useEventScopedFetch";
+import {
+  Alert,
+  Button,
+  EmptyState,
+  Input,
+  Label,
+  PageHeader,
+  Table,
+  TableScroll,
+  TBody,
+  TD,
+  TH,
+  THead,
+  Toggle,
+  TR,
+} from "@/app/components/ui";
 
 type WaitlistEntry = {
   id: string;
@@ -159,10 +175,14 @@ export default function WaitlistViewerClient() {
       }
 
       updateEvent(selectedEventId, { standbyEnabled: enable });
-      setNotifySuccess(enable ? "Standby line enabled." : "Standby line disabled.");
+      setNotifySuccess(
+        enable ? "Standby line enabled." : "Standby line disabled.",
+      );
     } catch (err) {
       console.error("Error toggling standby mode:", err);
-      setNotifyError(err instanceof Error ? err.message : "Failed to toggle standby mode");
+      setNotifyError(
+        err instanceof Error ? err.message : "Failed to toggle standby mode",
+      );
     } finally {
       setIsTogglingStandby(false);
       setShowStandbyConfirm(false);
@@ -221,328 +241,174 @@ export default function WaitlistViewerClient() {
 
   return (
     <div className="px-4 sm:px-6 py-8">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-white font-serif mb-2">
-            Waitlist Management
-          </h1>
-          <p className="text-zinc-400">
-            View and manage event waitlist entries
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
-          {selectedEventId && (
-            <>
-              {/* Standby Line Toggle */}
-              <button
-                onClick={() => {
-                  if (isStandbyMode) {
-                    handleToggleStandby(false);
-                  } else {
-                    setShowStandbyConfirm(true);
-                  }
-                }}
-                disabled={isTogglingStandby}
-                className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-medium transition-colors disabled:opacity-50 shrink-0 ${
-                  isStandbyMode
-                    ? "bg-emerald-600 text-white hover:bg-emerald-700"
-                    : "bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-white"
-                }`}
-              >
-                {isTogglingStandby ? (
-                  <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                ) : (
-                  <div className={`w-8 h-5 rounded-full relative transition-colors ${isStandbyMode ? "bg-emerald-400" : "bg-zinc-600"}`}>
-                    <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${isStandbyMode ? "translate-x-3.5" : "translate-x-0.5"}`} />
-                  </div>
-                )}
-                Standby Line
-              </button>
+      <PageHeader
+        className="mb-8"
+        title="Waitlist Management"
+        subtitle="View and manage event waitlist entries"
+      >
+        {selectedEventId && (
+          <>
+            {/* Standby Line Toggle */}
+            <Toggle
+              checked={isStandbyMode}
+              disabled={isTogglingStandby}
+              onChange={() => {
+                if (isStandbyMode) {
+                  handleToggleStandby(false);
+                } else {
+                  setShowStandbyConfirm(true);
+                }
+              }}
+              label="Standby Line"
+            />
 
-              {/* Send Standby Emails — only when standby is ON and entries exist */}
-              {isStandbyMode && waitlist.length > 0 && (
-                <button
-                  onClick={() => setShowSendDialog(true)}
-                  disabled={isLoading || isSendingEmails}
-                  className="flex items-center gap-2 px-5 py-2.5 bg-emerald-600 text-white rounded-xl font-medium hover:bg-emerald-700 transition-colors disabled:opacity-50 shrink-0"
-                >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                  </svg>
-                  Send Standby Emails
-                </button>
-              )}
-            </>
-          )}
-          <button
-            onClick={handleRefresh}
-            disabled={isLoading}
-            className="flex items-center gap-2 px-5 py-2.5 bg-zinc-800 text-white rounded-xl font-medium hover:bg-zinc-700 transition-colors disabled:opacity-50"
-          >
-            <svg
-              className={`w-5 h-5 ${isLoading ? "animate-spin" : ""}`}
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-              />
-            </svg>
-            Refresh
-          </button>
-        </div>
-      </div>
+            {/* Send Standby Emails — only when standby is ON and entries exist */}
+            {isStandbyMode && waitlist.length > 0 && (
+              <Button
+                variant="primary"
+                onClick={() => setShowSendDialog(true)}
+                disabled={isLoading || isSendingEmails}
+              >
+                Send Standby Emails
+              </Button>
+            )}
+          </>
+        )}
+        <Button onClick={handleRefresh} disabled={isLoading}>
+          Refresh
+        </Button>
+      </PageHeader>
 
       {error && (
-        <div className="mb-6 p-4 bg-rose-500/10 border border-rose-500/30 rounded-xl flex items-center gap-3">
-          <svg
-            className="w-5 h-5 text-rose-400 shrink-0"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-            />
-          </svg>
-          <p className="text-rose-400 text-sm">{error}</p>
-        </div>
+        <Alert tone="error" className="mb-6">
+          {error}
+        </Alert>
       )}
 
       {notifySuccess && (
-        <div className="mb-6 p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-xl flex items-center gap-3">
-          <svg
-            className="w-5 h-5 text-emerald-400 shrink-0"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-            />
-          </svg>
-          <p className="text-emerald-400 text-sm">{notifySuccess}</p>
-        </div>
+        <Alert tone="success" className="mb-6">
+          {notifySuccess}
+        </Alert>
       )}
 
       {notifyError && (
-        <div className="mb-6 p-4 bg-rose-500/10 border border-rose-500/30 rounded-xl flex items-center gap-3">
-          <svg
-            className="w-5 h-5 text-rose-400 shrink-0"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-            />
-          </svg>
-          <p className="text-rose-400 text-sm">{notifyError}</p>
-        </div>
+        <Alert tone="error" className="mb-6">
+          {notifyError}
+        </Alert>
       )}
 
       {isStandbyMode && ticketsStillAvailable && selectedEventId && (
-        <div className="mb-6 p-4 bg-amber-500/10 border border-amber-500/30 rounded-xl flex items-center gap-3">
-          <svg className="w-5 h-5 text-amber-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
-          </svg>
-          <p className="text-amber-400 text-sm">
-            Standby line is active but regular tickets are still available. Users can still get standard tickets.
+        <div className="mb-6 flex items-start gap-3 rounded-lg bg-amber-500/10 p-3.5 ring-1 ring-inset ring-amber-500/25">
+          <p className="flex-1 text-sm text-amber-300">
+            Standby line is active but regular tickets are still available.
+            Users can still get standard tickets.
           </p>
         </div>
       )}
 
       {!selectedEventId ? (
-        <div className="text-center py-16 bg-zinc-900/50 rounded-2xl border border-zinc-800">
-          <div className="w-16 h-16 bg-zinc-800 rounded-full flex items-center justify-center mx-auto mb-4">
-            <svg
-              className="w-8 h-8 text-zinc-600"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
-              />
-            </svg>
-          </div>
-          <p className="text-zinc-400 text-lg mb-2">No event selected</p>
-          <p className="text-zinc-600 text-sm">
-            Select an event from the sidebar to view its waitlist
-          </p>
-        </div>
+        <EmptyState
+          title="No event selected"
+          hint="Select an event from the sidebar to view its waitlist"
+        />
       ) : isLoading ? (
-        <div className="text-center py-16 bg-zinc-900/50 rounded-2xl border border-zinc-800">
-          <div className="w-16 h-16 bg-zinc-800 rounded-full flex items-center justify-center mx-auto mb-4">
-            <div className="w-8 h-8 border-2 border-zinc-600 border-t-zinc-400 rounded-full animate-spin" />
-          </div>
-          <p className="text-zinc-400">Loading waitlist...</p>
-        </div>
+        <EmptyState title="Loading waitlist\u2026" />
       ) : waitlist.length === 0 ? (
-        <div className="text-center py-16 bg-zinc-900/50 rounded-2xl border border-zinc-800">
-          <div className="w-16 h-16 bg-zinc-800 rounded-full flex items-center justify-center mx-auto mb-4">
-            <svg
-              className="w-8 h-8 text-zinc-600"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
-              />
-            </svg>
-          </div>
-          <p className="text-zinc-400 text-lg mb-2">No waitlist entries</p>
-          <p className="text-zinc-600 text-sm">
-            No waitlist entries for {selectedEvent?.name || "this event"}
-          </p>
-        </div>
+        <EmptyState
+          title="No waitlist entries"
+          hint={`No waitlist entries for ${selectedEvent?.name || "this event"}`}
+        />
       ) : (
-        <div className="bg-zinc-900 rounded-2xl border border-zinc-800 overflow-hidden">
-          <div className="p-6 border-b border-zinc-800">
-            <div className="flex items-center gap-4 text-sm text-zinc-400">
-              <span>
-                Total Entries:{" "}
-                <span className="text-emerald-400 font-semibold">
-                  {waitlist.length}
-                </span>
+        <div>
+          <div className="mb-4 flex items-center gap-4 text-sm text-zinc-400">
+            <span>
+              Total entries:{" "}
+              <span className="font-semibold text-emerald-400 tabular-nums">
+                {waitlist.length}
               </span>
-              {selectedEvent && (
-                <span className="text-white font-medium">
-                  {selectedEvent.name || "Unnamed Event"}
-                </span>
-              )}
-            </div>
+            </span>
+            {selectedEvent && (
+              <span className="font-medium text-white">
+                {selectedEvent.name || "Unnamed Event"}
+              </span>
+            )}
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-zinc-800 bg-zinc-800/50">
-                  <th className="text-left px-6 py-3 text-xs font-medium text-zinc-400 uppercase tracking-wider">
-                    Position
-                  </th>
-                  <th className="text-left px-6 py-3 text-xs font-medium text-zinc-400 uppercase tracking-wider">
-                    Name
-                  </th>
-                  <th className="text-left px-6 py-3 text-xs font-medium text-zinc-400 uppercase tracking-wider">
-                    Email
-                  </th>
-                  <th className="text-left px-6 py-3 text-xs font-medium text-zinc-400 uppercase tracking-wider">
-                    Referral
-                  </th>
-                  <th className="text-left px-6 py-3 text-xs font-medium text-zinc-400 uppercase tracking-wider">
-                    Joined
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-zinc-800">
+          <TableScroll>
+            <Table>
+              <THead>
+                <TR className="border-b border-white/10">
+                  <TH>Position</TH>
+                  <TH>Name</TH>
+                  <TH>Email</TH>
+                  <TH>Referral</TH>
+                  <TH>Joined</TH>
+                </TR>
+              </THead>
+              <TBody>
                 {waitlist.map((entry, index) => (
-                  <tr
-                    key={entry.id}
-                    className="hover:bg-zinc-800/30 transition-colors"
-                  >
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-zinc-800 text-white font-semibold text-sm">
+                  <TR key={entry.id}>
+                    <TD>
+                      <span className="inline-flex size-9 items-center justify-center rounded-full bg-white/10 text-sm font-semibold text-white tabular-nums">
                         {index + 1}
                       </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-white">
-                      {entry.name || "\u2014"}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-white font-medium">
-                      {entry.email}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-zinc-400">
+                    </TD>
+                    <TD>{entry.name || "\u2014"}</TD>
+                    <TD className="font-medium">{entry.email}</TD>
+                    <TD className="text-zinc-400">
                       {entry.referral || "\u2014"}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-zinc-400 text-sm">
+                    </TD>
+                    <TD className="text-zinc-400">
                       {formatDisplayDate(entry.created_at)}
-                    </td>
-                  </tr>
+                    </TD>
+                  </TR>
                 ))}
-              </tbody>
-            </table>
-          </div>
+              </TBody>
+            </Table>
+          </TableScroll>
         </div>
       )}
 
       {/* Standby Tickets Table */}
       {isStandbyMode && standbyTickets.length > 0 && selectedEventId && (
-        <div className="mt-6 bg-zinc-900 rounded-2xl border border-zinc-800 overflow-hidden">
-          <div className="p-6 border-b border-zinc-800">
-            <div className="flex items-center gap-4 text-sm text-zinc-400">
-              <span>
-                Standby Tickets:{" "}
-                <span className="text-amber-400 font-semibold">
-                  {standbyTickets.length}
-                </span>
+        <div className="mt-8">
+          <div className="mb-4 flex items-center gap-4 text-sm text-zinc-400">
+            <span>
+              Standby tickets:{" "}
+              <span className="font-semibold text-amber-400 tabular-nums">
+                {standbyTickets.length}
               </span>
-            </div>
+            </span>
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-zinc-800 bg-zinc-800/50">
-                  <th className="text-left px-6 py-3 text-xs font-medium text-zinc-400 uppercase tracking-wider">
-                    #
-                  </th>
-                  <th className="text-left px-6 py-3 text-xs font-medium text-zinc-400 uppercase tracking-wider">
-                    Name
-                  </th>
-                  <th className="text-left px-6 py-3 text-xs font-medium text-zinc-400 uppercase tracking-wider">
-                    Email
-                  </th>
-                  <th className="text-left px-6 py-3 text-xs font-medium text-zinc-400 uppercase tracking-wider">
-                    Issued
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-zinc-800">
+          <TableScroll>
+            <Table>
+              <THead>
+                <TR className="border-b border-white/10">
+                  <TH>#</TH>
+                  <TH>Name</TH>
+                  <TH>Email</TH>
+                  <TH>Issued</TH>
+                </TR>
+              </THead>
+              <TBody>
                 {standbyTickets.map((ticket, index) => (
-                  <tr
-                    key={ticket.id}
-                    className="hover:bg-zinc-800/30 transition-colors"
-                  >
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-amber-500/10 text-amber-400 font-semibold text-sm border border-amber-500/20">
+                  <TR key={ticket.id}>
+                    <TD>
+                      <span className="inline-flex size-9 items-center justify-center rounded-full bg-amber-500/15 text-sm font-semibold text-amber-400 ring-1 ring-inset ring-amber-500/25 tabular-nums">
                         {index + 1}
                       </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-white">
-                      {ticket.name || "\u2014"}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-white font-medium">
-                      {ticket.email}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-zinc-400 text-sm">
+                    </TD>
+                    <TD>{ticket.name || "\u2014"}</TD>
+                    <TD className="font-medium">{ticket.email}</TD>
+                    <TD className="text-zinc-400">
                       {formatDisplayDate(ticket.created_at)}
-                    </td>
-                  </tr>
+                    </TD>
+                  </TR>
                 ))}
-              </tbody>
-            </table>
-          </div>
+              </TBody>
+            </Table>
+          </TableScroll>
         </div>
       )}
 
@@ -550,14 +416,16 @@ export default function WaitlistViewerClient() {
         open={showStandbyConfirm}
         title="Enable Standby Line?"
         description="This closes the online waitlist and shows the standby ticket option on the event page."
-        confirmLabel={isTogglingStandby
-          ? (
+        confirmLabel={
+          isTogglingStandby ? (
             <>
               <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
               Enabling...
             </>
+          ) : (
+            "Enable"
           )
-          : "Enable"}
+        }
         tone="primary"
         dismissible={!isTogglingStandby}
         isConfirming={isTogglingStandby}
@@ -569,67 +437,61 @@ export default function WaitlistViewerClient() {
 
       {/* Send Standby Emails Dialog */}
       {showSendDialog && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-zinc-900 rounded-2xl border border-zinc-800 p-6 max-w-md w-full">
-            <h2 className="text-xl font-bold text-white mb-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-md rounded-2xl border border-white/10 bg-zinc-900 p-6">
+            <h2 className="mb-4 text-sm font-semibold text-white">
               Send Standby Emails
             </h2>
-            <p className="text-zinc-400 mb-6">
+            <p className="mb-6 text-sm text-zinc-400">
               This will send standby line emails to all waitlist entries for the
               selected event, converting them to standby tickets.
             </p>
-            <div className="space-y-4 mb-6">
+            <div className="mb-6 space-y-4">
               <div>
-                <label className="block text-sm font-medium text-zinc-300 mb-2">
-                  Standby Line Open Time
-                </label>
-                <input
+                <Label htmlFor="standby-open-time" className="mb-1.5 block">
+                  Standby line open time
+                </Label>
+                <Input
+                  id="standby-open-time"
                   type="text"
                   value={standbyOpenTime}
                   onChange={(e) => setStandbyOpenTime(e.target.value)}
                   placeholder="7:30 PM"
-                  className="w-full px-4 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-zinc-300 mb-2">
-                  Expected Capacity
-                </label>
-                <input
+                <Label htmlFor="expected-capacity" className="mb-1.5 block">
+                  Expected capacity
+                </Label>
+                <Input
+                  id="expected-capacity"
                   type="text"
                   value={expectedCapacity}
                   onChange={(e) => setExpectedCapacity(e.target.value)}
                   placeholder="100-200"
-                  className="w-full px-4 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50"
                 />
               </div>
             </div>
             <div className="flex items-center gap-3">
-              <button
+              <Button
                 onClick={() => {
                   setShowSendDialog(false);
                   setNotifyError(null);
                   setNotifySuccess(null);
                 }}
                 disabled={isSendingEmails}
-                className="flex-1 px-4 py-2 bg-zinc-800 text-white rounded-lg font-medium hover:bg-zinc-700 transition-colors disabled:opacity-50"
+                className="flex-1"
               >
                 Cancel
-              </button>
-              <button
+              </Button>
+              <Button
+                variant="primary"
                 onClick={() => handleSendStandbyEmails()}
                 disabled={isSendingEmails}
-                className="flex-1 px-4 py-2 bg-emerald-600 text-white rounded-lg font-medium hover:bg-emerald-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                className="flex-1"
               >
-                {isSendingEmails ? (
-                  <>
-                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    Sending...
-                  </>
-                ) : (
-                  "Send Emails"
-                )}
-              </button>
+                {isSendingEmails ? "Sending…" : "Send Emails"}
+              </Button>
             </div>
           </div>
         </div>

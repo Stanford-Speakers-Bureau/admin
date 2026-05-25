@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
-import { verifyAdminRequest } from "@/app/lib/auth";
+import { requirePermission } from "@/app/lib/permissions";
 import { getAdminSuggestions } from "@/app/suggest/data";
 import { db, eq, count as dbCount, suggest, votes } from "@ssb/db";
 import { logAuditEvent } from "@/app/lib/audit";
 
 export async function POST() {
   try {
-    const auth = await verifyAdminRequest();
+    const auth = await requirePermission("suggestions.manage");
     if (!auth.authorized) {
       return NextResponse.json({ error: auth.error }, { status: 401 });
     }

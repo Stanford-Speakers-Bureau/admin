@@ -1,9 +1,11 @@
 "use client";
 
 import { useEffect, useState, useMemo, useCallback, useRef } from "react";
+import { InformationCircleIcon } from "@heroicons/react/16/solid";
 import { useRouter } from "next/navigation";
 import ReactECharts from "echarts-for-react";
 import { getAnalyticsCardGridStyle } from "@/app/lib/utils";
+import { Card } from "@/app/components/ui";
 
 // ── Types ────────────────────────────────────────────────────────────────
 
@@ -248,12 +250,7 @@ export default function TicketSalesGraph({
       };
     const interval = pickInterval(Math.max(visibleSpan, MIN));
     return {
-      bucketedData: bucketEpochs(
-        epochs,
-        interval,
-        fullRange[0],
-        fullRange[1],
-      ),
+      bucketedData: bucketEpochs(epochs, interval, fullRange[0], fullRange[1]),
       seriesLabel: intervalLabel(interval),
     };
   }, [epochs, fullRange, visibleSpan]);
@@ -281,10 +278,7 @@ export default function TicketSalesGraph({
     }, 120);
   }, [fullRange]);
 
-  const onEvents = useMemo(
-    () => ({ datazoom: onDataZoom }),
-    [onDataZoom],
-  );
+  const onEvents = useMemo(() => ({ datazoom: onDataZoom }), [onDataZoom]);
 
   // Build ECharts option
   const chartOption = useMemo(() => {
@@ -458,19 +452,7 @@ export default function TicketSalesGraph({
     return (
       <div className="flex-1 flex items-center justify-center py-20">
         <div className="text-center">
-          <svg
-            className="w-10 h-10 text-rose-400 mx-auto mb-2"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-            />
-          </svg>
+          <InformationCircleIcon className="size-4 shrink-0 text-rose-400 mx-auto mb-2 w-10 h-10" aria-hidden="true" />
           <p className="text-rose-400 text-sm">{error}</p>
         </div>
       </div>
@@ -502,13 +484,14 @@ export default function TicketSalesGraph({
 
   const { totalTickets, vipCount, standardCount, milestones } = salesData;
   const effectiveCapacity = capacity > 0 ? capacity : salesData.capacity;
-  const fillRate = effectiveCapacity > 0 ? (totalTickets / effectiveCapacity) * 100 : 0;
+  const fillRate =
+    effectiveCapacity > 0 ? (totalTickets / effectiveCapacity) * 100 : 0;
   const affiliationCardCount = AFFILIATION_CONFIG.length;
 
   return (
     <div className="flex-1 flex flex-col min-h-0 space-y-5 overflow-y-auto pr-1">
       {/* Fill Rate Banner */}
-      <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
+      <Card className="p-5">
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-lg font-semibold text-white">
             {totalTickets}{" "}
@@ -532,11 +515,7 @@ export default function TicketSalesGraph({
           value={totalTickets}
           max={effectiveCapacity}
           color={
-            fillRate >= 90
-              ? "#10b981"
-              : fillRate >= 50
-                ? "#3b82f6"
-                : "#f59e0b"
+            fillRate >= 90 ? "#10b981" : fillRate >= 50 ? "#3b82f6" : "#f59e0b"
           }
         />
         <div className="flex justify-between mt-2">
@@ -557,10 +536,10 @@ export default function TicketSalesGraph({
             </div>
           ))}
         </div>
-      </div>
+      </Card>
 
       {/* Ticket Type Breakdown */}
-      <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
+      <Card className="p-4">
         <div className="flex gap-4 items-center">
           <div className="flex-1 flex h-3 rounded-full overflow-hidden bg-zinc-800">
             {standardCount > 0 && (
@@ -596,9 +575,9 @@ export default function TicketSalesGraph({
             </div>
           </div>
         </div>
-      </div>
+      </Card>
 
-      <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
+      <Card className="p-5">
         <div className="mb-4">
           <h3 className="text-sm font-semibold text-zinc-300">
             Sales by Affiliation
@@ -615,18 +594,21 @@ export default function TicketSalesGraph({
         >
           {AFFILIATION_CONFIG.map(({ key, label, color, bg, text }) => {
             const soldCount = salesData.byAffiliation[key];
-            const share = totalTickets > 0 ? (soldCount / totalTickets) * 100 : 0;
+            const share =
+              totalTickets > 0 ? (soldCount / totalTickets) * 100 : 0;
 
             return (
               <button
                 key={key}
                 type="button"
-                onClick={() => router.push(`/tickets/${eventId}?affiliation=${key}`)}
-                className={`rounded-xl border border-zinc-800 p-4 text-left transition-colors hover:border-zinc-600 ${bg}`}
+                onClick={() =>
+                  router.push(`/tickets/${eventId}?affiliation=${key}`)
+                }
+                className={`rounded-lg border border-white/10 p-4 text-left transition-colors hover:border-white/20 ${bg}`}
               >
                 <div className="mb-1 flex items-center justify-between">
                   <span
-                    className={`text-xs font-semibold uppercase tracking-wider ${text}`}
+                    className={`text-xs font-semibold tracking-wide ${text}`}
                   >
                     {label}
                   </span>
@@ -637,15 +619,19 @@ export default function TicketSalesGraph({
                 <p className="mb-2 text-sm font-medium text-zinc-300">
                   {soldCount.toLocaleString()} sold
                 </p>
-                <ProgressBar value={soldCount} max={totalTickets} color={color} />
+                <ProgressBar
+                  value={soldCount}
+                  max={totalTickets}
+                  color={color}
+                />
               </button>
             );
           })}
         </div>
-      </div>
+      </Card>
 
       {/* Sales Chart */}
-      <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
+      <Card className="p-5">
         <p className="text-[10px] text-zinc-600 mb-1">
           Scroll to zoom &middot; Drag to pan &middot; Click legend to toggle
         </p>
@@ -657,7 +643,7 @@ export default function TicketSalesGraph({
           onEvents={onEvents}
           notMerge
         />
-      </div>
+      </Card>
     </div>
   );
 }

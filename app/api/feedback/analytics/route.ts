@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { verifyAdminRequest } from "@/app/lib/auth";
+import { requirePermission } from "@/app/lib/permissions";
 import { isValidUUID } from "@/app/lib/validation";
 import { db, eq, events, eventFeedback, tickets } from "@ssb/db";
 
@@ -23,11 +23,6 @@ type EligibleTicketRow = {
 
 export async function GET(req: Request) {
   try {
-    const auth = await verifyAdminRequest();
-    if (!auth.authorized) {
-      return NextResponse.json({ error: auth.error }, { status: 401 });
-    }
-
     const { searchParams } = new URL(req.url);
     const eventId = searchParams.get("eventId");
 
@@ -36,6 +31,11 @@ export async function GET(req: Request) {
         { error: "Valid eventId is required" },
         { status: 400 },
       );
+    }
+
+    const auth = await requirePermission("audience.view", eventId);
+    if (!auth.authorized) {
+      return NextResponse.json({ error: auth.error }, { status: 401 });
     }
 
     const [event, scannedTickets, feedbackRows] = await Promise.all([

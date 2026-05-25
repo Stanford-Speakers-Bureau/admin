@@ -1,6 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import {
+  MagnifyingGlassIcon,
+  PencilIcon,
+  PhotoIcon,
+  TrashIcon,
+} from "@heroicons/react/16/solid";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
@@ -8,22 +14,14 @@ import { useConfirmationDialog } from "@/app/components/ConfirmationDialog";
 import { PACIFIC_TIMEZONE } from "@/app/lib/constants";
 import { useEventContext } from "@/app/EventContext";
 import type { TicketingRole } from "@/app/lib/ticketingRoles";
-
-function formatDisplayDate(dateString: string | null): string {
-  if (!dateString) return "TBD";
-  const date = new Date(dateString);
-  if (Number.isNaN(date.getTime())) return "TBD";
-
-  return new Intl.DateTimeFormat("en-US", {
-    timeZone: PACIFIC_TIMEZONE,
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: true,
-  }).format(date);
-}
+import {
+  Alert,
+  EmptyState,
+  Input,
+  PageHeader,
+  StatusPill,
+  type SemanticColor,
+} from "@/app/components/ui";
 
 export type Event = {
   id: string;
@@ -71,8 +69,32 @@ export type Event = {
 
 type EventStatus = {
   label: string;
-  color: string;
+  color: SemanticColor;
 };
+
+function formatShortDate(dateString: string | null): {
+  date: string;
+  time: string;
+} {
+  if (!dateString) return { date: "TBD", time: "" };
+  const date = new Date(dateString);
+  if (Number.isNaN(date.getTime())) return { date: "TBD", time: "" };
+
+  return {
+    date: new Intl.DateTimeFormat("en-US", {
+      timeZone: PACIFIC_TIMEZONE,
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    }).format(date),
+    time: new Intl.DateTimeFormat("en-US", {
+      timeZone: PACIFIC_TIMEZONE,
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    }).format(date),
+  };
+}
 
 function getEventStatus(event: Event): EventStatus {
   const now = new Date();
@@ -91,23 +113,23 @@ function getEventStatus(event: Event): EventStatus {
       : null;
 
   if (eventEnd && now >= eventEnd) {
-    return { label: "Event Over", color: "text-zinc-500" };
+    return { label: "Event Over", color: "zinc" };
   }
 
   if (event.live) {
-    return { label: "Happening Now", color: "text-emerald-400" };
+    return { label: "Happening Now", color: "emerald" };
   }
 
   if (eventStart && now >= eventStart) {
-    return { label: "Event Started", color: "text-emerald-400" };
+    return { label: "Event Started", color: "emerald" };
   }
 
   if (event.standby_enabled) {
-    return { label: "Standby Line Open", color: "text-amber-400" };
+    return { label: "Standby Line Open", color: "amber" };
   }
 
   if (isMystery) {
-    return { label: "Mystery Speaker", color: "text-purple-400" };
+    return { label: "Mystery Speaker", color: "violet" };
   }
 
   const maxPublic = Math.max(0, event.capacity - (event.reserved || 0));
@@ -115,7 +137,7 @@ function getEventStatus(event: Event): EventStatus {
     event.capacity > 0 && (event.tickets_sold || 0) >= maxPublic;
 
   if (isSoldOut) {
-    return { label: "Sold Out", color: "text-orange-400" };
+    return { label: "Sold Out", color: "rose" };
   }
 
   const ticketingDate = event.ticketing_date
@@ -123,7 +145,7 @@ function getEventStatus(event: Event): EventStatus {
     : null;
   if (ticketingDate && now < ticketingDate) {
     if (event.hide_ticketing_date) {
-      return { label: "Tickets Drop (Hidden)", color: "text-blue-400" };
+      return { label: "Tickets Drop (Hidden)", color: "blue" };
     }
     const formatted = new Intl.DateTimeFormat("en-US", {
       month: "short",
@@ -133,69 +155,81 @@ function getEventStatus(event: Event): EventStatus {
       hour12: true,
       timeZone: PACIFIC_TIMEZONE,
     }).format(ticketingDate);
-    return { label: `Tickets Drop ${formatted}`, color: "text-blue-400" };
+    return { label: `Tickets Drop ${formatted}`, color: "blue" };
   }
 
-  return { label: "Tickets Available", color: "text-emerald-400" };
+  return { label: "Tickets Available", color: "emerald" };
 }
 
-type EventCardImageProps = {
+type EventThumbnailProps = {
   event: Event;
 };
 
-function EventCardImage({ event }: EventCardImageProps) {
+function EventThumbnail({ event }: EventThumbnailProps) {
   const [isLoading, setIsLoading] = useState(true);
 
-  if (!event.image_url) {
-    return (
-      <div className="w-full h-full flex items-center justify-center">
-        <svg
-          className="w-16 h-16 text-zinc-700"
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+  return (
+    <div className="relative size-12 shrink-0 overflow-hidden rounded-lg bg-zinc-800 ring-1 ring-white/5">
+      {!event.image_url ? (
+        <div className="flex size-full items-center justify-center">
+          <PhotoIcon aria-hidden="true" className="size-4 shrink-0 text-zinc-600" />
+        </div>
+      ) : (
+        <>
+          {isLoading && (
+            <div className="absolute inset-0 animate-pulse bg-zinc-800" />
+          )}
+          <Image
+            src={event.image_url}
+            alt={event.name || "Event"}
+            fill
+            sizes="48px"
+            className={`object-cover transition-opacity duration-300 ${isLoading ? "opacity-0" : "opacity-100"}`}
+            onLoad={() => setIsLoading(false)}
+            unoptimized
           />
-        </svg>
-      </div>
-    );
-  }
+        </>
+      )}
+    </div>
+  );
+}
+
+function StatusBadge({ event }: { event: Event }) {
+  const status = getEventStatus(event);
+  return (
+    <StatusPill color={status.color} dot className="whitespace-nowrap">
+      {status.label}
+    </StatusPill>
+  );
+}
+
+function CapacityMeter({ event }: { event: Event }) {
+  const sold = event.tickets_sold ?? 0;
+  const capacity = event.capacity || 0;
+  const pct =
+    capacity > 0 ? Math.min(100, Math.round((sold / capacity) * 100)) : 0;
+  const isFull = capacity > 0 && sold >= capacity;
 
   return (
-    <>
-      {isLoading && (
-        <div className="absolute inset-0 bg-zinc-800 animate-pulse flex items-center justify-center">
-          <svg
-            className="w-10 h-10 text-zinc-700 animate-pulse"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
-            />
-          </svg>
-        </div>
-      )}
-      <Image
-        src={event.image_url}
-        alt={event.name || "Event"}
-        fill
-        sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-        className={`object-cover transition-opacity duration-300 ${isLoading ? "opacity-0" : "opacity-100"}`}
-        onLoad={() => setIsLoading(false)}
-        priority
-        unoptimized
-      />
-    </>
+    <div className="w-32">
+      <div className="flex items-baseline justify-between text-xs">
+        <span className="font-medium text-zinc-300 tabular-nums">
+          {sold}
+          <span className="text-zinc-600">/{capacity}</span>
+        </span>
+        {(event.standby_count ?? 0) > 0 && (
+          <span className="text-amber-400/80 tabular-nums">
+            +{event.standby_count}
+          </span>
+        )}
+      </div>
+      <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-zinc-800">
+        <div
+          className={`h-full w-(--fill) rounded-full ${isFull ? "bg-orange-400" : "bg-emerald-500"}`}
+          style={{ "--fill": `${pct}%` } as Record<string, string>}
+        />
+      </div>
+    </div>
   );
 }
 
@@ -213,10 +247,17 @@ export default function AdminEventsClient({
   const [events, setEvents] = useState<Event[]>(initialEvents);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
 
   useEffect(() => {
     setEvents(initialEvents);
   }, [initialEvents]);
+
+  const filteredEvents = events.filter((event) => {
+    if (!query.trim()) return true;
+    const haystack = `${event.name ?? "Mystery Speaker"} ${event.venue ?? ""} ${event.tagline ?? ""}`;
+    return haystack.toLowerCase().includes(query.trim().toLowerCase());
+  });
 
   async function handleDelete(id: string) {
     const shouldDelete = await confirmAction({
@@ -257,268 +298,173 @@ export default function AdminEventsClient({
 
   return (
     <div className="px-4 sm:px-6 py-8">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-white font-serif mb-2">
-            Event Management
-          </h1>
-          <p className="text-zinc-400">View and manage speaker events.</p>
-        </div>
+      <PageHeader
+        className="mb-6"
+        title="Event management"
+        subtitle={
+          <>
+            View and manage speaker events.
+            {events.length > 0 && (
+              <span className="text-zinc-600"> · {events.length} total</span>
+            )}
+          </>
+        }
+      >
         <Link
           href="/events/edit?create=1"
-          className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-emerald-500 to-teal-500 text-white rounded-xl font-medium hover:opacity-90 transition-opacity"
+          className="rounded-lg bg-rose-500 px-3 py-2 text-sm font-semibold text-white hover:bg-rose-400 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose-500"
         >
-          <svg
-            className="w-5 h-5"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M12 6v6m0 0v6m0-6h6m-6 0H6"
-            />
-          </svg>
-          Create Event
+          Create event
         </Link>
-      </div>
+      </PageHeader>
 
       {error && (
-        <div className="mb-6 p-4 bg-rose-500/10 border border-rose-500/30 rounded-xl flex items-center gap-3">
-          <svg
-            className="w-5 h-5 text-rose-400 shrink-0"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-            />
-          </svg>
-          <p className="text-rose-400 text-sm">{error}</p>
-          <button
-            onClick={() => setError(null)}
-            className="ml-auto text-rose-400 hover:text-rose-300"
-          >
-            <svg
-              className="w-4 h-4"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M6 18L18 6M6 6l12 12"
-              />
-            </svg>
-          </button>
-        </div>
+        <Alert className="mb-6" tone="error" onDismiss={() => setError(null)}>
+          {error}
+        </Alert>
       )}
 
       {success && (
-        <div className="mb-6 p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-xl flex items-center gap-3">
-          <svg
-            className="w-5 h-5 text-emerald-400 shrink-0"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M5 13l4 4L19 7"
-            />
-          </svg>
-          <p className="text-emerald-400 text-sm">{success}</p>
-          <button
-            onClick={() => setSuccess(null)}
-            className="ml-auto text-emerald-400 hover:text-emerald-300"
-          >
-            <svg
-              className="w-4 h-4"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M6 18L18 6M6 6l12 12"
-              />
-            </svg>
-          </button>
-        </div>
+        <Alert
+          className="mb-6"
+          tone="success"
+          onDismiss={() => setSuccess(null)}
+        >
+          {success}
+        </Alert>
       )}
 
       {events.length === 0 ? (
-        <div className="text-center py-16 bg-zinc-900/50 rounded-2xl border border-zinc-800">
-          <div className="w-16 h-16 bg-zinc-800 rounded-full flex items-center justify-center mx-auto mb-4">
-            <svg
-              className="w-8 h-8 text-zinc-600"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
-              />
-            </svg>
-          </div>
-          <p className="text-zinc-400 text-lg mb-2">No events yet</p>
-          <p className="text-zinc-600 text-sm mb-6">
-            Create your first speaker event to get started.
-          </p>
+        <EmptyState
+          title="No events yet"
+          hint="Create your first speaker event to get started."
+        >
           <Link
             href="/events/edit?create=1"
-            className="inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-emerald-500 to-teal-500 text-white rounded-xl font-medium hover:opacity-90 transition-opacity"
+            className="rounded-lg bg-rose-500 px-3 py-2 text-sm font-semibold text-white hover:bg-rose-400 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose-500"
           >
-            <svg
-              className="w-5 h-5"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M12 6v6m0 0v6m0-6h6m-6 0H6"
-              />
-            </svg>
-            Create Event
+            Create event
           </Link>
-        </div>
+        </EmptyState>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {events.map((event) => (
-            <div
-              key={event.id}
-              className="bg-zinc-900 rounded-2xl border border-zinc-800 overflow-hidden hover:border-zinc-700 transition-colors group"
-            >
-              <div className="relative h-48 bg-zinc-800">
-                <EventCardImage event={event} />
-                {event.live && (
-                  <div className="absolute top-3 right-3 px-2 py-1 bg-red-500 text-white text-xs font-medium rounded-full z-10 flex items-center gap-1">
-                    <svg
-                      className="w-3 h-3"
-                      fill="currentColor"
-                      viewBox="0 0 20 20"
-                    >
-                      <path
-                        fillRule="evenodd"
-                        d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z"
-                        clipRule="evenodd"
-                      />
-                    </svg>
-                    LIVE
-                  </div>
-                )}
-              </div>
-              <div className="p-5">
-                <h3 className="text-lg font-semibold text-white mb-1 truncate">
-                  {event.name || "Mystery Speaker"}
-                </h3>
-                <div className="flex items-center gap-3 text-sm text-zinc-500 mb-1">
-                  <span className="flex items-center gap-1">
-                    <svg
-                      className="w-4 h-4"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
-                      />
-                    </svg>
-                    {formatDisplayDate(event.start_time_date)}
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <svg
-                      className="w-4 h-4"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"
-                      />
-                    </svg>
-                    {event.tickets_sold ?? 0}/{event.capacity}
-                    {(event.standby_count ?? 0) > 0 && (
-                      <span className="text-amber-400/80 ml-1">
-                        (+{event.standby_count} standby)
-                      </span>
-                    )}
-                  </span>
-                </div>
-                <p
-                  className={`text-xs font-medium mb-4 ${getEventStatus(event).color}`}
-                >
-                  {getEventStatus(event).label}
-                </p>
-                <div className="flex flex-col gap-2">
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => handleSelectAndEdit(event)}
-                      className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-zinc-800 text-white rounded text-sm font-medium hover:bg-zinc-700 transition-colors"
-                    >
-                      <svg
-                        className="w-4 h-4"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
-                        />
-                      </svg>
-                      Edit
-                    </button>
-                    <button
-                      onClick={() => handleDelete(event.id)}
-                      className="px-4 py-2 text-rose-400 hover:bg-rose-500/10 rounded text-sm font-medium transition-colors"
-                    >
-                      <svg
-                        className="w-4 h-4"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                        />
-                      </svg>
-                    </button>
-                  </div>
-                </div>
+        <>
+          <div className="mb-4 relative max-w-sm">
+            <MagnifyingGlassIcon
+              aria-hidden="true"
+              className="pointer-events-none absolute top-1/2 left-3 size-4 shrink-0 -translate-y-1/2 text-zinc-500"
+            />
+            <Input
+              type="text"
+              aria-label="Search events"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search by name or venue…"
+              className="pr-3 pl-9"
+            />
+          </div>
+
+          {filteredEvents.length === 0 ? (
+            <EmptyState title={<>No events match &ldquo;{query}&rdquo;.</>} />
+          ) : (
+            <div className="-mx-4 -my-2 overflow-x-auto sm:-mx-6">
+              <div className="inline-block min-w-full px-4 py-2 align-middle sm:px-6">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-white/10 text-left text-sm font-medium text-zinc-400">
+                      <th className="py-3 pr-4 font-medium whitespace-nowrap">
+                        Event
+                      </th>
+                      <th className="px-4 py-3 font-medium whitespace-nowrap">
+                        Date
+                      </th>
+                      <th className="px-4 py-3 font-medium whitespace-nowrap">
+                        Status
+                      </th>
+                      <th className="px-4 py-3 font-medium whitespace-nowrap">
+                        Tickets
+                      </th>
+                      <th className="py-3 pl-4 text-right font-medium whitespace-nowrap">
+                        <span className="sr-only">Actions</span>
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredEvents.map((event) => {
+                      const { date, time } = formatShortDate(
+                        event.start_time_date,
+                      );
+                      return (
+                        <tr
+                          key={event.id}
+                          className="group border-b border-white/10 transition-colors hover:bg-white/[0.02]"
+                        >
+                          <td className="py-3 pr-4">
+                            <button
+                              onClick={() => handleSelectAndEdit(event)}
+                              className="flex items-center gap-3 text-left"
+                            >
+                              <EventThumbnail event={event} />
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <span className="truncate font-medium text-white group-hover:text-rose-400 transition-colors">
+                                    {event.name || "Mystery Speaker"}
+                                  </span>
+                                  {event.live && (
+                                    <span className="inline-flex items-center gap-1 rounded-full bg-rose-500/15 py-0.5 pr-2 pl-1.5 text-xs font-medium text-rose-300 ring-1 ring-inset ring-rose-500/25">
+                                      <span className="size-1.5 animate-pulse rounded-full bg-rose-400" />
+                                      LIVE
+                                    </span>
+                                  )}
+                                </div>
+                                {event.venue && (
+                                  <p className="truncate text-xs text-zinc-500">
+                                    {event.venue}
+                                  </p>
+                                )}
+                              </div>
+                            </button>
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap">
+                            <div className="text-sm text-zinc-300">{date}</div>
+                            {time && (
+                              <div className="text-xs text-zinc-500">
+                                {time}
+                              </div>
+                            )}
+                          </td>
+                          <td className="px-4 py-3">
+                            <StatusBadge event={event} />
+                          </td>
+                          <td className="px-4 py-3">
+                            <CapacityMeter event={event} />
+                          </td>
+                          <td className="py-3 pl-4">
+                            <div className="flex items-center justify-end gap-1">
+                              <button
+                                onClick={() => handleSelectAndEdit(event)}
+                                className="rounded-md p-2 text-zinc-400 transition-colors hover:bg-white/5 hover:text-white"
+                                title="Edit event"
+                              >
+                                <PencilIcon aria-hidden="true" className="size-4 shrink-0" />
+                              </button>
+                              <button
+                                onClick={() => handleDelete(event.id)}
+                                className="rounded-md p-2 text-zinc-500 transition-colors hover:bg-white/5 hover:text-rose-400"
+                                title="Delete event"
+                              >
+                                <TrashIcon aria-hidden="true" className="size-4 shrink-0" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
             </div>
-          ))}
-        </div>
+          )}
+        </>
       )}
       {confirmationDialog}
     </div>

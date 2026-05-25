@@ -2,6 +2,16 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { useEventContext } from "@/app/EventContext";
+import {
+  Alert,
+  Button,
+  EmptyState,
+  Input,
+  PageHeader,
+  Tabs,
+  Tab,
+  Textarea,
+} from "@/app/components/ui";
 import type { AdminEventQuestion } from "./data";
 
 type EnableState = "enabled" | "disabled";
@@ -20,7 +30,7 @@ type ActionState = {
 };
 
 const buttonBase =
-  "px-3 py-1.5 text-xs font-semibold rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed";
+  "px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed";
 
 const tones = {
   approve:
@@ -29,12 +39,10 @@ const tones = {
     "bg-rose-500/20 text-rose-400 hover:bg-rose-500/30 border border-rose-500/30",
   amber:
     "bg-amber-500/20 text-amber-400 hover:bg-amber-500/30 border border-amber-500/30",
-  sky:
-    "bg-sky-500/20 text-sky-400 hover:bg-sky-500/30 border border-sky-500/30",
+  sky: "bg-sky-500/20 text-sky-400 hover:bg-sky-500/30 border border-sky-500/30",
   neutral:
-    "bg-zinc-800 text-zinc-200 hover:bg-zinc-700 border border-zinc-700",
-  ghost:
-    "border border-zinc-700 text-zinc-300 hover:bg-zinc-800",
+    "bg-white/5 text-zinc-200 ring-1 ring-inset ring-white/10 hover:bg-white/10",
+  ghost: "ring-1 ring-inset ring-white/10 text-zinc-300 hover:bg-white/5",
 } as const;
 
 export default function AdminEventQuestionsClient({
@@ -148,7 +156,10 @@ export default function AdminEventQuestionsClient({
     if (!voteEditing) return;
     const n = Number(voteEditing.value);
     if (!Number.isFinite(n) || n < 0) {
-      setState({ busy: false, error: "Vote count must be a non-negative number" });
+      setState({
+        busy: false,
+        error: "Vote count must be a non-negative number",
+      });
       return;
     }
     const ok = await post(
@@ -205,14 +216,10 @@ export default function AdminEventQuestionsClient({
   if (!selectedEventId || !currentEvent) {
     return (
       <div className="px-4 sm:px-6 py-8 max-w-7xl mx-auto w-full text-sm">
-        <header className="mb-6">
-          <h1 className="text-2xl sm:text-3xl font-bold text-white font-serif mb-2">
-            Moderator Q&amp;A
-          </h1>
-          <p className="text-zinc-400">
-            Pick an event from the sidebar to moderate its questions.
-          </p>
-        </header>
+        <PageHeader
+          title="Moderator Q&A"
+          subtitle="Pick an event from the sidebar to moderate its questions."
+        />
       </div>
     );
   }
@@ -283,24 +290,20 @@ export default function AdminEventQuestionsClient({
 
   return (
     <div className="px-4 sm:px-6 py-8 max-w-7xl mx-auto w-full text-sm">
-      <header className="mb-6 flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-white font-serif mb-2">
-            Moderator Q&amp;A · {currentEvent.name}
-          </h1>
-          <p className="text-zinc-400">
-            Review, approve, and curate questions for this event. The moderator
-            will ask the top-voted approved questions during the Q&amp;A.
-          </p>
-        </div>
-        <div className="flex shrink-0 flex-col items-stretch gap-2 sm:items-end">
+      <PageHeader
+        className="mb-6 flex-wrap"
+        title={`Moderator Q&A · ${currentEvent.name}`}
+        subtitle="Review, approve, and curate questions for this event. The moderator will ask the top-voted approved questions during the Q&A."
+      >
+        <div className="flex flex-col items-stretch gap-2 sm:items-end">
           <button
+            type="button"
             onClick={toggleEnabled}
             disabled={togglingEnable}
             className={`shrink-0 inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors disabled:opacity-50 ${
               enabled
-                ? "bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 border border-emerald-500/30"
-                : "bg-zinc-800 text-zinc-300 hover:bg-zinc-700 border border-zinc-700"
+                ? "bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 ring-1 ring-inset ring-emerald-500/30"
+                : "bg-white/5 text-zinc-300 hover:bg-white/10 ring-1 ring-inset ring-white/10"
             }`}
           >
             <span
@@ -312,13 +315,14 @@ export default function AdminEventQuestionsClient({
             {enabled ? "disable" : "enable"}
           </button>
           <button
+            type="button"
             onClick={toggleRankings}
             disabled={togglingRankings}
             title="When rankings are hidden, the public sees approved questions in a random order with no rank numbers. You still see votes and ranking here."
             className={`shrink-0 inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors disabled:opacity-50 ${
               rankingsHidden
-                ? "bg-zinc-800 text-zinc-300 hover:bg-zinc-700 border border-zinc-700"
-                : "bg-sky-500/20 text-sky-400 hover:bg-sky-500/30 border border-sky-500/30"
+                ? "bg-white/5 text-zinc-300 hover:bg-white/10 ring-1 ring-inset ring-white/10"
+                : "bg-sky-500/20 text-sky-400 hover:bg-sky-500/30 ring-1 ring-inset ring-sky-500/30"
             }`}
           >
             <span
@@ -330,41 +334,35 @@ export default function AdminEventQuestionsClient({
             {rankingsHidden ? "show" : "hide"}
           </button>
         </div>
-      </header>
+      </PageHeader>
 
-      <div className="flex flex-wrap gap-2 mb-5">
+      <Tabs wrap className="mb-5">
         {tabs.map((t) => (
-          <button
+          <Tab
             key={t.key}
+            active={tab === t.key}
+            count={t.count}
             onClick={() => setTab(t.key)}
-            className={`rounded px-3 py-1.5 text-xs font-semibold transition-colors ${
-              tab === t.key
-                ? "bg-rose-500/20 text-rose-400 border border-rose-500/30"
-                : "bg-zinc-900 text-zinc-400 border border-zinc-800 hover:bg-zinc-800"
-            }`}
           >
-            {t.label}{" "}
-            <span className="opacity-60 ml-1">({t.count})</span>
-          </button>
+            {t.label}
+          </Tab>
         ))}
-      </div>
+      </Tabs>
 
       {state.error && (
-        <div className="mb-4 rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-300">
+        <Alert tone="error" className="mb-4">
           {state.error}
-        </div>
+        </Alert>
       )}
 
       {filtered.length === 0 ? (
-        <div className="rounded-2xl border border-zinc-800 bg-zinc-900/50 px-4 py-12 text-center text-zinc-400 text-sm">
-          No questions in this view.
-        </div>
+        <EmptyState title="No questions in this view." />
       ) : (
         <ul className="space-y-3">
           {filtered.map((q) => (
             <li
               key={q.id}
-              className="rounded-xl border border-zinc-800 bg-zinc-900 p-4"
+              className="rounded-2xl border border-white/10 bg-zinc-900/60 p-4"
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="flex-1 min-w-0">
@@ -378,13 +376,12 @@ export default function AdminEventQuestionsClient({
                     </span>
                   </div>
                   {editing?.id === q.id ? (
-                    <textarea
+                    <Textarea
                       rows={3}
                       value={editing.text}
                       onChange={(e) =>
                         setEditing({ id: q.id, text: e.target.value })
                       }
-                      className="w-full rounded-lg bg-zinc-800 border border-zinc-700 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-rose-500/30 focus:border-rose-500/40"
                     />
                   ) : (
                     <p className="text-base leading-snug font-serif text-zinc-100">
@@ -476,14 +473,13 @@ export default function AdminEventQuestionsClient({
                   )}
                   {voteEditing?.id === q.id ? (
                     <>
-                      <input
+                      <Input
                         type="number"
                         min={0}
                         value={voteEditing.value}
                         onChange={(e) =>
                           setVoteEditing({ id: q.id, value: e.target.value })
                         }
-                        className="w-full rounded-lg bg-zinc-800 border border-zinc-700 px-2 py-1 text-xs text-zinc-100 focus:outline-none focus:ring-2 focus:ring-rose-500/30 focus:border-rose-500/40"
                       />
                       <button
                         onClick={handleVoteSave}
@@ -530,7 +526,7 @@ export default function AdminEventQuestionsClient({
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-md rounded-2xl border border-zinc-800 bg-zinc-900 p-6 shadow-2xl"
+            className="w-full max-w-md rounded-2xl border border-white/10 bg-zinc-900/60 p-6 shadow-2xl"
           >
             <h3 className="text-base font-serif font-semibold text-white mb-2">
               Mark duplicate and merge votes
@@ -547,7 +543,7 @@ export default function AdminEventQuestionsClient({
                 {eventApprovedTargets.map((t) => (
                   <li
                     key={t.id}
-                    className="flex items-center justify-between gap-2 rounded-lg border border-zinc-800 bg-zinc-950/50 px-3 py-2"
+                    className="flex items-center justify-between gap-2 rounded-lg bg-white/5 px-3 py-2 ring-1 ring-inset ring-white/10"
                   >
                     <span className="text-sm text-zinc-200 flex-1 line-clamp-2">
                       {t.question}
@@ -563,12 +559,13 @@ export default function AdminEventQuestionsClient({
                 ))}
               </ul>
             )}
-            <button
+            <Button
+              variant="secondary"
               onClick={() => setMerging(null)}
-              className="mt-5 w-full rounded-lg border border-zinc-700 px-3 py-2 text-xs text-zinc-300 hover:bg-zinc-800 transition-colors"
+              className="mt-5 w-full"
             >
               Cancel
-            </button>
+            </Button>
           </div>
         </div>
       )}

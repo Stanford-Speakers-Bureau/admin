@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getHighestAffiliation } from "@/app/lib/affiliation";
-import { verifyAdminRequest } from "@/app/lib/auth";
+import { requirePermission } from "@/app/lib/permissions";
 import { isValidUUID } from "@/app/lib/validation";
 import {
   count,
@@ -32,11 +32,6 @@ export async function GET(
   { params }: { params: Promise<{ eventId: string }> },
 ) {
   try {
-    const auth = await verifyAdminRequest();
-    if (!auth.authorized) {
-      return NextResponse.json({ error: auth.error }, { status: 401 });
-    }
-
     const { eventId } = await params;
 
     if (!eventId || !isValidUUID(eventId)) {
@@ -44,6 +39,11 @@ export async function GET(
         { error: "Valid event ID is required" },
         { status: 400 },
       );
+    }
+
+    const auth = await requirePermission("tickets.scan", eventId);
+    if (!auth.authorized) {
+      return NextResponse.json({ error: auth.error }, { status: 401 });
     }
 
     const [event, ticketResults, waitlistResult] = await Promise.all([

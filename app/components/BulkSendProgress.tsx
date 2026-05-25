@@ -23,9 +23,8 @@ export default function BulkSendProgress({
     return () => window.removeEventListener("beforeunload", handler);
   }, [state.active]);
   const processed = getProcessedCount(state);
-  const percentComplete = state.total > 0
-    ? Math.round((processed / state.total) * 100)
-    : 0;
+  const percentComplete =
+    state.total > 0 ? Math.round((processed / state.total) * 100) : 0;
   const barColor = state.done
     ? state.failed === 0
       ? "bg-emerald-500"
@@ -39,7 +38,7 @@ export default function BulkSendProgress({
   ].join(", ");
 
   return (
-    <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
+    <div className="rounded-2xl border border-white/10 bg-zinc-900/60 p-4">
       <div className="mb-2 flex items-center justify-between gap-3">
         <p className="text-sm font-medium text-zinc-200">
           {state.active
@@ -58,7 +57,9 @@ export default function BulkSendProgress({
       <div className="h-2 w-full overflow-hidden rounded-full bg-zinc-800">
         <div
           className={`h-full rounded-full transition-all duration-300 ${barColor}`}
-          style={{ width: `${state.total > 0 ? (processed / state.total) * 100 : 0}%` }}
+          style={{
+            width: `${state.total > 0 ? (processed / state.total) * 100 : 0}%`,
+          }}
         />
       </div>
       <p className="mt-1.5 text-xs text-zinc-500">
@@ -67,12 +68,16 @@ export default function BulkSendProgress({
           <span className="text-rose-400"> • {state.failed} failed</span>
         ) : null}
         {skipSegments.map((segment) => (
-          <span key={segment} className="text-amber-400"> • {segment}</span>
+          <span key={segment} className="text-amber-400">
+            {" "}
+            • {segment}
+          </span>
         ))}
       </p>
       {state.active && (
         <p className="mt-2 text-xs text-amber-400">
-          Please don&apos;t close or navigate away from this tab while emails are sending.
+          Please don&apos;t close or navigate away from this tab while emails
+          are sending.
         </p>
       )}
     </div>

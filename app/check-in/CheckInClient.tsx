@@ -2,12 +2,21 @@
 
 import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
+import {
+  ArrowTrendingUpIcon,
+  BoltIcon,
+  CheckCircleIcon,
+  ClockIcon,
+  ExclamationCircleIcon,
+  StarIcon,
+} from "@heroicons/react/16/solid";
 import { useEventContext } from "@/app/EventContext";
 import {
   getAnalyticsCardGridStyle,
   getDefaultTimelineZoomRange,
 } from "@/app/lib/utils";
 import ReactECharts from "echarts-for-react";
+import { PageHeader, SegmentedControl, StatusPill } from "@/app/components/ui";
 
 // ── Types ────────────────────────────────────────────────────────────────
 
@@ -168,10 +177,38 @@ function ProgressBar({
 }
 
 const TYPE_CONFIG = [
-  { key: "STANDARD" as const, label: "Standard", color: "#3b82f6", ring: "ring-blue-500/30", bg: "bg-blue-500/10", text: "text-blue-400" },
-  { key: "VIP" as const, label: "VIP", color: "#8b5cf6", ring: "ring-violet-500/30", bg: "bg-violet-500/10", text: "text-violet-400" },
-  { key: "EXTERNAL" as const, label: "External", color: "#10b981", ring: "ring-emerald-500/30", bg: "bg-emerald-500/10", text: "text-emerald-400" },
-  { key: "STANDBY" as const, label: "Standby", color: "#f59e0b", ring: "ring-amber-500/30", bg: "bg-amber-500/10", text: "text-amber-400" },
+  {
+    key: "STANDARD" as const,
+    label: "Standard",
+    color: "#3b82f6",
+    ring: "ring-blue-500/30",
+    bg: "bg-blue-500/10",
+    text: "text-blue-400",
+  },
+  {
+    key: "VIP" as const,
+    label: "VIP",
+    color: "#8b5cf6",
+    ring: "ring-violet-500/30",
+    bg: "bg-violet-500/10",
+    text: "text-violet-400",
+  },
+  {
+    key: "EXTERNAL" as const,
+    label: "External",
+    color: "#10b981",
+    ring: "ring-emerald-500/30",
+    bg: "bg-emerald-500/10",
+    text: "text-emerald-400",
+  },
+  {
+    key: "STANDBY" as const,
+    label: "Standby",
+    color: "#f59e0b",
+    ring: "ring-amber-500/30",
+    bg: "bg-amber-500/10",
+    text: "text-amber-400",
+  },
 ];
 
 const AFFILIATION_CONFIG = [
@@ -257,7 +294,9 @@ function CheckInContent({ eventId }: { eventId: string }) {
 
   const [timelineMode, setTimelineMode] = useState<TimelineMode>("scanner");
   const [zoomRange, setZoomRange] = useState<[number, number] | null>(null);
-  const [visibleRecentCount, setVisibleRecentCount] = useState(RECENT_SCAN_PAGE_SIZE);
+  const [visibleRecentCount, setVisibleRecentCount] = useState(
+    RECENT_SCAN_PAGE_SIZE,
+  );
   const chartRef = useRef<ReactECharts>(null);
   const standbyChartRef = useRef<ReactECharts>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -265,7 +304,8 @@ function CheckInContent({ eventId }: { eventId: string }) {
 
   const currentEvent = events.find((e) => e.id === eventId);
   const isLive = currentEvent?.live ?? false;
-  const scannerLeaderboard = data?.scannerLeaderboard ?? EMPTY_SCANNER_LEADERBOARD;
+  const scannerLeaderboard =
+    data?.scannerLeaderboard ?? EMPTY_SCANNER_LEADERBOARD;
   const scannedCount = data?.scannedCount ?? 0;
 
   const fetchData = useCallback(
@@ -421,8 +461,9 @@ function CheckInContent({ eventId }: { eventId: string }) {
 
   const typeTimelineSeries = useMemo<TimelineSeries[]>(
     () =>
-      TYPE_CONFIG.filter(({ key }) => data?.byType[key].scanned)
-        .map(({ key, label, color }) => ({ key, label, color })),
+      TYPE_CONFIG.filter(({ key }) => data?.byType[key].scanned).map(
+        ({ key, label, color }) => ({ key, label, color }),
+      ),
     [data],
   );
 
@@ -445,10 +486,7 @@ function CheckInContent({ eventId }: { eventId: string }) {
       eventStartMs != null ? eventStartMs + 90 * MIN : anchorStart + 2 * HOUR,
       rangeStart + MIN,
     );
-    return [
-      rangeStart,
-      rangeEnd,
-    ];
+    return [rangeStart, rangeEnd];
   }, [doorsOpenMs, eventStartMs, scanEpochs]);
 
   const defaultZoomRange = useMemo<[number, number] | null>(() => {
@@ -488,9 +526,8 @@ function CheckInContent({ eventId }: { eventId: string }) {
     };
   }, [parsedScanEvents, fullRange, timelineMode, visibleSpan]);
 
-  const timelineSeries = timelineMode === "scanner"
-    ? scannerTimelineSeries
-    : typeTimelineSeries;
+  const timelineSeries =
+    timelineMode === "scanner" ? scannerTimelineSeries : typeTimelineSeries;
 
   // Scan velocity: scans in last 5 minutes
   const scanVelocity = useMemo(() => {
@@ -537,7 +574,10 @@ function CheckInContent({ eventId }: { eventId: string }) {
     const scansInWindow = scanEpochs.filter(
       (epoch) => epoch >= visibleRange[0] && epoch <= visibleRange[1],
     ).length;
-    const elapsedMinutes = Math.max((visibleRange[1] - visibleRange[0]) / MIN, 1);
+    const elapsedMinutes = Math.max(
+      (visibleRange[1] - visibleRange[0]) / MIN,
+      1,
+    );
 
     return scansInWindow / elapsedMinutes;
   }, [scanEpochs, visibleRange]);
@@ -559,11 +599,7 @@ function CheckInContent({ eventId }: { eventId: string }) {
         borderColor: "#3f3f46",
         borderWidth: 1,
         textStyle: { color: "#fafafa", fontSize: 12 },
-        formatter: (params: {
-          name: string;
-          value: number;
-          percent: number;
-        }) =>
+        formatter: (params: { name: string; value: number; percent: number }) =>
           `<b>${params.name}</b><br/>${params.value} scans (${params.percent}%)`,
       },
       legend: {
@@ -823,17 +859,27 @@ function CheckInContent({ eventId }: { eventId: string }) {
         {
           type: "value" as const,
           name: "Cumulative",
-          nameTextStyle: { color: "#71717a", fontSize: 10, padding: [0, 0, 0, -24] },
+          nameTextStyle: {
+            color: "#71717a",
+            fontSize: 10,
+            padding: [0, 0, 0, -24],
+          },
           axisLabel: { color: "#71717a", fontSize: 10 },
           axisLine: { show: false },
           axisTick: { show: false },
-          splitLine: { lineStyle: { color: "#27272a", type: "dashed" as const } },
+          splitLine: {
+            lineStyle: { color: "#27272a", type: "dashed" as const },
+          },
           minInterval: 1,
         },
         {
           type: "value" as const,
           name: `Per ${seriesLabel}`,
-          nameTextStyle: { color: "#71717a", fontSize: 10, padding: [0, -24, 0, 0] },
+          nameTextStyle: {
+            color: "#71717a",
+            fontSize: 10,
+            padding: [0, -24, 0, 0],
+          },
           axisLabel: { color: "#71717a", fontSize: 10 },
           axisLine: { show: false },
           axisTick: { show: false },
@@ -977,12 +1023,22 @@ function CheckInContent({ eventId }: { eventId: string }) {
       },
       series: [
         {
-          type: "line" as const, data: lineData, smooth: true, symbol: "none",
+          type: "line" as const,
+          data: lineData,
+          smooth: true,
+          symbol: "none",
           lineStyle: { width: 2, color: "#f59e0b" },
           areaStyle: {
             color: {
-              type: "linear" as const, x: 0, y: 0, x2: 0, y2: 1,
-              colorStops: [{ offset: 0, color: "rgba(245,158,11,0.25)" }, { offset: 1, color: "rgba(245,158,11,0)" }],
+              type: "linear" as const,
+              x: 0,
+              y: 0,
+              x2: 0,
+              y2: 1,
+              colorStops: [
+                { offset: 0, color: "rgba(245,158,11,0.25)" },
+                { offset: 1, color: "rgba(245,158,11,0)" },
+              ],
             },
           },
         },
@@ -1007,9 +1063,7 @@ function CheckInContent({ eventId }: { eventId: string }) {
     return (
       <div className="flex-1 flex items-center justify-center py-20">
         <div className="text-center">
-          <svg className="w-10 h-10 text-rose-400 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
+          <ExclamationCircleIcon className="size-10 text-rose-400 mx-auto mb-2" aria-hidden="true" />
           <p className="text-rose-400 text-sm">{error}</p>
         </div>
       </div>
@@ -1018,56 +1072,77 @@ function CheckInContent({ eventId }: { eventId: string }) {
 
   if (!data) return null;
 
-  const { totalTickets, byType, waitlistCount, capacity, peakScansPerMin } = data;
-  const checkInRate = totalTickets > 0 ? (scannedCount / totalTickets) * 100 : 0;
+  const { totalTickets, byType, waitlistCount, capacity, peakScansPerMin } =
+    data;
+  const checkInRate =
+    totalTickets > 0 ? (scannedCount / totalTickets) * 100 : 0;
   const capacityRate = capacity > 0 ? (scannedCount / capacity) * 100 : 0;
-  const topScanner = scannerLeaderboard.length > 0 ? scannerLeaderboard[0] : null;
-  const avgScansPerScanner = scannerLeaderboard.length > 0
-    ? Math.round(scannedCount / scannerLeaderboard.length)
-    : 0;
-  const visibleTypeCards = TYPE_CONFIG.filter(({ key }) => byType[key].total > 0);
+  const topScanner =
+    scannerLeaderboard.length > 0 ? scannerLeaderboard[0] : null;
+  const avgScansPerScanner =
+    scannerLeaderboard.length > 0
+      ? Math.round(scannedCount / scannerLeaderboard.length)
+      : 0;
+  const visibleTypeCards = TYPE_CONFIG.filter(
+    ({ key }) => byType[key].total > 0,
+  );
   const typeCardCount = visibleTypeCards.length + (waitlistCount > 0 ? 1 : 0);
   const affiliationCardCount = AFFILIATION_CONFIG.length;
 
   return (
     <div className="space-y-5">
       {/* ── Top bar: Live toggle + metrics ── */}
-      <div className="flex flex-wrap items-center gap-4 rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
+      <div className="flex flex-wrap items-center gap-4 rounded-2xl border border-white/10 bg-zinc-900/60 p-4">
         {/* Live toggle */}
         <button
+          type="button"
           onClick={handleToggleLive}
           disabled={isTogglingLive}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-medium transition-colors text-sm disabled:opacity-50 ${
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-lg font-medium transition-colors text-sm disabled:opacity-50 ${
             isLive
-              ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/30"
-              : "bg-zinc-800 text-zinc-400 border border-zinc-700 hover:bg-zinc-700"
+              ? "bg-emerald-500/20 text-emerald-400 ring-1 ring-inset ring-emerald-500/30 hover:bg-emerald-500/30"
+              : "bg-white/5 text-zinc-400 ring-1 ring-inset ring-white/10 hover:bg-white/10"
           }`}
         >
-          <div className={`w-8 h-4 rounded-full relative transition-colors ${isLive ? "bg-emerald-500" : "bg-zinc-600"}`}>
-            <div className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-transform ${isLive ? "translate-x-4" : "translate-x-0.5"}`} />
+          <div
+            className={`w-8 h-4 rounded-full relative transition-colors ${isLive ? "bg-emerald-500" : "bg-zinc-600"}`}
+          >
+            <div
+              className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-transform ${isLive ? "translate-x-4" : "translate-x-0.5"}`}
+            />
           </div>
           {isLive ? "Live" : "Not Live"}
         </button>
 
-        <div className="h-8 w-px bg-zinc-700 hidden sm:block" />
+        <div className="h-8 w-px bg-white/10 hidden sm:block" />
 
         {/* Scan velocity */}
         <div className="flex items-center gap-2">
-          <svg className="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-          </svg>
+          <BoltIcon className="size-4 shrink-0 text-emerald-400" aria-hidden="true" />
           <span className="text-white font-bold text-lg">{scanVelocity}</span>
           <span className="text-zinc-400 text-sm">scans/min</span>
         </div>
 
         {scannedCount > 0 && (
           <>
-            <div className="h-8 w-px bg-zinc-700 hidden sm:block" />
+            <div className="h-8 w-px bg-white/10 hidden sm:block" />
             <div className="flex items-center gap-2">
-              <svg className="w-4 h-4 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h4l3-7 4 18 3-11h4" />
+              <svg
+                className="w-4 h-4 text-cyan-400"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M3 10h4l3-7 4 18 3-11h4"
+                />
               </svg>
-              <span className="text-white font-bold text-lg">{averageScanRate.toFixed(1)}</span>
+              <span className="text-white font-bold text-lg">
+                {averageScanRate.toFixed(1)}
+              </span>
               <span className="text-zinc-400 text-sm">avg scans/min</span>
             </div>
           </>
@@ -1076,12 +1151,12 @@ function CheckInContent({ eventId }: { eventId: string }) {
         {/* Peak scans/min */}
         {peakScansPerMin > 0 && (
           <>
-            <div className="h-8 w-px bg-zinc-700 hidden sm:block" />
+            <div className="h-8 w-px bg-white/10 hidden sm:block" />
             <div className="flex items-center gap-2">
-              <svg className="w-4 h-4 text-violet-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
-              </svg>
-              <span className="text-white font-bold text-lg">{peakScansPerMin}</span>
+              <ArrowTrendingUpIcon className="size-4 shrink-0 text-violet-400" aria-hidden="true" />
+              <span className="text-white font-bold text-lg">
+                {peakScansPerMin}
+              </span>
               <span className="text-zinc-400 text-sm">peak/min</span>
             </div>
           </>
@@ -1090,13 +1165,15 @@ function CheckInContent({ eventId }: { eventId: string }) {
         {/* Best scanner */}
         {topScanner && (
           <div className="hidden 2xl:flex items-center gap-4">
-            <div className="h-8 w-px bg-zinc-700" />
+            <div className="h-8 w-px bg-white/10" />
             <div className="flex items-center gap-2 min-w-0">
-              <svg className="w-4 h-4 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
-              </svg>
-              <span className="text-white text-sm font-medium truncate max-w-[120px]">{topScanner.name}</span>
-              <span className="text-zinc-400 text-sm">({topScanner.count})</span>
+              <StarIcon className="size-4 shrink-0 text-amber-400" aria-hidden="true" />
+              <span className="text-white text-sm font-medium truncate max-w-[120px]">
+                {topScanner.name}
+              </span>
+              <span className="text-zinc-400 text-sm">
+                ({topScanner.count})
+              </span>
             </div>
           </div>
         )}
@@ -1104,12 +1181,12 @@ function CheckInContent({ eventId }: { eventId: string }) {
         {/* Estimated completion */}
         {estimatedCompletion != null && (
           <>
-            <div className="h-8 w-px bg-zinc-700 hidden sm:block" />
+            <div className="h-8 w-px bg-white/10 hidden sm:block" />
             <div className="flex items-center gap-2">
-              <svg className="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              <span className="text-zinc-300 text-sm">~{estimatedCompletion} min left</span>
+              <ClockIcon className="size-4 shrink-0 text-blue-400" aria-hidden="true" />
+              <span className="text-zinc-300 text-sm">
+                ~{estimatedCompletion} min left
+              </span>
             </div>
           </>
         )}
@@ -1117,12 +1194,12 @@ function CheckInContent({ eventId }: { eventId: string }) {
         {/* Doors duration */}
         {doorsDuration && (
           <div className="hidden 2xl:flex items-center gap-4">
-            <div className="h-8 w-px bg-zinc-700" />
+            <div className="h-8 w-px bg-white/10" />
             <div className="flex items-center gap-2">
-              <svg className="w-4 h-4 text-zinc-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              <span className="text-zinc-300 text-sm">Doors open {formatDuration(doorsDuration)} ago</span>
+              <ClockIcon className="size-4 shrink-0 text-zinc-400" aria-hidden="true" />
+              <span className="text-zinc-300 text-sm">
+                Doors open {formatDuration(doorsDuration)} ago
+              </span>
             </div>
           </div>
         )}
@@ -1130,7 +1207,7 @@ function CheckInContent({ eventId }: { eventId: string }) {
         {/* Polling indicator */}
         {isPolling && (
           <>
-            <div className="h-8 w-px bg-zinc-700 hidden sm:block" />
+            <div className="h-8 w-px bg-white/10 hidden sm:block" />
             <div className="flex items-center gap-2 text-xs text-emerald-400">
               <span className="relative flex h-2 w-2">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
@@ -1143,12 +1220,15 @@ function CheckInContent({ eventId }: { eventId: string }) {
       </div>
 
       {/* ── Overall check-in rate ── */}
-      <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
+      <div className="rounded-2xl border border-white/10 bg-zinc-900/60 p-5">
         <div className="flex items-center justify-between mb-3">
           <div>
             <h3 className="text-lg font-semibold text-white">
-              {scannedCount}
-              <span className="text-zinc-400 font-normal text-sm"> / {totalTickets} checked in</span>
+              <span className="tabular-nums">{scannedCount}</span>
+              <span className="text-zinc-400 font-normal text-sm">
+                {" "}
+                / {totalTickets} checked in
+              </span>
             </h3>
             {capacity > 0 && (
               <p className="text-xs text-zinc-500 mt-0.5">
@@ -1156,14 +1236,22 @@ function CheckInContent({ eventId }: { eventId: string }) {
               </p>
             )}
           </div>
-          <span className={`text-3xl font-bold ${checkInRate >= 75 ? "text-emerald-400" : checkInRate >= 40 ? "text-blue-400" : "text-amber-400"}`}>
+          <span
+            className={`text-3xl font-bold ${checkInRate >= 75 ? "text-emerald-400" : checkInRate >= 40 ? "text-blue-400" : "text-amber-400"}`}
+          >
             {checkInRate.toFixed(1)}%
           </span>
         </div>
         <ProgressBar
           value={scannedCount}
           max={totalTickets}
-          color={checkInRate >= 75 ? "#10b981" : checkInRate >= 40 ? "#3b82f6" : "#f59e0b"}
+          color={
+            checkInRate >= 75
+              ? "#10b981"
+              : checkInRate >= 40
+                ? "#3b82f6"
+                : "#f59e0b"
+          }
         />
       </div>
 
@@ -1176,12 +1264,19 @@ function CheckInContent({ eventId }: { eventId: string }) {
           const t = byType[key];
           const pct = t.total > 0 ? (t.scanned / t.total) * 100 : 0;
           return (
-            <div key={key} className={`rounded-xl border border-zinc-800 p-4 ${bg}`}>
+            <div
+              key={key}
+              className={`rounded-2xl ring-1 ring-inset ring-white/10 p-4 ${bg}`}
+            >
               <div className="flex items-center justify-between mb-1">
-                <span className={`text-xs font-semibold uppercase tracking-wider ${text}`}>{label}</span>
-                <span className={`text-lg font-bold ${text}`}>{pct.toFixed(0)}%</span>
+                <span className={`text-xs font-medium tracking-wide ${text}`}>
+                  {label}
+                </span>
+                <span className={`text-lg font-bold tabular-nums ${text}`}>
+                  {pct.toFixed(0)}%
+                </span>
               </div>
-              <p className="text-sm text-zinc-300 font-medium mb-2">
+              <p className="text-sm text-zinc-300 font-medium mb-2 tabular-nums">
                 {t.scanned} / {t.total}
               </p>
               <ProgressBar value={t.scanned} max={t.total} color={color} />
@@ -1190,28 +1285,30 @@ function CheckInContent({ eventId }: { eventId: string }) {
         })}
         {/* Waitlist card */}
         {waitlistCount > 0 && (
-          <div className="rounded-xl border border-zinc-800 p-4 bg-rose-500/5">
+          <div className="rounded-2xl ring-1 ring-inset ring-white/10 p-4 bg-rose-500/5">
             <div className="flex items-center justify-between mb-1">
-              <span className="text-xs font-semibold uppercase tracking-wider text-rose-400">Waitlist</span>
-              <svg className="w-4 h-4 text-rose-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
+              <span className="text-xs font-medium tracking-wide text-rose-400">
+                Waitlist
+              </span>
+              <ClockIcon className="size-4 shrink-0 text-rose-400" aria-hidden="true" />
             </div>
-            <p className="text-2xl text-white font-bold">{waitlistCount}</p>
+            <p className="text-2xl text-white font-bold tabular-nums">
+              {waitlistCount}
+            </p>
             <p className="text-xs text-zinc-500 mt-1">people waiting</p>
           </div>
         )}
       </div>
 
       {/* ── Affiliation breakdown ── */}
-      <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
+      <div className="rounded-2xl border border-white/10 bg-zinc-900/60 p-5">
         <div className="mb-4">
-          <h3 className="text-sm font-semibold text-zinc-300">
-            Attendance by Affiliation
+          <h3 className="text-sm font-semibold text-white">
+            Attendance by affiliation
           </h3>
           <p className="mt-1 text-[11px] text-zinc-500">
-            Uses each ticket holder&apos;s highest profile affiliation. Unmatched
-            profiles are grouped as Unknown.
+            Uses each ticket holder&apos;s highest profile affiliation.
+            Unmatched profiles are grouped as Unknown.
           </p>
         </div>
         <div
@@ -1228,19 +1325,17 @@ function CheckInContent({ eventId }: { eventId: string }) {
             return (
               <div
                 key={key}
-                className={`rounded-xl border border-zinc-800 p-4 ${bg}`}
+                className={`rounded-2xl ring-1 ring-inset ring-white/10 p-4 ${bg}`}
               >
                 <div className="mb-1 flex items-center justify-between">
-                  <span
-                    className={`text-xs font-semibold uppercase tracking-wider ${text}`}
-                  >
+                  <span className={`text-xs font-medium tracking-wide ${text}`}>
                     {label}
                   </span>
-                  <span className={`text-lg font-bold ${text}`}>
+                  <span className={`text-lg font-bold tabular-nums ${text}`}>
                     {pct.toFixed(0)}%
                   </span>
                 </div>
-                <p className="mb-2 text-sm font-medium text-zinc-300">
+                <p className="mb-2 text-sm font-medium text-zinc-300 tabular-nums">
                   {affiliation.scanned} / {affiliation.total}
                 </p>
                 <ProgressBar
@@ -1257,18 +1352,22 @@ function CheckInContent({ eventId }: { eventId: string }) {
       {/* ── Scanner Overview ── */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
         {scannerShareChartOption && (
-          <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5 flex h-full min-h-[460px] flex-col">
+          <div className="rounded-2xl border border-white/10 bg-zinc-900/60 p-5 flex h-full min-h-[460px] flex-col">
             <div className="flex items-start justify-between gap-4 mb-3">
               <div>
-                <h3 className="text-sm font-semibold text-zinc-300">Scanner Leaderboard</h3>
+                <h3 className="text-sm font-semibold text-white">
+                  Scanner leaderboard
+                </h3>
                 <p className="text-[11px] text-zinc-500 mt-1">
-                  {scannerLeaderboard.length} scanner{scannerLeaderboard.length !== 1 ? "s" : ""} · {avgScansPerScanner} avg scans
+                  {scannerLeaderboard.length} scanner
+                  {scannerLeaderboard.length !== 1 ? "s" : ""} ·{" "}
+                  {avgScansPerScanner} avg scans
                 </p>
               </div>
               {topScanner && (
-                <span className="text-[11px] text-amber-300 bg-amber-500/10 border border-amber-500/20 rounded-full px-2.5 py-1">
+                <StatusPill color="amber">
                   {topScanner.name} leads with {topScanner.count}
-                </span>
+                </StatusPill>
               )}
             </div>
             <div className="flex-1 min-h-[380px]">
@@ -1282,12 +1381,13 @@ function CheckInContent({ eventId }: { eventId: string }) {
           </div>
         )}
 
-        <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4 flex h-full min-h-[460px] flex-col">
+        <div className="rounded-2xl border border-white/10 bg-zinc-900/60 p-4 flex h-full min-h-[460px] flex-col">
           <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
             <div>
-              <h3 className="text-sm font-semibold text-zinc-300">Recent Scans</h3>
+              <h3 className="text-sm font-semibold text-white">Recent scans</h3>
               <p className="text-[11px] text-zinc-500 mt-1">
-                Showing {Math.min(visibleRecentCount, recentScans.length)} of {recentScans.length} scans
+                Showing {Math.min(visibleRecentCount, recentScans.length)} of{" "}
+                {recentScans.length} scans
               </p>
             </div>
             {isPolling && (
@@ -1310,22 +1410,27 @@ function CheckInContent({ eventId }: { eventId: string }) {
                 {visibleRecentScans.map((scan, i) => (
                   <div
                     key={`${scan.scanTime}-${i}`}
-                    className={`flex items-center gap-3 px-3 py-2 rounded-lg bg-zinc-800/50 ${
+                    className={`flex items-center gap-3 px-3 py-2 rounded-lg bg-white/5 ${
                       i === 0 && isPolling ? "ring-1 ring-emerald-500/30" : ""
                     }`}
                   >
-                    <div className="w-7 h-7 rounded-full bg-zinc-700 flex items-center justify-center text-xs font-bold text-zinc-300 shrink-0">
+                    <div className="w-7 h-7 rounded-full bg-white/10 flex items-center justify-center text-xs font-medium text-zinc-300 shrink-0">
                       {(scan.name || "?")[0].toUpperCase()}
                     </div>
                     <div className="min-w-0 flex-1">
-                      <p className="text-sm text-white truncate">{scan.name || "Unknown"}</p>
+                      <p className="text-sm text-white truncate">
+                        {scan.name || "Unknown"}
+                      </p>
                       <p className="text-[11px] text-zinc-500">
                         {formatTime(scan.scanTime)}
-                        <span className="text-zinc-600"> &middot; by {scan.scannerName}</span>
+                        <span className="text-zinc-600">
+                          {" "}
+                          &middot; by {scan.scannerName}
+                        </span>
                       </p>
                     </div>
                     <span
-                      className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
+                      className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${
                         TYPE_BADGE[scan.typeKey] ?? TYPE_BADGE.STANDARD
                       }`}
                     >
@@ -1345,38 +1450,36 @@ function CheckInContent({ eventId }: { eventId: string }) {
       </div>
 
       {/* ── Full-width timeline ── */}
-      <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
+      <div className="rounded-2xl border border-white/10 bg-zinc-900/60 p-5">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between mb-3">
           <div>
-            <h3 className="text-sm font-semibold text-zinc-300 mb-1">Check-in Timeline</h3>
+            <h3 className="text-sm font-semibold text-white mb-1">
+              Check-in timeline
+            </h3>
             <p className="text-[11px] text-zinc-500">
-              Stacked scan volume across the event. Toggle between scanner activity and ticket types.
+              Stacked scan volume across the event. Toggle between scanner
+              activity and ticket types.
             </p>
           </div>
-          <div className="inline-flex rounded-xl border border-zinc-800 bg-zinc-950/70 p-1">
-            {([
-              { key: "scanner" as const, label: "Scanner" },
-              { key: "type" as const, label: "Ticket Type" },
-            ]).map((option) => (
-              <button
-                key={option.key}
-                onClick={() => setTimelineMode(option.key)}
-                className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
-                  timelineMode === option.key
-                    ? "bg-emerald-500 text-emerald-950"
-                    : "text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
-                }`}
-              >
-                {option.label}
-              </button>
-            ))}
-          </div>
+          <SegmentedControl
+            aria-label="Timeline grouping"
+            options={[
+              { value: "scanner", label: "Scanner" },
+              { value: "type", label: "Ticket type" },
+            ]}
+            value={timelineMode}
+            onChange={setTimelineMode}
+          />
         </div>
         {scanEpochs.length > 0 ? (
           <>
             <div className="flex flex-wrap items-center gap-4 mb-2 text-[11px] text-zinc-500">
               <span>Grouped per {seriesLabel.toLowerCase()}</span>
-              <span>{timelineMode === "scanner" ? `${timelineSeries.length} scanners in legend` : `${timelineSeries.length} ticket types`}</span>
+              <span>
+                {timelineMode === "scanner"
+                  ? `${timelineSeries.length} scanners in legend`
+                  : `${timelineSeries.length} ticket types`}
+              </span>
               <span>Scroll to zoom and drag to pan</span>
             </div>
             <ReactECharts
@@ -1397,15 +1500,15 @@ function CheckInContent({ eventId }: { eventId: string }) {
 
       {/* ── Standby line growth (if applicable) ── */}
       {data.standbyEnabled && standbyChartOption && (
-        <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
+        <div className="rounded-2xl border border-white/10 bg-zinc-900/60 p-5">
           <div className="flex items-center gap-3 mb-3">
-            <h3 className="text-sm font-semibold text-zinc-300">Standby Line Growth</h3>
-            <span className="text-xs text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-full">
-              {byType.STANDBY.total} total
-            </span>
-            <span className="text-xs text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full">
+            <h3 className="text-sm font-semibold text-white">
+              Standby line growth
+            </h3>
+            <StatusPill color="amber">{byType.STANDBY.total} total</StatusPill>
+            <StatusPill color="emerald">
               {byType.STANDBY.scanned} scanned
-            </span>
+            </StatusPill>
           </div>
           <ReactECharts
             ref={standbyChartRef}
@@ -1429,23 +1532,23 @@ export default function CheckInClient() {
   return (
     <div className="px-4 sm:px-6 py-8">
       <div className="mb-8">
-        <h1 className="text-2xl sm:text-3xl font-bold text-white font-serif mb-2">
-          Check-in
-        </h1>
-        {currentEvent && (
-          <p className="text-zinc-400">{currentEvent.name || "Unnamed Event"}</p>
-        )}
+        <PageHeader
+          title="Check-in"
+          subtitle={
+            currentEvent ? currentEvent.name || "Unnamed Event" : undefined
+          }
+        />
       </div>
 
       {!selectedEventId ? (
-        <div className="text-center py-16 bg-zinc-900/50 rounded-2xl border border-zinc-800">
-          <div className="w-16 h-16 bg-zinc-800 rounded-full flex items-center justify-center mx-auto mb-4">
-            <svg className="w-8 h-8 text-zinc-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
+        <div className="text-center py-16 bg-zinc-900/60 rounded-2xl border border-white/10">
+          <div className="w-16 h-16 bg-white/5 rounded-full flex items-center justify-center mx-auto mb-4">
+            <CheckCircleIcon className="size-8 text-zinc-600" aria-hidden="true" />
           </div>
           <p className="text-zinc-400 text-lg mb-2">No event selected</p>
-          <p className="text-zinc-600 text-sm">Select an event from the sidebar to view check-in data</p>
+          <p className="text-zinc-600 text-sm">
+            Select an event from the sidebar to view check-in data
+          </p>
         </div>
       ) : (
         <CheckInContent eventId={selectedEventId} />

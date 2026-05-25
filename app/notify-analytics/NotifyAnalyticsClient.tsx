@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useState, useMemo, useCallback, useRef } from "react";
+import { InformationCircleIcon } from "@heroicons/react/16/solid";
 import { useEventContext } from "@/app/EventContext";
 import ReactECharts from "echarts-for-react";
+import { Card, EmptyState, PageHeader } from "@/app/components/ui";
 
 // ── Types ────────────────────────────────────────────────────────────────
 
@@ -517,10 +519,7 @@ export default function NotifyAnalyticsClient() {
         stack: "affiliations",
         areaStyle: { opacity: 0.6 },
         emphasis: { focus: "series" as const },
-        data: affiliationBuckets.map((b) => [
-          b.ts,
-          b.cumulative[cat.key] ?? 0,
-        ]),
+        data: affiliationBuckets.map((b) => [b.ts, b.cumulative[cat.key] ?? 0]),
         lineStyle: { width: 1, color: cat.color },
         itemStyle: { color: cat.color },
         symbol: "none",
@@ -548,32 +547,11 @@ export default function NotifyAnalyticsClient() {
   if (!selectedEventId) {
     return (
       <div className="px-4 sm:px-6 py-8">
-        <div className="mb-8">
-          <h1 className="text-2xl sm:text-3xl font-bold text-white font-serif mb-2">
-            Notify Analytics
-          </h1>
-        </div>
-        <div className="text-center py-16 bg-zinc-900/50 rounded-2xl border border-zinc-800">
-          <div className="w-16 h-16 bg-zinc-800 rounded-full flex items-center justify-center mx-auto mb-4">
-            <svg
-              className="w-8 h-8 text-zinc-600"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"
-              />
-            </svg>
-          </div>
-          <p className="text-zinc-400 text-lg mb-2">No event selected</p>
-          <p className="text-zinc-600 text-sm">
-            Select an event from the sidebar to view notify analytics
-          </p>
-        </div>
+        <PageHeader title="Notify analytics" className="mb-8" />
+        <EmptyState
+          title="No event selected"
+          hint="Select an event from the sidebar to view notify analytics"
+        />
       </div>
     );
   }
@@ -581,16 +559,13 @@ export default function NotifyAnalyticsClient() {
   if (isLoading) {
     return (
       <div className="px-4 sm:px-6 py-8">
-        <div className="mb-8">
-          <h1 className="text-2xl sm:text-3xl font-bold text-white font-serif mb-2">
-            Notify Analytics
-          </h1>
-          {currentEvent && (
-            <p className="text-zinc-400">
-              {currentEvent.name || "Unnamed Event"}
-            </p>
-          )}
-        </div>
+        <PageHeader
+          title="Notify analytics"
+          subtitle={
+            currentEvent ? currentEvent.name || "Unnamed Event" : undefined
+          }
+          className="mb-8"
+        />
         <div className="flex items-center justify-center py-20">
           <div className="flex items-center gap-3 text-zinc-400">
             <div className="w-5 h-5 border-2 border-zinc-600 border-t-zinc-400 rounded-full animate-spin" />
@@ -604,26 +579,10 @@ export default function NotifyAnalyticsClient() {
   if (error) {
     return (
       <div className="px-4 sm:px-6 py-8">
-        <div className="mb-8">
-          <h1 className="text-2xl sm:text-3xl font-bold text-white font-serif mb-2">
-            Notify Analytics
-          </h1>
-        </div>
+        <PageHeader title="Notify analytics" className="mb-8" />
         <div className="flex items-center justify-center py-20">
           <div className="text-center">
-            <svg
-              className="w-10 h-10 text-rose-400 mx-auto mb-2"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-              />
-            </svg>
+            <InformationCircleIcon className="size-4 shrink-0 text-rose-400 mx-auto mb-2 w-10 h-10" aria-hidden="true" />
             <p className="text-rose-400 text-sm">{error}</p>
           </div>
         </div>
@@ -634,61 +593,37 @@ export default function NotifyAnalyticsClient() {
   if (!data || data.totalSignups === 0) {
     return (
       <div className="px-4 sm:px-6 py-8">
-        <div className="mb-8">
-          <h1 className="text-2xl sm:text-3xl font-bold text-white font-serif mb-2">
-            Notify Analytics
-          </h1>
-          {currentEvent && (
-            <p className="text-zinc-400">
-              {currentEvent.name || "Unnamed Event"}
-            </p>
-          )}
-        </div>
-        <div className="flex items-center justify-center py-20">
-          <div className="text-center">
-            <svg
-              className="w-10 h-10 text-zinc-600 mx-auto mb-2"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"
-              />
-            </svg>
-            <p className="text-zinc-400 text-sm">No notify signups yet</p>
-          </div>
-        </div>
+        <PageHeader
+          title="Notify analytics"
+          subtitle={
+            currentEvent ? currentEvent.name || "Unnamed Event" : undefined
+          }
+          className="mb-8"
+        />
+        <EmptyState title="No notify signups yet" />
       </div>
     );
   }
 
-  const maxSharedCount = data.crossPollination.length > 0
-    ? data.crossPollination[0].sharedCount
-    : 0;
+  const maxSharedCount =
+    data.crossPollination.length > 0 ? data.crossPollination[0].sharedCount : 0;
 
   return (
     <div className="px-4 sm:px-6 py-8">
-      <div className="mb-8">
-        <h1 className="text-2xl sm:text-3xl font-bold text-white font-serif mb-2">
-          Notify Analytics
-        </h1>
-        {currentEvent && (
-          <p className="text-zinc-400">
-            {currentEvent.name || "Unnamed Event"}
-          </p>
-        )}
-      </div>
+      <PageHeader
+        title="Notify analytics"
+        subtitle={
+          currentEvent ? currentEvent.name || "Unnamed Event" : undefined
+        }
+        className="mb-8"
+      />
 
       <div className="space-y-5">
         {/* Stat Cards */}
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 px-4 py-3">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
-              Total Signups
+          <div className="rounded-2xl border border-white/10 bg-zinc-900/60 px-4 py-3">
+            <p className="text-xs font-medium tracking-wide text-zinc-400">
+              Total signups
             </p>
             <p className="mt-2 text-2xl font-bold text-blue-400">
               {data.totalSignups}
@@ -698,9 +633,9 @@ export default function NotifyAnalyticsClient() {
             </p>
           </div>
 
-          <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 px-4 py-3">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
-              Conversion Rate
+          <div className="rounded-2xl border border-white/10 bg-zinc-900/60 px-4 py-3">
+            <p className="text-xs font-medium tracking-wide text-zinc-400">
+              Conversion rate
             </p>
             <p
               className={`mt-2 text-2xl font-bold ${
@@ -718,8 +653,8 @@ export default function NotifyAnalyticsClient() {
             </p>
           </div>
 
-          <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 px-4 py-3">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
+          <div className="rounded-2xl border border-white/10 bg-zinc-900/60 px-4 py-3">
+            <p className="text-xs font-medium tracking-wide text-zinc-400">
               Students
             </p>
             <p className="mt-2 text-2xl font-bold text-violet-400">
@@ -730,24 +665,26 @@ export default function NotifyAnalyticsClient() {
             </p>
           </div>
 
-          <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 px-4 py-3">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
-              Cross-Pollination
+          <div className="rounded-2xl border border-white/10 bg-zinc-900/60 px-4 py-3">
+            <p className="text-xs font-medium tracking-wide text-zinc-400">
+              Cross-pollination
             </p>
             <p className="mt-2 text-2xl font-bold text-rose-400">
               {data.crossPollinatedPeople}
             </p>
             <p className="text-xs text-zinc-500 mt-1">
               people overlap with {data.crossPollination.length} past
-              {data.crossPollination.length === 1 ? " event audience" : " event audiences"}
+              {data.crossPollination.length === 1
+                ? " event audience"
+                : " event audiences"}
             </p>
           </div>
         </div>
 
         {/* Signups Over Time Chart */}
-        <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
+        <Card className="p-5 sm:p-5">
           <h3 className="text-sm font-semibold text-white mb-1">
-            Signups Over Time
+            Signups over time
           </h3>
           <p className="text-[10px] text-zinc-600 mb-1">
             Scroll to zoom &middot; Drag to pan &middot; Click legend to toggle
@@ -760,12 +697,12 @@ export default function NotifyAnalyticsClient() {
             onEvents={onEvents}
             notMerge
           />
-        </div>
+        </Card>
 
         {/* Affiliation Breakdown Over Time */}
-        <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
+        <Card className="p-5 sm:p-5">
           <h3 className="text-sm font-semibold text-white mb-1">
-            Affiliation Breakdown Over Time
+            Affiliation breakdown over time
           </h3>
           <p className="text-[10px] text-zinc-600 mb-3">
             Cumulative signups by primary affiliation type
@@ -776,15 +713,16 @@ export default function NotifyAnalyticsClient() {
             opts={{ renderer: "canvas" }}
             notMerge
           />
-        </div>
+        </Card>
 
         {/* Cross-Pollination */}
-        <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
+        <Card className="p-5 sm:p-5">
           <h3 className="text-sm font-semibold text-white mb-1">
-            Cross-Pollination
+            Cross-pollination
           </h3>
           <p className="text-[10px] text-zinc-600 mb-4">
-            Past event audiences whose notify lists or ticket holders overlap with this event&apos;s audience
+            Past event audiences whose notify lists or ticket holders overlap
+            with this event&apos;s audience
           </p>
           {data.crossPollination.length === 0 ? (
             <p className="text-zinc-500 text-sm py-4 text-center">
@@ -803,7 +741,7 @@ export default function NotifyAnalyticsClient() {
                   <span className="text-sm text-zinc-400 tabular-nums w-12 text-right">
                     {item.sharedCount}
                   </span>
-                  <div className="w-32 bg-zinc-800 rounded-full h-2 overflow-hidden">
+                  <div className="w-32 bg-white/10 rounded-full h-2 overflow-hidden">
                     <div
                       className="h-full rounded-full bg-rose-500/70 transition-all duration-500"
                       style={{
@@ -815,7 +753,7 @@ export default function NotifyAnalyticsClient() {
               ))}
             </div>
           )}
-        </div>
+        </Card>
       </div>
     </div>
   );

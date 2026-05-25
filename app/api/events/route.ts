@@ -6,7 +6,7 @@ import {
   getSupabaseClient,
   serializeEvent,
 } from "@/app/lib/supabase";
-import { verifyAdminRequest } from "@/app/lib/auth";
+import { requirePermission } from "@/app/lib/permissions";
 import { PACIFIC_TIMEZONE } from "@/app/lib/constants";
 import { pullFromWaitlist } from "@/app/lib/waitlist";
 import { db, eq, ne, events, tickets as ticketsTable } from "@ssb/db";
@@ -161,12 +161,6 @@ async function serializeEventWithImages(
 
 export async function POST(req: Request) {
   try {
-    const auth = await verifyAdminRequest();
-    if (!auth.authorized) {
-      return NextResponse.json({ error: auth.error }, { status: 401 });
-    }
-
-    const adminClient = auth.adminClient!;
     const formData = await req.formData();
     const id = formData.get("id") as string | null;
     const name = formData.get("name") as string;
@@ -224,6 +218,16 @@ export async function POST(req: Request) {
         { status: 400 },
       );
     }
+
+    // Editing an existing event needs events.edit on that event; creating a
+    // new one needs the global events.create.
+    const auth = id
+      ? await requirePermission("events.edit", id)
+      : await requirePermission("events.create");
+    if (!auth.authorized) {
+      return NextResponse.json({ error: auth.error }, { status: 401 });
+    }
+    const adminClient = auth.adminClient!;
 
     // Validate capacity
     if (capacity && !isValidCapacity(capacity)) {
@@ -649,11 +653,6 @@ export async function POST(req: Request) {
 
 export async function PATCH(req: Request) {
   try {
-    const auth = await verifyAdminRequest();
-    if (!auth.authorized) {
-      return NextResponse.json({ error: auth.error }, { status: 401 });
-    }
-
     const body = await req.json();
     const { id, live, standbyEnabled } = body;
 
@@ -662,6 +661,11 @@ export async function PATCH(req: Request) {
         { error: "Event ID is required" },
         { status: 400 },
       );
+    }
+
+    const auth = await requirePermission("events.edit", id);
+    if (!auth.authorized) {
+      return NextResponse.json({ error: auth.error }, { status: 401 });
     }
 
     if (typeof standbyEnabled === "boolean") {
@@ -744,11 +748,6 @@ export async function PATCH(req: Request) {
 
 export async function DELETE(req: Request) {
   try {
-    const auth = await verifyAdminRequest();
-    if (!auth.authorized) {
-      return NextResponse.json({ error: auth.error }, { status: 401 });
-    }
-
     const body = await req.json();
     const { id } = body;
 
@@ -765,6 +764,11 @@ export async function DELETE(req: Request) {
         { error: "Invalid event ID format" },
         { status: 400 },
       );
+    }
+
+    const auth = await requirePermission("events.edit", id);
+    if (!auth.authorized) {
+      return NextResponse.json({ error: auth.error }, { status: 401 });
     }
 
     const event = await db.query.events.findFirst({

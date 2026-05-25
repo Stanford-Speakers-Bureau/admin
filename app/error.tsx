@@ -8,10 +8,7 @@ type AdminErrorPageProps = {
   reset: () => void;
 };
 
-export default function AdminErrorPage({
-  error,
-  reset,
-}: AdminErrorPageProps) {
+export default function AdminErrorPage({ error, reset }: AdminErrorPageProps) {
   useEffect(() => {
     console.error("Admin app error boundary caught an error:", error);
   }, [error]);
@@ -26,7 +23,8 @@ export default function AdminErrorPage({
           We couldn&apos;t finish that admin request.
         </h1>
         <p className="mt-3 text-sm leading-6 text-zinc-600 dark:text-zinc-300">
-          Retry the page. If it keeps failing, check the deployment logs before making more launch-time changes.
+          Retry the page. If it keeps failing, check the deployment logs before
+          making more launch-time changes.
         </p>
         <div className="mt-6 flex items-center justify-center gap-3">
           <button

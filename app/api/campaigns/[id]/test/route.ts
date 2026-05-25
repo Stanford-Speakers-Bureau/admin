@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
-import { verifyAdminRequest } from "@/app/lib/auth";
+import { requireCampaignSendPermission } from "@/app/lib/campaignPermissions";
 import { and, db, eq, emailCampaigns, events, sql, tickets } from "@ssb/db";
 import { buildEventFeedbackLink } from "@/app/lib/feedback-links";
 import { isValidUUID, normalizeEmail } from "@/app/lib/validation";
 import { sendCampaignEmail } from "@/app/lib/email";
+import { parseAudiences } from "@/app/lib/campaignAudience";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -31,11 +32,6 @@ function buildPreviewFeedbackPrompt(baseUrl: string, eventRoute: string, eventNa
 
 export async function POST(_req: Request, { params }: Params) {
   try {
-    const auth = await verifyAdminRequest();
-    if (!auth.authorized) {
-      return NextResponse.json({ error: auth.error }, { status: 401 });
-    }
-
     const { id } = await params;
     if (!isValidUUID(id)) {
       return NextResponse.json({ error: "Invalid campaign ID" }, { status: 400 });
@@ -61,6 +57,17 @@ export async function POST(_req: Request, { params }: Params) {
 
     if (!campaign) {
       return NextResponse.json({ error: "Campaign not found" }, { status: 404 });
+    }
+
+    const auth = await requireCampaignSendPermission({
+      audiences: parseAudiences(campaign.audiences),
+      eventId: campaign.eventId,
+      includeHeroCard: campaign.includeHeroCard,
+      feedbackEventId: campaign.feedbackEventId,
+      includeFeedbackPrompt: campaign.includeFeedbackPrompt,
+    });
+    if (!auth.authorized) {
+      return NextResponse.json({ error: auth.error }, { status: 401 });
     }
 
     const baseUrl =

@@ -12,6 +12,25 @@ import {
   type TicketingRole,
 } from "@/app/lib/ticketingRoles";
 import MarkdownEditor from "@/app/components/MarkdownEditor";
+import {
+  PlusIcon,
+  XMarkIcon,
+  CheckIcon,
+  PhotoIcon,
+} from "@heroicons/react/16/solid";
+import {
+  Button,
+  Card,
+  Well,
+  EmptyState,
+  Input,
+  Label,
+  Checkbox,
+  Tabs,
+  Tab,
+  Alert,
+  PageHeader,
+} from "@/app/components/ui";
 import { Event } from "../AdminEventsClient";
 
 const APPLE_WALLET_STRIP_RATIO = 375 / 98;
@@ -106,9 +125,6 @@ const emptyForm: FormData = {
 
 const sortEvents = sortByStartDate<Event>;
 
-const inputClass =
-  "w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50";
-
 function SectionHeader({
   title,
   description,
@@ -117,8 +133,8 @@ function SectionHeader({
   description: string;
 }) {
   return (
-    <div className="border-b border-zinc-800 pb-3">
-      <h3 className="text-lg font-semibold text-white">{title}</h3>
+    <div className="border-b border-white/10 pb-3">
+      <h3 className="text-sm font-semibold text-white">{title}</h3>
       <p className="mt-1 text-sm text-zinc-500">{description}</p>
     </div>
   );
@@ -275,6 +291,8 @@ export default function EditEventClient({ allEvents }: EditEventClientProps) {
   const mobileFileInputRef = useRef<HTMLInputElement>(null);
   const appleWalletFileInputRef = useRef<HTMLInputElement>(null);
   const lastSyncedViewKeyRef = useRef<string | null>(null);
+  // Which section the tabbed form layout is showing.
+  const [activeEditSection, setActiveEditSection] = useState("basics");
 
   useEffect(() => {
     setEvents(allEvents);
@@ -518,10 +536,7 @@ export default function EditEventClient({ allEvents }: EditEventClientProps) {
         "external_ticketing_url",
         formData.external_ticketing_url,
       );
-      submitData.append(
-        "banner_eligible",
-        formData.banner_eligible.toString(),
-      );
+      submitData.append("banner_eligible", formData.banner_eligible.toString());
       formData.ticketing_roles.forEach((role) => {
         submitData.append("ticketing_roles", role);
       });
@@ -598,941 +613,805 @@ export default function EditEventClient({ allEvents }: EditEventClientProps) {
       : "Saving changes..."
     : success;
 
+  // ── Form sections, defined once and arranged by each layout variant. ──────
+  const editSections: {
+    id: string;
+    title: string;
+    description: string;
+    content: React.ReactNode;
+  }[] = [
+    {
+      id: "basics",
+      title: "Basics",
+      description: "Identity and copy for the event page.",
+      content: (
+        <>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            <div className="space-y-2">
+              <Label className="block">Speaker name</Label>
+              <Input
+                type="text"
+                value={formData.name}
+                onChange={(e) =>
+                  setFormData({ ...formData, name: e.target.value })
+                }
+                placeholder="e.g., John Doe"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label className="block">URL route</Label>
+              <div className="flex items-center">
+                <span className="text-zinc-500 pr-2">/events/</span>
+                <Input
+                  type="text"
+                  value={formData.route}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      route: e.target.value
+                        .toLowerCase()
+                        .replace(/[^a-z0-9-]/g, "-"),
+                    })
+                  }
+                  placeholder="john-doe"
+                  className="flex-1"
+                />
+              </div>
+            </div>
+          </div>
+          <MarkdownEditor
+            label="Tagline"
+            value={formData.tagline}
+            onChange={(v) => setFormData({ ...formData, tagline: v })}
+            placeholder="Short tagline for the speaker..."
+            rows={2}
+          />
+          <MarkdownEditor
+            label="Description"
+            value={formData.desc}
+            onChange={(v) => setFormData({ ...formData, desc: v })}
+            placeholder="Event description..."
+            rows={4}
+          />
+          <MarkdownEditor
+            label="Priority Notice"
+            value={formData.priority}
+            onChange={(v) => setFormData({ ...formData, priority: v })}
+            placeholder="e.g. This event is only open to Stanford affiliates"
+            rows={2}
+          />
+          <Well className="cursor-pointer">
+            <label className="flex items-start gap-3 cursor-pointer">
+              <Checkbox
+                checked={formData.banner_eligible}
+                onChange={(e) =>
+                  setFormData({
+                    ...formData,
+                    banner_eligible: e.target.checked,
+                  })
+                }
+                className="mt-0.5"
+              />
+              <span className="text-sm text-zinc-300">
+                <span className="font-medium text-zinc-200">
+                  Promote in site banner &amp; popup
+                </span>
+                <span className="block text-xs text-zinc-500 mt-0.5">
+                  When off, this event is hidden from the top banner and
+                  homepage popup. The event page itself stays reachable.
+                </span>
+              </span>
+            </label>
+          </Well>
+        </>
+      ),
+    },
+    {
+      id: "schedule",
+      title: "Schedule",
+      description: "All times in Pacific Time.",
+      content: (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          <div className="space-y-2">
+            <Label className="block">
+              Release date{" "}
+              <span className="text-zinc-500 font-normal">
+                (reveal speaker)
+              </span>
+            </Label>
+            <Input
+              type="datetime-local"
+              value={formData.release_date}
+              onChange={(e) =>
+                setFormData({ ...formData, release_date: e.target.value })
+              }
+            />
+          </div>
+          <div className="space-y-2">
+            <Label className="block">Doors open</Label>
+            <Input
+              type="datetime-local"
+              value={formData.doors_open}
+              onChange={(e) =>
+                setFormData({ ...formData, doors_open: e.target.value })
+              }
+            />
+          </div>
+          <div className="space-y-2">
+            <Label className="block">Event start</Label>
+            <Input
+              type="datetime-local"
+              value={formData.start_time_date}
+              onChange={(e) =>
+                setFormData({
+                  ...formData,
+                  start_time_date: e.target.value,
+                })
+              }
+            />
+          </div>
+          <div className="space-y-2">
+            <Label className="block">Event end</Label>
+            <Input
+              type="datetime-local"
+              value={formData.end_time_date}
+              onChange={(e) =>
+                setFormData({ ...formData, end_time_date: e.target.value })
+              }
+            />
+            {formData.start_time_date &&
+              formData.end_time_date &&
+              (() => {
+                const start = new Date(formData.start_time_date);
+                const end = new Date(formData.end_time_date);
+                if (
+                  Number.isNaN(start.getTime()) ||
+                  Number.isNaN(end.getTime())
+                )
+                  return null;
+                if (end.getTime() < start.getTime()) {
+                  return (
+                    <p className="mt-2 text-sm text-rose-400">
+                      End time must be on or after the event start time.
+                    </p>
+                  );
+                }
+                return null;
+              })()}
+          </div>
+        </div>
+      ),
+    },
+    {
+      id: "location",
+      title: "Location",
+      description: "Venue details and map coordinates.",
+      content: (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          <div className="space-y-2">
+            <Label className="block">Venue</Label>
+            <Input
+              type="text"
+              value={formData.venue}
+              onChange={(e) =>
+                setFormData({ ...formData, venue: e.target.value })
+              }
+              placeholder="e.g., Memorial Auditorium"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label className="block">Venue link (Google Maps)</Label>
+            <Input
+              type="url"
+              value={formData.venue_link}
+              onChange={(e) =>
+                setFormData({ ...formData, venue_link: e.target.value })
+              }
+              placeholder="https://maps.google.com/..."
+            />
+          </div>
+          <div className="md:col-span-2 space-y-2">
+            <Label className="block">Address</Label>
+            <Input
+              type="text"
+              value={formData.address}
+              onChange={(e) =>
+                setFormData({ ...formData, address: e.target.value })
+              }
+              placeholder="123 Main St, City, State 12345"
+            />
+          </div>
+          {!formData.external_ticketing_enabled && (
+            <>
+              <div className="space-y-2">
+                <Label className="block">
+                  Latitude <span className="text-rose-400">*</span>
+                </Label>
+                <Input
+                  type="number"
+                  step="any"
+                  value={formData.latitude}
+                  onChange={(e) =>
+                    setFormData({ ...formData, latitude: e.target.value })
+                  }
+                  placeholder="e.g., 37.7749"
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label className="block">
+                  Longitude <span className="text-rose-400">*</span>
+                </Label>
+                <Input
+                  type="number"
+                  step="any"
+                  value={formData.longitude}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      longitude: e.target.value,
+                    })
+                  }
+                  placeholder="e.g., -122.4194"
+                  required
+                />
+              </div>
+            </>
+          )}
+          <div className="md:col-span-2 space-y-2">
+            <Label className="block">Livestream URL</Label>
+            <Input
+              type="text"
+              value={formData.livestream}
+              onChange={(e) =>
+                setFormData({ ...formData, livestream: e.target.value })
+              }
+              placeholder="https://youtube.com/..."
+            />
+          </div>
+        </div>
+      ),
+    },
+    {
+      id: "ticketing",
+      title: "Ticketing",
+      description: formData.external_ticketing_enabled
+        ? "Tickets are handled by an external provider. The “Get Tickets” button redirects to the URL below."
+        : "Configure ticket sales on our platform.",
+      content: (
+        <>
+          <Well className="space-y-3">
+            <Checkbox
+              checked={formData.external_ticketing_enabled}
+              onChange={(e) =>
+                setFormData({
+                  ...formData,
+                  external_ticketing_enabled: e.target.checked,
+                })
+              }
+              label={
+                <span className="font-medium text-zinc-200">
+                  Use external ticketing
+                </span>
+              }
+            />
+            {formData.external_ticketing_enabled && (
+              <div className="space-y-2">
+                <Label className="block">External ticketing URL</Label>
+                <Input
+                  type="url"
+                  value={formData.external_ticketing_url}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      external_ticketing_url: e.target.value,
+                    })
+                  }
+                  placeholder="https://eventbrite.com/.../..."
+                />
+              </div>
+            )}
+          </Well>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            <div className="space-y-2">
+              <Label className="block">
+                Ticketing date{" "}
+                <span className="text-zinc-500 font-normal">
+                  (sales open, PT)
+                </span>
+              </Label>
+              <Input
+                type="datetime-local"
+                value={formData.ticketing_date}
+                onChange={(e) =>
+                  setFormData({
+                    ...formData,
+                    ticketing_date: e.target.value,
+                  })
+                }
+              />
+              {formData.release_date &&
+                formData.ticketing_date &&
+                (() => {
+                  const publish = new Date(formData.release_date);
+                  const ticketing = new Date(formData.ticketing_date);
+                  if (
+                    Number.isNaN(publish.getTime()) ||
+                    Number.isNaN(ticketing.getTime())
+                  )
+                    return null;
+                  if (ticketing.getTime() < publish.getTime()) {
+                    return (
+                      <p className="mt-2 text-sm text-rose-400">
+                        Ticketing date must be on or after the release date.
+                      </p>
+                    );
+                  }
+                  return null;
+                })()}
+            </div>
+            <div className="flex items-end pb-3">
+              <Checkbox
+                checked={formData.hide_ticketing_date}
+                onChange={(e) =>
+                  setFormData({
+                    ...formData,
+                    hide_ticketing_date: e.target.checked,
+                  })
+                }
+                label={
+                  <span className="font-medium text-zinc-300">
+                    Hide ticketing date from the public page
+                  </span>
+                }
+              />
+            </div>
+          </div>
+
+          {!formData.external_ticketing_enabled && (
+            <div className="space-y-5">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                <div className="space-y-2">
+                  <Label className="block">Capacity</Label>
+                  <Input
+                    type="number"
+                    value={formData.capacity}
+                    onChange={(e) =>
+                      setFormData({ ...formData, capacity: e.target.value })
+                    }
+                    placeholder="e.g., 500"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label className="block">
+                    Reserved seats{" "}
+                    <span className="text-zinc-500 font-normal">
+                      (optional)
+                    </span>
+                  </Label>
+                  <Input
+                    type="number"
+                    value={formData.reserved}
+                    onChange={(e) =>
+                      setFormData({ ...formData, reserved: e.target.value })
+                    }
+                    placeholder="e.g., 50"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label className="block">Tickets sold</Label>
+                  <Input
+                    type="number"
+                    value={formData.tickets}
+                    disabled
+                    placeholder="0"
+                    className="text-zinc-400 cursor-not-allowed"
+                  />
+                </div>
+              </div>
+
+              <Well>
+                <div className="mb-3">
+                  <Label className="block">Eligible ticketing roles</Label>
+                  <p className="mt-1 text-sm text-zinc-500">
+                    Only signed-in users with one of these affiliations can get
+                    tickets or join the waitlist.
+                  </p>
+                </div>
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
+                  {TICKETING_ROLE_OPTIONS.map((role) => {
+                    const checked = formData.ticketing_roles.includes(
+                      role.value,
+                    );
+
+                    return (
+                      <label
+                        key={role.value}
+                        className={`flex items-center gap-3 rounded-lg px-3 py-3 text-sm ring-1 ring-inset transition-colors cursor-pointer ${
+                          checked
+                            ? "bg-rose-500/10 text-rose-100 ring-rose-500/40"
+                            : "bg-white/5 text-zinc-300 ring-white/10 hover:ring-white/20"
+                        }`}
+                      >
+                        <Checkbox
+                          checked={checked}
+                          onChange={(e) =>
+                            handleTicketingRoleToggle(
+                              role.value,
+                              e.target.checked,
+                            )
+                          }
+                        />
+                        <span>{role.label}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </Well>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <Well className="cursor-pointer">
+                  <Checkbox
+                    checked={formData.standby_enabled}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        standby_enabled: e.target.checked,
+                      })
+                    }
+                    label={
+                      <span className="font-medium text-zinc-300">
+                        Enable standby line
+                      </span>
+                    }
+                  />
+                </Well>
+                <Well className="cursor-pointer">
+                  <Checkbox
+                    checked={formData.referrals_enabled}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        referrals_enabled: e.target.checked,
+                      })
+                    }
+                    label={
+                      <span className="font-medium text-zinc-300">
+                        Enable referrals
+                      </span>
+                    }
+                  />
+                </Well>
+              </div>
+
+              <Well>
+                <div className="mb-3">
+                  <Label className="block">Door scanning</Label>
+                  <p className="mt-1 text-sm text-zinc-500">
+                    Controls how the check-in scanner behaves at the door.
+                  </p>
+                </div>
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                  <label className="flex items-start gap-3 rounded-lg bg-white/5 px-4 py-3 ring-1 ring-inset ring-white/10 cursor-pointer">
+                    <Checkbox
+                      checked={formData.identity_verification_enabled}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          identity_verification_enabled: e.target.checked,
+                        })
+                      }
+                      className="mt-0.5"
+                    />
+                    <span>
+                      <span className="block text-sm font-medium text-zinc-300">
+                        Require identity verification
+                      </span>
+                      <span className="mt-0.5 block text-xs text-zinc-500">
+                        Scanners get a prompt to check the guest&apos;s photo ID
+                        before admitting. Turn off to admit instantly on scan.
+                      </span>
+                    </span>
+                  </label>
+                  <label className="flex items-start gap-3 rounded-lg bg-white/5 px-4 py-3 ring-1 ring-inset ring-white/10 cursor-pointer">
+                    <Checkbox
+                      checked={formData.allow_admitting_standby}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          allow_admitting_standby: e.target.checked,
+                        })
+                      }
+                      className="mt-0.5"
+                    />
+                    <span>
+                      <span className="block text-sm font-medium text-zinc-300">
+                        Allow admitting standby
+                      </span>
+                      <span className="mt-0.5 block text-xs text-zinc-500">
+                        When off, scanners hold standby guests (&ldquo;not
+                        admitted yet&rdquo;). Turn on once there is space to
+                        start letting them in.
+                      </span>
+                    </span>
+                  </label>
+                </div>
+              </Well>
+            </div>
+          )}
+        </>
+      ),
+    },
+    {
+      id: "images",
+      title: "Images",
+      description: "Artwork for the event page and Apple Wallet passes.",
+      content: (
+        <>
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+            <div className="space-y-2">
+              <Label className="block">Event image</Label>
+              <div className="flex items-start gap-4">
+                <div
+                  onClick={() => fileInputRef.current?.click()}
+                  className="relative w-32 h-32 bg-white/5 border-2 border-dashed border-white/10 rounded-lg overflow-hidden cursor-pointer hover:border-white/20 transition-colors flex items-center justify-center shrink-0"
+                >
+                  {imagePreview ? (
+                    <Image
+                      src={imagePreview}
+                      alt="Event image preview"
+                      fill
+                      className="object-cover"
+                      unoptimized
+                    />
+                  ) : (
+                    <PhotoIcon className="size-6 shrink-0 text-zinc-600" />
+                  )}
+                </div>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleImageChange}
+                  className="hidden"
+                />
+                <div className="text-sm text-zinc-500 space-y-1">
+                  <p>Recommended: 800x800px or larger</p>
+                  <p>Supported formats: JPG, PNG, WebP</p>
+                  {imageFile && (
+                    <p className="text-emerald-400 pt-1">
+                      Selected: {imageFile.name}
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label className="block">
+                Mobile event image{" "}
+                <span className="text-zinc-500 font-normal">(optional)</span>
+              </Label>
+              <div className="flex items-start gap-4">
+                <div
+                  onClick={() => mobileFileInputRef.current?.click()}
+                  className="relative w-32 h-32 bg-white/5 border-2 border-dashed border-white/10 rounded-lg overflow-hidden cursor-pointer hover:border-white/20 transition-colors flex items-center justify-center shrink-0"
+                >
+                  {mobileImageDisplayPreview ? (
+                    <Image
+                      src={mobileImageDisplayPreview}
+                      alt="Mobile event image preview"
+                      fill
+                      className="object-cover"
+                      unoptimized
+                    />
+                  ) : (
+                    <PhotoIcon className="size-6 shrink-0 text-zinc-600" />
+                  )}
+                </div>
+                <input
+                  ref={mobileFileInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleMobileImageChange}
+                  className="hidden"
+                />
+                <div className="text-sm text-zinc-500 space-y-1">
+                  <p>Shown on mobile event pages only.</p>
+                  <p>Leave extra space near the top for safe cropping.</p>
+                  <p>Avoid faces or key text near the top edge.</p>
+                  <p>Falls back to the regular event image when omitted.</p>
+                  {mobileImageFile && (
+                    <p className="text-emerald-400 pt-1">
+                      Selected: {mobileImageFile.name}
+                    </p>
+                  )}
+                  {!mobileImageFile && !mobileImagePreview && imagePreview && (
+                    <p className="text-zinc-400 pt-1">
+                      Previewing the regular event image as the fallback.
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {!formData.external_ticketing_enabled && (
+            <div className="space-y-2">
+              <Label className="block">Apple Wallet image</Label>
+              <div className="flex items-start gap-4">
+                <div
+                  onClick={() => appleWalletFileInputRef.current?.click()}
+                  className="relative w-56 h-[58px] bg-white/5 border-2 border-dashed border-white/10 rounded-lg overflow-hidden cursor-pointer hover:border-white/20 transition-colors flex items-center justify-center shrink-0"
+                >
+                  {appleWalletImagePreview ? (
+                    <Image
+                      src={appleWalletImagePreview}
+                      alt="Apple Wallet image preview"
+                      fill
+                      className="object-cover"
+                      unoptimized
+                    />
+                  ) : (
+                    <PhotoIcon className="size-6 shrink-0 text-zinc-600" />
+                  )}
+                </div>
+                <input
+                  ref={appleWalletFileInputRef}
+                  type="file"
+                  accept="image/png"
+                  onChange={handleAppleWalletImageChange}
+                  className="hidden"
+                />
+                <div className="text-sm text-zinc-500 space-y-1">
+                  <p>Used for Apple Wallet passes only.</p>
+                  <p>Required format: PNG at the 375:98 strip ratio.</p>
+                  <p>Recommended size: 1125x294px or larger.</p>
+                  <p>Keep text, faces, and logos away from the edges.</p>
+                  {appleWalletImageFile && (
+                    <p className="text-emerald-400 pt-1">
+                      Selected: {appleWalletImageFile.name}
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+        </>
+      ),
+    },
+  ];
+
+  const saveButtons = (
+    <>
+      <Button
+        type="submit"
+        variant="primary"
+        disabled={isSubmitting}
+        className="flex items-center gap-2"
+      >
+        {isSubmitting ? (
+          <div className="size-4 shrink-0 border-2 border-white border-t-transparent rounded-full animate-spin" />
+        ) : (
+          <CheckIcon className="size-4 shrink-0" />
+        )}
+        {editingEvent ? "Save changes" : "Create event"}
+      </Button>
+      {isCreating && (
+        <Button type="button" variant="ghost" onClick={handleCancelCreate}>
+          Cancel
+        </Button>
+      )}
+    </>
+  );
+
   return (
     <div className="px-4 sm:px-6 py-8">
-      <div className="flex items-center justify-between mb-8">
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-white font-serif mb-2">
-            {isCreating ? "Create New Event" : "Edit Event"}
-          </h1>
-          {hasEvent && !isCreating && (
-            <p className="text-zinc-400">
-              Editing: {currentEvent?.name || "Unnamed Event"}
-            </p>
-          )}
-        </div>
-        {!isCreating && (
-          <button
-            onClick={handleStartCreate}
-            className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-emerald-500 to-teal-500 text-white rounded-xl font-medium hover:opacity-90 transition-opacity"
-          >
-            <svg
-              className="w-5 h-5"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
+      <div className="mb-8">
+        <PageHeader
+          title={isCreating ? "Create new event" : "Edit event"}
+          subtitle={
+            hasEvent && !isCreating
+              ? `Editing: ${currentEvent?.name || "Unnamed Event"}`
+              : undefined
+          }
+        >
+          {!isCreating && (
+            <Button
+              onClick={handleStartCreate}
+              className="flex items-center gap-2"
             >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M12 6v6m0 0v6m0-6h6m-6 0H6"
-              />
-            </svg>
-            New Event
-          </button>
-        )}
+              <PlusIcon className="size-4 shrink-0" />
+              New event
+            </Button>
+          )}
+        </PageHeader>
       </div>
 
       {error && (
-        <div className="mb-6 p-4 bg-rose-500/10 border border-rose-500/30 rounded-xl flex items-center gap-3">
-          <svg
-            className="w-5 h-5 text-rose-400 shrink-0"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-            />
-          </svg>
-          <p className="text-rose-400 text-sm">{error}</p>
+        <div className="mb-6">
+          <Alert tone="error" onDismiss={() => setError(null)}>
+            {error}
+          </Alert>
         </div>
       )}
 
       {!hasEvent && !isCreating ? (
-        <div className="text-center py-16 bg-zinc-900/50 rounded-2xl border border-zinc-800">
-          <div className="w-16 h-16 bg-zinc-800 rounded-full flex items-center justify-center mx-auto mb-4">
-            <svg
-              className="w-8 h-8 text-zinc-600"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
-              />
-            </svg>
-          </div>
-          <p className="text-zinc-400 text-lg mb-2">No event selected</p>
-          <p className="text-zinc-600 text-sm mb-6">
-            Select an event from the sidebar, or create a new one.
-          </p>
-          <button
+        <EmptyState
+          title="No event selected"
+          hint="Select an event from the sidebar, or create a new one."
+        >
+          <Button
+            variant="primary"
             onClick={handleStartCreate}
-            className="inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-emerald-500 to-teal-500 text-white rounded-xl font-medium hover:opacity-90 transition-opacity"
+            className="inline-flex items-center gap-2"
           >
-            <svg
-              className="w-5 h-5"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M12 6v6m0 0v6m0-6h6m-6 0H6"
-              />
-            </svg>
-            Create Event
-          </button>
-        </div>
+            <PlusIcon className="size-4 shrink-0" />
+            Create event
+          </Button>
+        </EmptyState>
       ) : (
-        <div className="bg-zinc-900 rounded-2xl border border-zinc-800 p-6">
+        <>
           {isCreating && (
             <div className="flex items-center justify-between mb-6">
-              <h2 className="text-xl font-bold text-white">New Event</h2>
-              <button
+              <h2 className="font-serif text-xl font-semibold text-white">
+                New event
+              </h2>
+              <Button
+                variant="ghost"
                 onClick={handleCancelCreate}
-                className="text-zinc-400 hover:text-white transition-colors"
+                aria-label="Cancel"
               >
-                <svg
-                  className="w-6 h-6"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M6 18L18 6M6 6l12 12"
-                  />
-                </svg>
-              </button>
+                <XMarkIcon className="size-4 shrink-0" />
+              </Button>
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-10">
-            <section className="space-y-5">
-              <SectionHeader
-                title="Basics"
-                description="Identity and copy for the event page."
-              />
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                <div>
-                  <label className="block text-sm font-medium text-zinc-300 mb-2">
-                    Speaker Name
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.name}
-                    onChange={(e) =>
-                      setFormData({ ...formData, name: e.target.value })
-                    }
-                    placeholder="e.g., John Doe"
-                    className={inputClass}
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-zinc-300 mb-2">
-                    URL Route
-                  </label>
-                  <div className="flex items-center">
-                    <span className="text-zinc-500 pr-2">/events/</span>
-                    <input
-                      type="text"
-                      value={formData.route}
-                      onChange={(e) =>
-                        setFormData({
-                          ...formData,
-                          route: e.target.value
-                            .toLowerCase()
-                            .replace(/[^a-z0-9-]/g, "-"),
-                        })
-                      }
-                      placeholder="john-doe"
-                      className={`flex-1 ${inputClass}`}
-                    />
-                  </div>
-                </div>
-              </div>
-              <MarkdownEditor
-                label="Tagline"
-                value={formData.tagline}
-                onChange={(v) => setFormData({ ...formData, tagline: v })}
-                placeholder="Short tagline for the speaker..."
-                rows={2}
-              />
-              <MarkdownEditor
-                label="Description"
-                value={formData.desc}
-                onChange={(v) => setFormData({ ...formData, desc: v })}
-                placeholder="Event description..."
-                rows={4}
-              />
-              <MarkdownEditor
-                label="Priority Notice"
-                value={formData.priority}
-                onChange={(v) => setFormData({ ...formData, priority: v })}
-                placeholder="e.g. This event is only open to Stanford affiliates"
-                rows={2}
-              />
-              <label className="flex items-start gap-3 rounded-xl border border-zinc-800 bg-zinc-950/40 px-4 py-3 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={formData.banner_eligible}
-                  onChange={(e) =>
-                    setFormData({
-                      ...formData,
-                      banner_eligible: e.target.checked,
-                    })
-                  }
-                  className="mt-0.5 w-5 h-5 rounded border-zinc-600 bg-zinc-800 text-emerald-500 focus:ring-emerald-500/50"
-                />
-                <span className="text-sm text-zinc-300">
-                  <span className="font-medium text-zinc-200">
-                    Promote in site banner &amp; popup
-                  </span>
-                  <span className="block text-xs text-zinc-500 mt-0.5">
-                    When off, this event is hidden from the top banner and
-                    homepage popup. The event page itself stays reachable.
-                  </span>
-                </span>
-              </label>
-            </section>
-
-            <section className="space-y-5">
-              <SectionHeader
-                title="Schedule"
-                description="All times in Pacific Time."
-              />
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                <div>
-                  <label className="block text-sm font-medium text-zinc-300 mb-2">
-                    Release Date{" "}
-                    <span className="text-zinc-500 font-normal">
-                      (reveal speaker)
-                    </span>
-                  </label>
-                  <input
-                    type="datetime-local"
-                    value={formData.release_date}
-                    onChange={(e) =>
-                      setFormData({ ...formData, release_date: e.target.value })
-                    }
-                    className={inputClass}
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-zinc-300 mb-2">
-                    Doors Open
-                  </label>
-                  <input
-                    type="datetime-local"
-                    value={formData.doors_open}
-                    onChange={(e) =>
-                      setFormData({ ...formData, doors_open: e.target.value })
-                    }
-                    className={inputClass}
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-zinc-300 mb-2">
-                    Event Start
-                  </label>
-                  <input
-                    type="datetime-local"
-                    value={formData.start_time_date}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        start_time_date: e.target.value,
-                      })
-                    }
-                    className={inputClass}
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-zinc-300 mb-2">
-                    Event End
-                  </label>
-                  <input
-                    type="datetime-local"
-                    value={formData.end_time_date}
-                    onChange={(e) =>
-                      setFormData({ ...formData, end_time_date: e.target.value })
-                    }
-                    className={inputClass}
-                  />
-                  {formData.start_time_date &&
-                    formData.end_time_date &&
-                    (() => {
-                      const start = new Date(formData.start_time_date);
-                      const end = new Date(formData.end_time_date);
-                      if (
-                        Number.isNaN(start.getTime()) ||
-                        Number.isNaN(end.getTime())
-                      )
-                        return null;
-                      if (end.getTime() < start.getTime()) {
-                        return (
-                          <p className="mt-2 text-sm text-rose-400">
-                            End time must be on or after the event start time.
-                          </p>
-                        );
-                      }
-                      return null;
-                    })()}
-                </div>
-              </div>
-            </section>
-
-            <section className="space-y-5">
-              <SectionHeader
-                title="Location"
-                description="Venue details and map coordinates."
-              />
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                <div>
-                  <label className="block text-sm font-medium text-zinc-300 mb-2">
-                    Venue
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.venue}
-                    onChange={(e) =>
-                      setFormData({ ...formData, venue: e.target.value })
-                    }
-                    placeholder="e.g., Memorial Auditorium"
-                    className={inputClass}
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-zinc-300 mb-2">
-                    Venue Link (Google Maps)
-                  </label>
-                  <input
-                    type="url"
-                    value={formData.venue_link}
-                    onChange={(e) =>
-                      setFormData({ ...formData, venue_link: e.target.value })
-                    }
-                    placeholder="https://maps.google.com/..."
-                    className={inputClass}
-                  />
-                </div>
-                <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-zinc-300 mb-2">
-                    Address
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.address}
-                    onChange={(e) =>
-                      setFormData({ ...formData, address: e.target.value })
-                    }
-                    placeholder="123 Main St, City, State 12345"
-                    className={inputClass}
-                  />
-                </div>
-                {!formData.external_ticketing_enabled && (
-                  <>
-                    <div>
-                      <label className="block text-sm font-medium text-zinc-300 mb-2">
-                        Latitude <span className="text-rose-400">*</span>
-                      </label>
-                      <input
-                        type="number"
-                        step="any"
-                        value={formData.latitude}
-                        onChange={(e) =>
-                          setFormData({ ...formData, latitude: e.target.value })
-                        }
-                        placeholder="e.g., 37.7749"
-                        className={inputClass}
-                        required
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-zinc-300 mb-2">
-                        Longitude <span className="text-rose-400">*</span>
-                      </label>
-                      <input
-                        type="number"
-                        step="any"
-                        value={formData.longitude}
-                        onChange={(e) =>
-                          setFormData({
-                            ...formData,
-                            longitude: e.target.value,
-                          })
-                        }
-                        placeholder="e.g., -122.4194"
-                        className={inputClass}
-                        required
-                      />
-                    </div>
-                  </>
-                )}
-                <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-zinc-300 mb-2">
-                    Livestream URL
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.livestream}
-                    onChange={(e) =>
-                      setFormData({ ...formData, livestream: e.target.value })
-                    }
-                    placeholder="https://youtube.com/..."
-                    className={inputClass}
-                  />
-                </div>
-              </div>
-            </section>
-
-            <section className="space-y-5">
-              <SectionHeader
-                title="Ticketing"
-                description={
-                  formData.external_ticketing_enabled
-                    ? "Tickets are handled by an external provider. The “Get Tickets” button redirects to the URL below."
-                    : "Configure ticket sales on our platform."
-                }
-              />
-
-              <div className="rounded-xl border border-zinc-800 bg-zinc-950/40 p-4 space-y-3">
-                <label className="flex items-center gap-3 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={formData.external_ticketing_enabled}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        external_ticketing_enabled: e.target.checked,
-                      })
-                    }
-                    className="w-5 h-5 rounded border-zinc-600 bg-zinc-800 text-emerald-500 focus:ring-emerald-500/50"
-                  />
-                  <span className="text-sm font-medium text-zinc-200">
-                    Use external ticketing
-                  </span>
-                </label>
-                {formData.external_ticketing_enabled && (
-                  <div>
-                    <label className="block text-sm font-medium text-zinc-300 mb-2">
-                      External Ticketing URL
-                    </label>
-                    <input
-                      type="url"
-                      value={formData.external_ticketing_url}
-                      onChange={(e) =>
-                        setFormData({
-                          ...formData,
-                          external_ticketing_url: e.target.value,
-                        })
-                      }
-                      placeholder="https://eventbrite.com/.../..."
-                      className={inputClass}
-                    />
-                  </div>
-                )}
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                <div>
-                  <label className="block text-sm font-medium text-zinc-300 mb-2">
-                    Ticketing Date{" "}
-                    <span className="text-zinc-500 font-normal">
-                      (sales open, PT)
-                    </span>
-                  </label>
-                  <input
-                    type="datetime-local"
-                    value={formData.ticketing_date}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        ticketing_date: e.target.value,
-                      })
-                    }
-                    className={inputClass}
-                  />
-                  {formData.release_date &&
-                    formData.ticketing_date &&
-                    (() => {
-                      const publish = new Date(formData.release_date);
-                      const ticketing = new Date(formData.ticketing_date);
-                      if (
-                        Number.isNaN(publish.getTime()) ||
-                        Number.isNaN(ticketing.getTime())
-                      )
-                        return null;
-                      if (ticketing.getTime() < publish.getTime()) {
-                        return (
-                          <p className="mt-2 text-sm text-rose-400">
-                            Ticketing date must be on or after the release date.
-                          </p>
-                        );
-                      }
-                      return null;
-                    })()}
-                </div>
-                <div className="flex items-end">
-                  <label className="flex items-center gap-3 cursor-pointer pb-3">
-                    <input
-                      type="checkbox"
-                      checked={formData.hide_ticketing_date}
-                      onChange={(e) =>
-                        setFormData({
-                          ...formData,
-                          hide_ticketing_date: e.target.checked,
-                        })
-                      }
-                      className="w-5 h-5 rounded border-zinc-600 bg-zinc-800 text-emerald-500 focus:ring-emerald-500/50"
-                    />
-                    <span className="text-sm font-medium text-zinc-300">
-                      Hide ticketing date from the public page
-                    </span>
-                  </label>
-                </div>
-              </div>
-
-              {!formData.external_ticketing_enabled && (
-                <div className="space-y-5">
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-                    <div>
-                      <label className="block text-sm font-medium text-zinc-300 mb-2">
-                        Capacity
-                      </label>
-                      <input
-                        type="number"
-                        value={formData.capacity}
-                        onChange={(e) =>
-                          setFormData({ ...formData, capacity: e.target.value })
-                        }
-                        placeholder="e.g., 500"
-                        className={inputClass}
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-zinc-300 mb-2">
-                        Reserved Seats{" "}
-                        <span className="text-zinc-500 font-normal">
-                          (optional)
-                        </span>
-                      </label>
-                      <input
-                        type="number"
-                        value={formData.reserved}
-                        onChange={(e) =>
-                          setFormData({ ...formData, reserved: e.target.value })
-                        }
-                        placeholder="e.g., 50"
-                        className={inputClass}
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-zinc-300 mb-2">
-                        Tickets Sold
-                      </label>
-                      <input
-                        type="number"
-                        value={formData.tickets}
-                        disabled
-                        placeholder="0"
-                        className="w-full px-4 py-3 bg-zinc-900 border border-zinc-800 rounded-xl text-zinc-400 cursor-not-allowed"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="rounded-xl border border-zinc-800 bg-zinc-950/40 p-4">
-                    <div className="mb-3">
-                      <label className="block text-sm font-medium text-zinc-300">
-                        Eligible Ticketing Roles
-                      </label>
-                      <p className="mt-1 text-sm text-zinc-500">
-                        Only signed-in users with one of these affiliations
-                        can get tickets or join the waitlist.
-                      </p>
-                    </div>
-                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
-                      {TICKETING_ROLE_OPTIONS.map((role) => {
-                        const checked = formData.ticketing_roles.includes(
-                          role.value,
-                        );
-
-                        return (
-                          <label
-                            key={role.value}
-                            className={`flex items-center gap-3 rounded-xl border px-3 py-3 text-sm transition-colors cursor-pointer ${
-                              checked
-                                ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-100"
-                                : "border-zinc-800 bg-zinc-900/70 text-zinc-300 hover:border-zinc-700"
-                            }`}
-                          >
-                            <input
-                              type="checkbox"
-                              checked={checked}
-                              onChange={(e) =>
-                                handleTicketingRoleToggle(
-                                  role.value,
-                                  e.target.checked,
-                                )
-                              }
-                              className="h-4 w-4 rounded border-zinc-600 bg-zinc-800 text-emerald-500 focus:ring-emerald-500/50"
-                            />
-                            <span>{role.label}</span>
-                          </label>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <label className="flex items-center gap-3 rounded-xl border border-zinc-800 bg-zinc-950/40 px-4 py-3 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={formData.standby_enabled}
-                        onChange={(e) =>
-                          setFormData({
-                            ...formData,
-                            standby_enabled: e.target.checked,
-                          })
-                        }
-                        className="w-5 h-5 rounded border-zinc-600 bg-zinc-800 text-emerald-500 focus:ring-emerald-500/50"
-                      />
-                      <span className="text-sm font-medium text-zinc-300">
-                        Enable Standby Line
-                      </span>
-                    </label>
-                    <label className="flex items-center gap-3 rounded-xl border border-zinc-800 bg-zinc-950/40 px-4 py-3 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={formData.referrals_enabled}
-                        onChange={(e) =>
-                          setFormData({
-                            ...formData,
-                            referrals_enabled: e.target.checked,
-                          })
-                        }
-                        className="w-5 h-5 rounded border-zinc-600 bg-zinc-800 text-emerald-500 focus:ring-emerald-500/50"
-                      />
-                      <span className="text-sm font-medium text-zinc-300">
-                        Enable Referrals
-                      </span>
-                    </label>
-                  </div>
-
-                  <div className="rounded-xl border border-zinc-800 bg-zinc-950/40 p-4">
-                    <div className="mb-3">
-                      <label className="block text-sm font-medium text-zinc-300">
-                        Door Scanning
-                      </label>
-                      <p className="mt-1 text-sm text-zinc-500">
-                        Controls how the check-in scanner behaves at the door.
-                      </p>
-                    </div>
-                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                      <label className="flex items-start gap-3 rounded-xl border border-zinc-800 bg-zinc-900/70 px-4 py-3 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={formData.identity_verification_enabled}
-                          onChange={(e) =>
-                            setFormData({
-                              ...formData,
-                              identity_verification_enabled: e.target.checked,
-                            })
-                          }
-                          className="mt-0.5 h-5 w-5 rounded border-zinc-600 bg-zinc-800 text-emerald-500 focus:ring-emerald-500/50"
-                        />
-                        <span>
-                          <span className="block text-sm font-medium text-zinc-300">
-                            Require Identity Verification
-                          </span>
-                          <span className="mt-0.5 block text-xs text-zinc-500">
-                            Scanners get a prompt to check the guest&apos;s photo
-                            ID before admitting. Turn off to admit instantly on
-                            scan.
-                          </span>
-                        </span>
-                      </label>
-                      <label className="flex items-start gap-3 rounded-xl border border-zinc-800 bg-zinc-900/70 px-4 py-3 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={formData.allow_admitting_standby}
-                          onChange={(e) =>
-                            setFormData({
-                              ...formData,
-                              allow_admitting_standby: e.target.checked,
-                            })
-                          }
-                          className="mt-0.5 h-5 w-5 rounded border-zinc-600 bg-zinc-800 text-emerald-500 focus:ring-emerald-500/50"
-                        />
-                        <span>
-                          <span className="block text-sm font-medium text-zinc-300">
-                            Allow Admitting Standby
-                          </span>
-                          <span className="mt-0.5 block text-xs text-zinc-500">
-                            When off, scanners hold standby guests (&ldquo;not
-                            admitted yet&rdquo;). Turn on once there is space to
-                            start letting them in.
-                          </span>
-                        </span>
-                      </label>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </section>
-
-            <section className="space-y-5">
-              <SectionHeader
-                title="Images"
-                description="Artwork for the event page and Apple Wallet passes."
-              />
-              <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-                <div>
-                  <label className="block text-sm font-medium text-zinc-300 mb-2">
-                    Event Image
-                  </label>
-                  <div className="flex items-start gap-4">
-                    <div
-                      onClick={() => fileInputRef.current?.click()}
-                      className="relative w-32 h-32 bg-zinc-800 border-2 border-dashed border-zinc-600 rounded-xl overflow-hidden cursor-pointer hover:border-zinc-500 transition-colors flex items-center justify-center shrink-0"
-                    >
-                      {imagePreview ? (
-                        <Image
-                          src={imagePreview}
-                          alt="Event image preview"
-                          fill
-                          className="object-cover"
-                          unoptimized
-                        />
-                      ) : (
-                        <svg
-                          className="w-8 h-8 text-zinc-600"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M12 6v6m0 0v6m0-6h6m-6 0H6"
-                          />
-                        </svg>
-                      )}
-                    </div>
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      accept="image/*"
-                      onChange={handleImageChange}
-                      className="hidden"
-                    />
-                    <div className="text-sm text-zinc-500 space-y-1">
-                      <p>Recommended: 800x800px or larger</p>
-                      <p>Supported formats: JPG, PNG, WebP</p>
-                      {imageFile && (
-                        <p className="text-emerald-400 pt-1">
-                          Selected: {imageFile.name}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-zinc-300 mb-2">
-                    Mobile Event Image{" "}
-                    <span className="text-zinc-500 font-normal">
-                      (optional)
-                    </span>
-                  </label>
-                  <div className="flex items-start gap-4">
-                    <div
-                      onClick={() => mobileFileInputRef.current?.click()}
-                      className="relative w-32 h-32 bg-zinc-800 border-2 border-dashed border-zinc-600 rounded-xl overflow-hidden cursor-pointer hover:border-zinc-500 transition-colors flex items-center justify-center shrink-0"
-                    >
-                      {mobileImageDisplayPreview ? (
-                        <Image
-                          src={mobileImageDisplayPreview}
-                          alt="Mobile event image preview"
-                          fill
-                          className="object-cover"
-                          unoptimized
-                        />
-                      ) : (
-                        <svg
-                          className="w-8 h-8 text-zinc-600"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M12 6v6m0 0v6m0-6h6m-6 0H6"
-                          />
-                        </svg>
-                      )}
-                    </div>
-                    <input
-                      ref={mobileFileInputRef}
-                      type="file"
-                      accept="image/*"
-                      onChange={handleMobileImageChange}
-                      className="hidden"
-                    />
-                    <div className="text-sm text-zinc-500 space-y-1">
-                      <p>Shown on mobile event pages only.</p>
-                      <p>Leave extra space near the top for safe cropping.</p>
-                      <p>Avoid faces or key text near the top edge.</p>
-                      <p>Falls back to the regular event image when omitted.</p>
-                      {mobileImageFile && (
-                        <p className="text-emerald-400 pt-1">
-                          Selected: {mobileImageFile.name}
-                        </p>
-                      )}
-                      {!mobileImageFile &&
-                        !mobileImagePreview &&
-                        imagePreview && (
-                          <p className="text-zinc-400 pt-1">
-                            Previewing the regular event image as the fallback.
-                          </p>
-                        )}
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {!formData.external_ticketing_enabled && (
-              <div>
-                <label className="block text-sm font-medium text-zinc-300 mb-2">
-                  Apple Wallet Image
-                </label>
-                <div className="flex items-start gap-4">
+          <form onSubmit={handleSubmit}>
+            <Card>
+              <Tabs wrap role="tablist">
+                {editSections.map((s) => (
+                  <Tab
+                    key={s.id}
+                    active={activeEditSection === s.id}
+                    onClick={() => setActiveEditSection(s.id)}
+                  >
+                    {s.title}
+                  </Tab>
+                ))}
+              </Tabs>
+              <div className="py-6">
+                {editSections.map((s) => (
                   <div
-                    onClick={() => appleWalletFileInputRef.current?.click()}
-                    className="relative w-56 h-[58px] bg-zinc-800 border-2 border-dashed border-zinc-600 rounded-xl overflow-hidden cursor-pointer hover:border-zinc-500 transition-colors flex items-center justify-center shrink-0"
+                    key={s.id}
+                    hidden={activeEditSection !== s.id}
+                    className="space-y-5"
                   >
-                    {appleWalletImagePreview ? (
-                      <Image
-                        src={appleWalletImagePreview}
-                        alt="Apple Wallet image preview"
-                        fill
-                        className="object-cover"
-                        unoptimized
-                      />
-                    ) : (
-                      <svg
-                        className="w-8 h-8 text-zinc-600"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M12 6v6m0 0v6m0-6h6m-6 0H6"
-                        />
-                      </svg>
-                    )}
-                  </div>
-                  <input
-                    ref={appleWalletFileInputRef}
-                    type="file"
-                    accept="image/png"
-                    onChange={handleAppleWalletImageChange}
-                    className="hidden"
-                  />
-                  <div className="text-sm text-zinc-500 space-y-1">
-                    <p>Used for Apple Wallet passes only.</p>
-                    <p>Required format: PNG at the 375:98 strip ratio.</p>
-                    <p>Recommended size: 1125x294px or larger.</p>
-                    <p>Keep text, faces, and logos away from the edges.</p>
-                    {appleWalletImageFile && (
-                      <p className="text-emerald-400 pt-1">
-                        Selected: {appleWalletImageFile.name}
-                      </p>
-                    )}
-                  </div>
-                </div>
-              </div>
-              )}
-            </section>
-
-            <div className="flex items-center gap-4 pt-4 border-t border-zinc-800">
-              <button
-                type="submit"
-                disabled={isSubmitting}
-                className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-emerald-500 to-teal-500 text-white rounded-xl font-medium hover:opacity-90 transition-opacity disabled:opacity-50"
-              >
-                {isSubmitting ? (
-                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                ) : (
-                  <svg
-                    className="w-5 h-5"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M5 13l4 4L19 7"
+                    <SectionHeader
+                      title={s.title}
+                      description={s.description}
                     />
-                  </svg>
-                )}
-                {editingEvent ? "Save Changes" : "Create Event"}
-              </button>
-              {isCreating && (
-                <button
-                  type="button"
-                  onClick={handleCancelCreate}
-                  className="px-6 py-3 text-zinc-400 hover:text-white transition-colors"
-                >
-                  Cancel
-                </button>
-              )}
-            </div>
+                    {s.content}
+                  </div>
+                ))}
+              </div>
+              <div className="flex items-center gap-4 border-t border-white/10 pt-4">
+                {saveButtons}
+              </div>
+            </Card>
           </form>
-        </div>
+        </>
       )}
 
       {saveToastMessage && (
         <div className="pointer-events-none fixed inset-x-0 bottom-6 z-50 flex justify-center px-4">
-          <div className="flex items-center gap-3 rounded-full border border-zinc-700 bg-zinc-900/95 px-5 py-3 shadow-2xl shadow-black/30 backdrop-blur">
+          <div className="flex items-center gap-3 rounded-full border border-white/10 bg-zinc-900/95 px-5 py-3 shadow-2xl shadow-black/30 backdrop-blur">
             {isSubmitting ? (
               <div className="h-5 w-5 rounded-full border-2 border-emerald-300/80 border-t-transparent animate-spin" />
             ) : (
               <div className="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500/20">
-                <svg
-                  className="h-3.5 w-3.5 text-emerald-400"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2.5}
-                    d="M5 13l4 4L19 7"
-                  />
-                </svg>
+                <CheckIcon className="size-3.5 shrink-0 text-emerald-400" />
               </div>
             )}
             <p className="text-sm font-medium text-white">{saveToastMessage}</p>

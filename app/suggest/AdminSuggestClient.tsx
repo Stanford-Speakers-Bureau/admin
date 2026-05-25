@@ -1,6 +1,27 @@
 "use client";
 
 import { useState } from "react";
+import {
+  ArrowPathIcon,
+  ArrowsRightLeftIcon,
+  CheckIcon,
+  ClockIcon,
+  EyeIcon,
+  PencilIcon,
+  UserIcon,
+  HandThumbUpIcon,
+  XMarkIcon,
+} from "@heroicons/react/16/solid";
+import {
+  Button,
+  EmptyState,
+  Input,
+  Label,
+  PageHeader,
+  StatusPill,
+  Tabs,
+  Tab,
+} from "@/app/components/ui";
 
 export type Suggestion = {
   id: string;
@@ -353,107 +374,64 @@ export default function AdminSuggestClient({
 
   return (
     <div className="px-4 sm:px-6 py-8">
-      <div className="mb-8">
-        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
-          <div>
-            <h1 className="text-2xl sm:text-3xl font-bold text-white font-serif mb-2">
-              Speaker Suggestions
-            </h1>
-            <p className="text-zinc-400">
-              Review and manage speaker suggestions from users.
-            </p>
-          </div>
-          <button
-            onClick={handleSyncVotes}
-            disabled={isSyncingVotes}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-500/20 text-blue-400 rounded text-sm font-medium hover:bg-blue-500/30 transition-colors disabled:opacity-50 shrink-0"
-          >
-            {isSyncingVotes ? (
-              <div className="w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
-            ) : (
-              <svg
-                className="w-4 h-4"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-                />
-              </svg>
-            )}
-            {isSyncingVotes ? "Syncing..." : "Resync Votes"}
-          </button>
-        </div>
-        {syncError && <p className="mt-2 text-sm text-rose-400">{syncError}</p>}
-      </div>
+      <PageHeader
+        className="mb-8 flex-col sm:flex-row sm:items-start"
+        title="Speaker Suggestions"
+        subtitle="Review and manage speaker suggestions from users."
+      >
+        <Button
+          variant="secondary"
+          onClick={handleSyncVotes}
+          disabled={isSyncingVotes}
+          className="flex items-center gap-2"
+        >
+          {isSyncingVotes ? (
+            <div className="size-4 border-2 border-zinc-400 border-t-transparent rounded-full animate-spin" />
+          ) : (
+            <ArrowPathIcon className="size-4 shrink-0" aria-hidden="true" />
+          )}
+          {isSyncingVotes ? "Syncing…" : "Resync votes"}
+        </Button>
+      </PageHeader>
+      {syncError && (
+        <p className="mb-8 -mt-6 text-sm text-rose-400">{syncError}</p>
+      )}
 
       {/* Filter Tabs */}
-      <div className="flex flex-wrap gap-2 mb-6">
+      <Tabs wrap className="mb-6">
         {filterTabs.map((tab) => (
-          <button
+          <Tab
             key={tab.id}
+            active={filter === tab.id}
+            count={
+              tab.id === "pending" && pendingCount > 0
+                ? pendingCount
+                : undefined
+            }
             onClick={() => setFilter(tab.id)}
-            className={`px-4 py-2 rounded text-sm font-medium transition-all ${
-              filter === tab.id
-                ? "bg-rose-500/20 text-rose-400 border border-rose-500/30"
-                : "bg-zinc-900 text-zinc-400 border border-zinc-800 hover:border-zinc-700"
-            }`}
           >
             {tab.label}
-            {tab.id === "pending" &&
-              filter === "pending" &&
-              pendingCount > 0 && (
-                <span className="ml-2 px-1.5 py-0.5 bg-rose-500 text-white text-xs rounded-full">
-                  {pendingCount}
-                </span>
-              )}
-          </button>
+          </Tab>
         ))}
-      </div>
+      </Tabs>
 
       {/* Bulk Actions */}
       {filter === "pending" && pendingCount > 0 && (
-        <div className="flex gap-3 mb-6 p-4 bg-zinc-900/50 rounded-xl border border-zinc-800">
+        <div className="flex gap-3 mb-6 p-4 bg-white/5 rounded-2xl ring-1 ring-inset ring-white/10">
           <button
+            type="button"
             onClick={() => handleBulkAction("approve")}
-            className="flex items-center gap-2 px-4 py-2 bg-emerald-500/20 text-emerald-400 rounded text-sm font-medium hover:bg-emerald-500/30 transition-colors"
+            className="flex items-center gap-2 px-3 py-2 bg-emerald-500/20 text-emerald-400 rounded-lg text-sm font-medium hover:bg-emerald-500/30 transition-colors"
           >
-            <svg
-              className="w-4 h-4"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M5 13l4 4L19 7"
-              />
-            </svg>
+            <CheckIcon className="size-4 shrink-0" aria-hidden="true" />
             Approve All ({pendingCount})
           </button>
           <button
+            type="button"
             onClick={() => handleBulkAction("reject")}
-            className="flex items-center gap-2 px-4 py-2 bg-rose-500/20 text-rose-400 rounded text-sm font-medium hover:bg-rose-500/30 transition-colors"
+            className="flex items-center gap-2 px-3 py-2 bg-rose-500/20 text-rose-400 rounded-lg text-sm font-medium hover:bg-rose-500/30 transition-colors"
           >
-            <svg
-              className="w-4 h-4"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M6 18L18 6M6 6l12 12"
-              />
-            </svg>
+            <XMarkIcon className="size-4 shrink-0" aria-hidden="true" />
             Reject All
           </button>
         </div>
@@ -461,29 +439,14 @@ export default function AdminSuggestClient({
 
       {/* Suggestions List */}
       {filteredSuggestions.length === 0 ? (
-        <div className="text-center py-16 bg-zinc-900/50 rounded-2xl border border-zinc-800">
-          <div className="w-16 h-16 bg-zinc-800 rounded-full flex items-center justify-center mx-auto mb-4">
-            <svg
-              className="w-8 h-8 text-zinc-600"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"
-              />
-            </svg>
-          </div>
-          <p className="text-zinc-400 text-lg mb-1">No suggestions found</p>
-          <p className="text-zinc-600 text-sm">
-            {filter === "pending"
+        <EmptyState
+          title="No suggestions found"
+          hint={
+            filter === "pending"
               ? "All caught up! No pending suggestions."
-              : `No ${filter} suggestions yet.`}
-          </p>
-        </div>
+              : `No ${filter} suggestions yet.`
+          }
+        />
       ) : (
         <div className="space-y-4">
           {filteredSuggestions.map((suggestion) => {
@@ -503,12 +466,12 @@ export default function AdminSuggestClient({
             return (
               <div
                 key={suggestion.id}
-                className={`bg-zinc-900 rounded-xl border p-6 transition-all ${
+                className={`bg-zinc-900/60 rounded-2xl border p-6 transition-all ${
                   suggestion.reviewed
                     ? suggestion.approved
                       ? "border-emerald-500/30"
                       : "border-rose-500/30"
-                    : "border-zinc-800 hover:border-zinc-700"
+                    : "border-white/10 hover:border-white/20"
                 }`}
               >
                 <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
@@ -518,89 +481,50 @@ export default function AdminSuggestClient({
                         {suggestion.speaker}
                       </h3>
                       {suggestion.reviewed && (
-                        <span
-                          className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                        <StatusPill
+                          color={
                             suggestion.approved
-                              ? "bg-emerald-500/20 text-emerald-400"
+                              ? "emerald"
                               : suggestion.duplicate
-                                ? "bg-amber-500/20 text-amber-300 border border-amber-500/40"
-                                : "bg-rose-500/20 text-rose-400"
-                          }`}
+                                ? "amber"
+                                : "rose"
+                          }
                         >
                           {suggestion.approved
                             ? "Approved"
                             : suggestion.duplicate
                               ? "Duplicate"
                               : "Rejected"}
-                        </span>
+                        </StatusPill>
                       )}
                       {suggestion.spoke && (
-                        <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-sky-500/20 text-sky-300 border border-sky-500/40">
-                          Spoke
-                        </span>
+                        <StatusPill color="sky">Spoke</StatusPill>
                       )}
                       {!suggestion.reviewed && isDuplicateOfApproved && (
-                        <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-amber-500/20 text-amber-300 border border-amber-500/40">
-                          Duplicate
-                        </span>
+                        <StatusPill color="amber">Duplicate</StatusPill>
                       )}
                       {suggestion.reviewed &&
                         !suggestion.approved &&
                         isDuplicateOfApproved &&
                         !suggestion.duplicate && (
-                          <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-amber-500/20 text-amber-300 border border-amber-500/40">
-                            Duplicate
-                          </span>
+                          <StatusPill color="amber">Duplicate</StatusPill>
                         )}
                     </div>
                     <div className="flex flex-wrap items-center gap-4 text-sm text-zinc-500">
                       <span className="flex items-center gap-1.5">
-                        <svg
-                          className="w-4 h-4"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
-                          />
-                        </svg>
+                        <UserIcon className="size-4 shrink-0" aria-hidden="true" />
                         {suggestion.email}
                       </span>
                       <span className="flex items-center gap-1.5">
-                        <svg
-                          className="w-4 h-4"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M14 10h4.764a2 2 0 011.789 2.894l-3.5 7A2 2 0 0115.263 21h-4.017c-.163 0-.326-.02-.485-.06L7 20m7-10V5a2 2 0 00-2-2h-.095c-.5 0-.905.405-.905.905 0 .714-.211 1.412-.608 2.006L7 11v9m7-10h-2M7 20H5a2 2 0 01-2-2v-6a2 2 0 012-2h2.5"
-                          />
-                        </svg>
+                        <HandThumbUpIcon className="size-4 shrink-0" aria-hidden="true" />
                         {suggestion.votes} votes
                       </span>
                       <span className="flex items-center gap-1.5">
-                        <svg
-                          className="w-4 h-4"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
-                          />
-                        </svg>
-                        {new Date(suggestion.created_at).toLocaleDateString("en-US", { timeZone: "America/Los_Angeles" })}
+                        <ClockIcon className="size-4 shrink-0" aria-hidden="true" />
+                        {new Date(suggestion.created_at).toLocaleDateString(
+                          "en-US",
+                          { timeZone: "America/Los_Angeles" },
+                        )}
                       </span>
                     </div>
                     {/* Matching approved suggestions (for pending and rejected items) */}
@@ -614,7 +538,7 @@ export default function AdminSuggestClient({
                           {matchingApproved.map((approved) => (
                             <span
                               key={approved.id}
-                              className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-zinc-800 text-zinc-100 border border-zinc-700"
+                              className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-white/5 text-zinc-100 ring-1 ring-inset ring-white/10"
                             >
                               <span className="font-medium truncate max-w-[160px]">
                                 {approved.speaker}
@@ -632,29 +556,18 @@ export default function AdminSuggestClient({
                     <div className="mt-3">
                       <div className="flex items-center justify-between mb-2">
                         <div className="flex items-center gap-1.5 text-sm text-zinc-400">
-                          <svg
-                            className="w-4 h-4"
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
-                              d="M14 10h4.764a2 2 0 011.789 2.894l-3.5 7A2 2 0 0115.263 21h-4.017c-.163 0-.326-.02-.485-.06L7 20m7-10V5a2 2 0 00-2-2h-.095c-.5 0-.905.405-.905.905 0 .714-.211 1.412-.608 2.006L7 11v9m7-10h-2M7 20H5a2 2 0 01-2-2v-6a2 2 0 012-2h2.5"
-                            />
-                          </svg>
+                          <HandThumbUpIcon className="size-4 shrink-0" aria-hidden="true" />
                           <span>
                             {suggestion.voters?.length ?? 0} voter
                             {(suggestion.voters?.length ?? 0) === 1 ? "" : "s"}
                           </span>
                         </div>
                         <button
+                          type="button"
                           onClick={() => startEditingVotes(suggestion)}
-                          className="text-xs px-2 py-1 bg-zinc-800 text-zinc-300 rounded hover:bg-zinc-700 transition-colors"
+                          className="text-xs px-2.5 py-1.5 text-zinc-400 rounded-md hover:bg-white/5 hover:text-white transition-colors"
                         >
-                          Edit Votes
+                          Edit votes
                         </button>
                       </div>
                       <div className="flex flex-wrap gap-2">
@@ -666,7 +579,7 @@ export default function AdminSuggestClient({
                           suggestion.voters!.map((email) => (
                             <span
                               key={email}
-                              className="text-sm px-3 py-1 rounded-full bg-zinc-800 text-zinc-100"
+                              className="text-sm px-3 py-1 rounded-full bg-white/5 text-zinc-100 ring-1 ring-inset ring-white/10"
                             >
                               {email}
                             </span>
@@ -680,134 +593,72 @@ export default function AdminSuggestClient({
                     <div className="flex gap-2 shrink-0 flex-wrap">
                       {isDuplicateOfApproved && (
                         <button
+                          type="button"
                           onClick={() => startDuplicateMerge(suggestion)}
                           disabled={processingIds.has(suggestion.id)}
-                          className="flex items-center gap-2 px-4 py-2 bg-amber-500/20 text-amber-400 rounded text-sm font-medium hover:bg-amber-500/30 transition-colors disabled:opacity-50"
+                          className="flex items-center gap-2 px-3 py-2 bg-amber-500/20 text-amber-400 rounded-lg text-sm font-medium hover:bg-amber-500/30 transition-colors disabled:opacity-50"
                         >
-                          <svg
-                            className="w-4 h-4"
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
-                              d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"
-                            />
-                          </svg>
+                          <ArrowsRightLeftIcon className="size-4 shrink-0" aria-hidden="true" />
                           Duplicate
                         </button>
                       )}
                       <button
+                        type="button"
                         onClick={() => handleAction(suggestion.id, "approve")}
                         disabled={processingIds.has(suggestion.id)}
-                        className="flex items-center gap-2 px-4 py-2 bg-emerald-500/20 text-emerald-400 rounded text-sm font-medium hover:bg-emerald-500/30 transition-colors disabled:opacity-50"
+                        className="flex items-center gap-2 px-3 py-2 bg-emerald-500/20 text-emerald-400 rounded-lg text-sm font-medium hover:bg-emerald-500/30 transition-colors disabled:opacity-50"
                       >
                         {processingIds.has(suggestion.id) ? (
-                          <div className="w-4 h-4 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin" />
+                          <div className="size-4 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin" />
                         ) : (
-                          <svg
-                            className="w-4 h-4"
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
-                              d="M5 13l4 4L19 7"
-                            />
-                          </svg>
+                          <CheckIcon className="size-4 shrink-0" aria-hidden="true" />
                         )}
                         Approve
                       </button>
                       <button
+                        type="button"
                         onClick={() => handleAction(suggestion.id, "reject")}
                         disabled={processingIds.has(suggestion.id)}
-                        className="flex items-center gap-2 px-4 py-2 bg-rose-500/20 text-rose-400 rounded text-sm font-medium hover:bg-rose-500/30 transition-colors disabled:opacity-50"
+                        className="flex items-center gap-2 px-3 py-2 bg-rose-500/20 text-rose-400 rounded-lg text-sm font-medium hover:bg-rose-500/30 transition-colors disabled:opacity-50"
                       >
                         {processingIds.has(suggestion.id) ? (
-                          <div className="w-4 h-4 border-2 border-rose-400 border-t-transparent rounded-full animate-spin" />
+                          <div className="size-4 border-2 border-rose-400 border-t-transparent rounded-full animate-spin" />
                         ) : (
-                          <svg
-                            className="w-4 h-4"
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
-                              d="M6 18L18 6M6 6l12 12"
-                            />
-                          </svg>
+                          <XMarkIcon className="size-4 shrink-0" aria-hidden="true" />
                         )}
                         Reject
                       </button>
-                      <button
+                      <Button
+                        variant="secondary"
                         onClick={() => startEditing(suggestion)}
-                        className="flex items-center gap-2 px-4 py-2 bg-zinc-800 text-zinc-200 rounded text-sm font-medium hover:bg-zinc-700 transition-colors"
+                        className="flex items-center gap-2"
                       >
-                        <svg
-                          className="w-4 h-4"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
-                          />
-                        </svg>
+                        <PencilIcon className="size-4 shrink-0" aria-hidden="true" />
                         Edit
-                      </button>
+                      </Button>
                     </div>
                   )}
                   {suggestion.reviewed && (
                     <div className="flex gap-2 shrink-0 flex-wrap">
                       {suggestion.approved && (
                         <button
+                          type="button"
                           onClick={() =>
                             handleToggleSpoke(suggestion.id, !suggestion.spoke)
                           }
                           disabled={processingIds.has(suggestion.id)}
-                          className={`flex items-center gap-2 px-4 py-2 rounded text-sm font-medium transition-colors disabled:opacity-50 ${
+                          className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 ${
                             suggestion.spoke
-                              ? "bg-zinc-800 text-zinc-200 hover:bg-zinc-700"
+                              ? "bg-white/5 text-zinc-200 ring-1 ring-inset ring-white/10 hover:bg-white/10"
                               : "bg-sky-500/20 text-sky-300 hover:bg-sky-500/30"
                           }`}
                         >
                           {processingIds.has(suggestion.id) ? (
-                            <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                            <div className="size-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                          ) : suggestion.spoke ? (
+                            <EyeIcon className="size-4 shrink-0" aria-hidden="true" />
                           ) : (
-                            <svg
-                              className="w-4 h-4"
-                              fill="none"
-                              stroke="currentColor"
-                              viewBox="0 0 24 24"
-                            >
-                              {suggestion.spoke ? (
-                                <path
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  strokeWidth={2}
-                                  d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-                                />
-                              ) : (
-                                <path
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  strokeWidth={2}
-                                  d="M5 13l4 4L19 7"
-                                />
-                              )}
-                            </svg>
+                            <CheckIcon className="size-4 shrink-0" aria-hidden="true" />
                           )}
                           {suggestion.spoke ? "Unhide" : "Mark Spoke"}
                         </button>
@@ -816,45 +667,23 @@ export default function AdminSuggestClient({
                         isDuplicateOfApproved &&
                         !suggestion.duplicate && (
                           <button
+                            type="button"
                             onClick={() => startDuplicateMerge(suggestion)}
                             disabled={processingIds.has(suggestion.id)}
-                            className="flex items-center gap-2 px-4 py-2 bg-amber-500/20 text-amber-400 rounded text-sm font-medium hover:bg-amber-500/30 transition-colors disabled:opacity-50"
+                            className="flex items-center gap-2 px-3 py-2 bg-amber-500/20 text-amber-400 rounded-lg text-sm font-medium hover:bg-amber-500/30 transition-colors disabled:opacity-50"
                           >
-                            <svg
-                              className="w-4 h-4"
-                              fill="none"
-                              stroke="currentColor"
-                              viewBox="0 0 24 24"
-                            >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"
-                              />
-                            </svg>
+                            <ArrowsRightLeftIcon className="size-4 shrink-0" aria-hidden="true" />
                             Duplicate
                           </button>
                         )}
-                      <button
+                      <Button
+                        variant="secondary"
                         onClick={() => startEditing(suggestion)}
-                        className="flex items-center gap-2 px-4 py-2 bg-zinc-800 text-zinc-200 rounded text-sm font-medium hover:bg-zinc-700 transition-colors"
+                        className="flex items-center gap-2"
                       >
-                        <svg
-                          className="w-4 h-4"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
-                          />
-                        </svg>
+                        <PencilIcon className="size-4 shrink-0" aria-hidden="true" />
                         Edit
-                      </button>
+                      </Button>
                     </div>
                   )}
                 </div>
@@ -866,44 +695,34 @@ export default function AdminSuggestClient({
 
       {editingSuggestion && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
-          <div className="w-full max-w-lg bg-zinc-900 border border-zinc-800 rounded-2xl p-6 shadow-2xl">
+          <div className="w-full max-w-lg bg-zinc-900/60 border border-white/10 rounded-2xl p-6 shadow-2xl">
             <div className="flex items-center justify-between mb-4">
               <div>
                 <h3 className="text-xl font-semibold text-white">
-                  Edit Speaker Name
+                  Edit speaker name
                 </h3>
                 <p className="text-sm text-zinc-400">
                   Update suggestion submitted by {editingSuggestion.email}
                 </p>
               </div>
               <button
+                type="button"
                 onClick={closeEditing}
+                aria-label="Close"
                 className="text-zinc-500 hover:text-white transition-colors"
               >
-                <svg
-                  className="w-5 h-5"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M6 18L18 6M6 6l12 12"
-                  />
-                </svg>
+                <XMarkIcon className="size-5 shrink-0" aria-hidden="true" />
               </button>
             </div>
 
-            <label className="block text-sm font-medium text-zinc-300 mb-2">
-              Speaker Name
-            </label>
-            <input
+            <Label htmlFor="edit-speaker" className="mb-2 block">
+              Speaker name
+            </Label>
+            <Input
+              id="edit-speaker"
               type="text"
               value={editedSpeaker}
               onChange={(e) => setEditedSpeaker(e.target.value)}
-              className="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:border-rose-500/50 focus:ring-1 focus:ring-rose-500/50"
               placeholder="Enter speaker name"
               maxLength={500}
             />
@@ -912,36 +731,22 @@ export default function AdminSuggestClient({
             )}
 
             <div className="mt-6 flex items-center justify-end gap-3">
-              <button
-                onClick={closeEditing}
-                className="px-4 py-2 text-sm text-zinc-400 hover:text-white transition-colors"
-              >
+              <Button variant="ghost" onClick={closeEditing}>
                 Cancel
-              </button>
-              <button
+              </Button>
+              <Button
+                variant="primary"
                 onClick={handleSaveEdit}
                 disabled={isSavingEdit}
-                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-white font-medium bg-emerald-500 hover:bg-emerald-600 transition-colors disabled:opacity-50"
+                className="inline-flex items-center gap-2"
               >
                 {isSavingEdit ? (
-                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  <div className="size-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
                 ) : (
-                  <svg
-                    className="w-4 h-4"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M5 13l4 4L19 7"
-                    />
-                  </svg>
+                  <CheckIcon className="size-4 shrink-0" aria-hidden="true" />
                 )}
-                Save Changes
-              </button>
+                Save changes
+              </Button>
             </div>
           </div>
         </div>
@@ -960,34 +765,24 @@ export default function AdminSuggestClient({
 
           return (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
-              <div className="w-full max-w-lg bg-zinc-900 border border-zinc-800 rounded-2xl p-6 shadow-2xl">
+              <div className="w-full max-w-lg bg-zinc-900/60 border border-white/10 rounded-2xl p-6 shadow-2xl">
                 <div className="flex items-center justify-between mb-4">
                   <div>
                     <h3 className="text-xl font-semibold text-white">
-                      Merge Duplicate
+                      Merge duplicate
                     </h3>
                     <p className="text-sm text-zinc-400">
-                      Move votes from &ldquo;{duplicateSuggestion.speaker}&rdquo; to an
-                      approved duplicate
+                      Move votes from &ldquo;{duplicateSuggestion.speaker}
+                      &rdquo; to an approved duplicate
                     </p>
                   </div>
                   <button
+                    type="button"
                     onClick={closeDuplicateMerge}
+                    aria-label="Close"
                     className="text-zinc-500 hover:text-white transition-colors"
                   >
-                    <svg
-                      className="w-5 h-5"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M6 18L18 6M6 6l12 12"
-                      />
-                    </svg>
+                    <XMarkIcon className="size-5 shrink-0" aria-hidden="true" />
                   </button>
                 </div>
 
@@ -996,7 +791,7 @@ export default function AdminSuggestClient({
                     Select which approved suggestion to merge votes into:
                   </p>
                   {matchingApproved.length === 0 ? (
-                    <p className="text-sm text-zinc-500 p-3 bg-zinc-800 rounded">
+                    <p className="text-sm text-zinc-500 p-3 bg-white/5 rounded-lg ring-1 ring-inset ring-white/10">
                       No matching approved suggestions found.
                     </p>
                   ) : (
@@ -1004,9 +799,10 @@ export default function AdminSuggestClient({
                       {matchingApproved.map((approved) => (
                         <button
                           key={approved.id}
+                          type="button"
                           onClick={() => handleMergeDuplicate(approved.id)}
                           disabled={isMergingDuplicate}
-                          className="w-full text-left p-3 bg-zinc-800 border border-zinc-700 rounded hover:border-amber-500/50 hover:bg-zinc-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          className="w-full text-left p-3 bg-white/5 ring-1 ring-inset ring-white/10 rounded-lg hover:ring-amber-500/50 hover:bg-white/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           <div className="flex items-center justify-between">
                             <div className="flex-1 min-w-0">
@@ -1033,13 +829,13 @@ export default function AdminSuggestClient({
                 )}
 
                 <div className="mt-6 flex items-center justify-end gap-3">
-                  <button
+                  <Button
+                    variant="ghost"
                     onClick={closeDuplicateMerge}
                     disabled={isMergingDuplicate}
-                    className="px-4 py-2 text-sm text-zinc-400 hover:text-white transition-colors disabled:opacity-50"
                   >
                     Cancel
-                  </button>
+                  </Button>
                 </div>
               </div>
             </div>
@@ -1048,40 +844,31 @@ export default function AdminSuggestClient({
 
       {editingVotes && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
-          <div className="w-full max-w-lg bg-zinc-900 border border-zinc-800 rounded-2xl p-6 shadow-2xl">
+          <div className="w-full max-w-lg bg-zinc-900/60 border border-white/10 rounded-2xl p-6 shadow-2xl">
             <div className="flex items-center justify-between mb-4">
               <div>
                 <h3 className="text-xl font-semibold text-white">
-                  Edit Votes for {editingVotes.speaker}
+                  Edit votes for {editingVotes.speaker}
                 </h3>
                 <p className="text-sm text-zinc-400">
                   Update the vote count directly (does not modify votes table)
                 </p>
               </div>
               <button
+                type="button"
                 onClick={closeEditingVotes}
+                aria-label="Close"
                 className="text-zinc-500 hover:text-white transition-colors"
               >
-                <svg
-                  className="w-5 h-5"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M6 18L18 6M6 6l12 12"
-                  />
-                </svg>
+                <XMarkIcon className="size-5 shrink-0" aria-hidden="true" />
               </button>
             </div>
 
-            <label className="block text-sm font-medium text-zinc-300 mb-2">
-              Vote Count
-            </label>
-            <input
+            <Label htmlFor="edit-votes" className="mb-2 block">
+              Vote count
+            </Label>
+            <Input
+              id="edit-votes"
               type="number"
               value={voteCount}
               onChange={(e) => {
@@ -1097,7 +884,6 @@ export default function AdminSuggestClient({
                   handleSaveVoteCount();
                 }
               }}
-              className="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/50"
               placeholder="Enter vote count"
               min="0"
               step="1"
@@ -1108,37 +894,26 @@ export default function AdminSuggestClient({
             )}
 
             <div className="mt-6 flex items-center justify-end gap-3">
-              <button
+              <Button
+                variant="ghost"
                 onClick={closeEditingVotes}
                 disabled={isSavingVoteCount}
-                className="px-4 py-2 text-sm text-zinc-400 hover:text-white transition-colors disabled:opacity-50"
               >
                 Cancel
-              </button>
-              <button
+              </Button>
+              <Button
+                variant="primary"
                 onClick={handleSaveVoteCount}
                 disabled={isSavingVoteCount}
-                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-white font-medium bg-blue-500 hover:bg-blue-600 transition-colors disabled:opacity-50"
+                className="inline-flex items-center gap-2"
               >
                 {isSavingVoteCount ? (
-                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  <div className="size-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
                 ) : (
-                  <svg
-                    className="w-4 h-4"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M5 13l4 4L19 7"
-                    />
-                  </svg>
+                  <CheckIcon className="size-4 shrink-0" aria-hidden="true" />
                 )}
-                Save Changes
-              </button>
+                Save changes
+              </Button>
             </div>
           </div>
         </div>

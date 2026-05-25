@@ -1,6 +1,16 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
+import {
+  CheckIcon,
+  ExclamationTriangleIcon,
+} from "@heroicons/react/16/solid";
 
 type ConfirmationTone = "primary" | "danger";
 
@@ -26,10 +36,12 @@ export type ConfirmationOptions = {
   tone?: ConfirmationTone;
 };
 
+// The confirm button is the single primary action of the dialog, so a filled
+// rose button is canonical for both tones (design.md §5). The leading icon ring
+// carries the success/danger distinction.
 const TONE_STYLES: Record<ConfirmationTone, string> = {
-  primary:
-    "bg-gradient-to-r from-emerald-500 to-teal-500 text-white hover:opacity-90",
-  danger: "bg-rose-600 text-white hover:bg-rose-700",
+  primary: "bg-rose-500 text-white hover:bg-rose-400",
+  danger: "bg-rose-500 text-white hover:bg-rose-400",
 };
 
 function renderDescription(description: ReactNode) {
@@ -85,7 +97,7 @@ export function ConfirmationDialog({
       role="presentation"
     >
       <div
-        className="w-full max-w-md rounded-2xl border border-zinc-800 bg-zinc-900 p-6 shadow-2xl"
+        className="w-full max-w-md rounded-2xl border border-white/10 bg-zinc-900 p-6 shadow-2xl"
         onClick={(event) => event.stopPropagation()}
         role="dialog"
         aria-modal="true"
@@ -100,33 +112,9 @@ export function ConfirmationDialog({
             }`}
           >
             {tone === "danger" ? (
-              <svg
-                className="h-5 w-5"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M12 9v4m0 4h.01M5.07 19h13.86c1.54 0 2.5-1.67 1.73-3L13.73 4c-.77-1.33-2.69-1.33-3.46 0L3.34 16c-.77 1.33.19 3 1.73 3z"
-                />
-              </svg>
+              <ExclamationTriangleIcon className="size-4 shrink-0" aria-hidden="true" />
             ) : (
-              <svg
-                className="h-5 w-5"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M5 13l4 4L19 7"
-                />
-              </svg>
+              <CheckIcon className="size-4 shrink-0" aria-hidden="true" />
             )}
           </div>
           <div className="min-w-0 flex-1">
@@ -148,7 +136,7 @@ export function ConfirmationDialog({
             onClick={onCancel}
             disabled={isConfirming}
             autoFocus
-            className="rounded-lg border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-300 transition-colors hover:bg-zinc-800 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+            className="rounded-lg bg-white/5 px-4 py-2 text-sm font-medium text-zinc-200 ring-1 ring-inset ring-white/10 transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {cancelLabel}
           </button>

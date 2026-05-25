@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { verifyAdminRequest } from "@/app/lib/auth";
+import { requirePermission } from "@/app/lib/permissions";
 import { getAdminSuggestions } from "@/app/suggest/data";
 import { isValidUUID } from "@/app/lib/validation";
 import { db, eq, suggest, votes } from "@ssb/db";
@@ -9,7 +9,7 @@ import { isValidEmail } from "@/app/lib/validation";
 
 export async function POST(req: Request) {
   try {
-    const auth = await verifyAdminRequest();
+    const auth = await requirePermission("suggestions.manage");
     if (!auth.authorized) {
       return NextResponse.json({ error: auth.error }, { status: 401 });
     }
@@ -78,7 +78,7 @@ export async function POST(req: Request) {
 
 export async function PATCH(req: Request) {
   try {
-    const auth = await verifyAdminRequest();
+    const auth = await requirePermission("suggestions.manage");
     if (!auth.authorized) {
       return NextResponse.json({ error: auth.error }, { status: 401 });
     }
@@ -175,7 +175,7 @@ export async function PATCH(req: Request) {
 
 export async function PUT(req: Request) {
   try {
-    const auth = await verifyAdminRequest();
+    const auth = await requirePermission("suggestions.manage");
     if (!auth.authorized) {
       return NextResponse.json({ error: auth.error }, { status: 401 });
     }
