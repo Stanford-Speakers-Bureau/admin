@@ -2,6 +2,10 @@
 
 import { Fragment, useState, useEffect, useCallback, useRef } from "react";
 import {
+  ChevronDownIcon,
+  FunnelIcon,
+} from "@heroicons/react/16/solid";
+import {
   Button,
   Card,
   Input,
@@ -808,36 +812,15 @@ function FilterDropdown({
         aria-expanded={isOpen}
         aria-haspopup="menu"
       >
-        <svg
-          className="h-4 w-4 text-zinc-400"
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M3 4a1 1 0 011-1h16a1 1 0 01.8 1.6L14 13.333V19a1 1 0 01-1.447.894l-2-1A1 1 0 0110 18v-4.667L3.2 4.6A1 1 0 013 4z"
-          />
-        </svg>
+        <FunnelIcon className="size-4 shrink-0 text-zinc-400" aria-hidden="true" />
         <span>{title}</span>
         <span className="max-w-48 truncate text-zinc-400">{summary}</span>
-        <svg
-          className={`ml-auto h-4 w-4 text-zinc-500 transition-transform ${
+        <ChevronDownIcon
+          className={`ml-auto size-4 shrink-0 text-zinc-500 transition-transform ${
             isOpen ? "rotate-180" : ""
           }`}
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M19 9l-7 7-7-7"
-          />
-        </svg>
+          aria-hidden="true"
+        />
       </button>
 
       {isOpen && (
@@ -1510,21 +1493,12 @@ export default function AuditLogClient() {
                           <span className="min-w-0 flex-1 truncate text-xs text-zinc-400">
                             {summary}
                           </span>
-                          <svg
-                            className={`h-3.5 w-3.5 shrink-0 text-zinc-500 transition-transform ${
+                          <ChevronDownIcon
+                            className={`size-4 shrink-0 text-zinc-500 transition-transform ${
                               isExpanded ? "rotate-180" : ""
                             }`}
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
-                              d="M19 9l-7 7-7-7"
-                            />
-                          </svg>
+                            aria-hidden="true"
+                          />
                         </button>
                       </TD>
                     </TR>

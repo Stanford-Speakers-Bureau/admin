@@ -398,7 +398,7 @@ export default async function AdminDashboard() {
   return (
     <div className="px-4 sm:px-6 py-8">
       <div className="mb-8">
-        <h1 className="mb-2 font-serif text-2xl font-bold text-white sm:text-3xl">
+        <h1 className="mb-2 font-serif text-2xl font-semibold text-white sm:text-3xl">
           {greeting}
         </h1>
         <p className="text-zinc-400">

@@ -1,4 +1,5 @@
 import AdminLayoutClient from "./AdminLayoutClient";
+import { PlusIcon } from "@heroicons/react/16/solid";
 import { EventProvider } from "./EventContext";
 import { getNextEventId } from "@/app/lib/eventUtils";
 import { getSessionUser } from "@/app/lib/auth";
@@ -282,7 +283,7 @@ export default async function AdminLayout({ children }: AdminLayoutProps) {
           >
             <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
               <div className="text-center">
-                <h1 className="text-2xl font-bold text-white mb-4 font-serif">
+                <h1 className="text-2xl font-semibold text-white mb-4 font-serif">
                   Stanford Speakers Bureau
                 </h1>
                 <p className="text-zinc-400 mb-6">
@@ -292,19 +293,7 @@ export default async function AdminLayout({ children }: AdminLayoutProps) {
                   href={loginUrl}
                   className="inline-flex items-center gap-2 px-6 py-3 bg-white text-zinc-900 rounded-lg font-medium hover:bg-zinc-100 transition-colors"
                 >
-                  <svg
-                    className="w-5 h-5"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M12 4v16m8-8H4"
-                    />
-                  </svg>
+                  <PlusIcon className="size-4 shrink-0 w-5 h-5" aria-hidden="true" />
                   Sign in with Stanford
                 </a>
               </div>
@@ -322,7 +311,7 @@ export default async function AdminLayout({ children }: AdminLayoutProps) {
         >
           <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
             <div className="text-center">
-              <h1 className="text-2xl font-bold text-white mb-4 font-serif">
+              <h1 className="text-2xl font-semibold text-white mb-4 font-serif">
                 Access Denied
               </h1>
               <p className="text-zinc-400 mb-6">

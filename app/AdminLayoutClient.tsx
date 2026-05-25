@@ -1,6 +1,12 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import {
+  ArrowLeftIcon,
+  CalendarIcon,
+  ExclamationTriangleIcon,
+  SignalIcon,
+} from "@heroicons/react/16/solid";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEventContext } from "./EventContext";
@@ -289,19 +295,7 @@ export default function AdminLayoutClient({
           {/* Icon-only trigger on md */}
           <div className="lg:hidden relative group">
             <div className="flex items-center justify-center">
-              <svg
-                className="w-5 h-5 text-zinc-400"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
-                />
-              </svg>
+              <CalendarIcon className="size-4 shrink-0 text-zinc-400 w-5 h-5" aria-hidden="true" />
             </div>
             {/* Tooltip-style dropdown on hover */}
             <div className="absolute left-full top-0 bottom-0 hidden group-hover:block z-50 pl-2">
@@ -334,19 +328,7 @@ export default function AdminLayoutClient({
             title="Exit to main site"
             className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors"
           >
-            <svg
-              className="w-5 h-5 shrink-0"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M10 19l-7-7m0 0l7-7m-7 7h18"
-              />
-            </svg>
+            <ArrowLeftIcon className="size-4 shrink-0 w-5 h-5" aria-hidden="true" />
             <span className="hidden lg:block">Exit</span>
           </Link>
         </div>
@@ -355,19 +337,7 @@ export default function AdminLayoutClient({
       {/* Mobile Event Selector */}
       <div className="md:hidden fixed top-0 left-0 right-0 z-50 bg-zinc-900/95 backdrop-blur-xl border-b border-white/10">
         <div className="flex items-center gap-2 px-3 py-2">
-          <svg
-            className="w-4 h-4 text-zinc-500 shrink-0"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
-            />
-          </svg>
+          <CalendarIcon className="size-4 shrink-0 text-zinc-500" aria-hidden="true" />
           <select
             value={displayedEventId}
             onChange={(e) => handleEventChange(e.target.value)}
@@ -421,17 +391,7 @@ export default function AdminLayoutClient({
       {hasLiveEvent && (
         <div className="fixed top-12 md:top-0 left-0 right-0 md:left-16 lg:left-64 z-[100] flex justify-center pointer-events-none">
           <div className="bg-red-500 px-4 py-1 rounded-b-md flex items-center gap-2">
-            <svg
-              className="w-4 h-4 text-white shrink-0"
-              fill="currentColor"
-              viewBox="0 0 20 20"
-            >
-              <path
-                fillRule="evenodd"
-                d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z"
-                clipRule="evenodd"
-              />
-            </svg>
+            <SignalIcon className="size-4 shrink-0 text-white" aria-hidden="true" />
             <p className="text-white text-sm font-bold">EVENT LIVE</p>
           </div>
         </div>
@@ -441,19 +401,7 @@ export default function AdminLayoutClient({
       {emailDisabled && (
         <div className="fixed top-12 md:top-0 left-0 right-0 md:left-16 lg:left-64 z-40 bg-amber-500/10 border-b border-amber-500/30 backdrop-blur-sm">
           <div className="px-4 sm:px-6 py-3 flex items-center gap-3">
-            <svg
-              className="w-5 h-5 text-amber-400 shrink-0"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.732-.833-2.5 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"
-              />
-            </svg>
+            <ExclamationTriangleIcon className="size-4 shrink-0 text-amber-400 w-5 h-5" aria-hidden="true" />
             <p className="text-amber-400 text-sm font-medium">
               EMAIL SENDING DISABLED
             </p>

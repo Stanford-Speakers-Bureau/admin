@@ -2,6 +2,14 @@
 
 import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
+import {
+  ArrowTrendingUpIcon,
+  BoltIcon,
+  CheckCircleIcon,
+  ClockIcon,
+  ExclamationCircleIcon,
+  StarIcon,
+} from "@heroicons/react/16/solid";
 import { useEventContext } from "@/app/EventContext";
 import {
   getAnalyticsCardGridStyle,
@@ -1055,19 +1063,7 @@ function CheckInContent({ eventId }: { eventId: string }) {
     return (
       <div className="flex-1 flex items-center justify-center py-20">
         <div className="text-center">
-          <svg
-            className="w-10 h-10 text-rose-400 mx-auto mb-2"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-            />
-          </svg>
+          <ExclamationCircleIcon className="size-10 text-rose-400 mx-auto mb-2" aria-hidden="true" />
           <p className="text-rose-400 text-sm">{error}</p>
         </div>
       </div>
@@ -1122,19 +1118,7 @@ function CheckInContent({ eventId }: { eventId: string }) {
 
         {/* Scan velocity */}
         <div className="flex items-center gap-2">
-          <svg
-            className="w-4 h-4 text-emerald-400"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M13 10V3L4 14h7v7l9-11h-7z"
-            />
-          </svg>
+          <BoltIcon className="size-4 shrink-0 text-emerald-400" aria-hidden="true" />
           <span className="text-white font-bold text-lg">{scanVelocity}</span>
           <span className="text-zinc-400 text-sm">scans/min</span>
         </div>
@@ -1169,19 +1153,7 @@ function CheckInContent({ eventId }: { eventId: string }) {
           <>
             <div className="h-8 w-px bg-white/10 hidden sm:block" />
             <div className="flex items-center gap-2">
-              <svg
-                className="w-4 h-4 text-violet-400"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"
-                />
-              </svg>
+              <ArrowTrendingUpIcon className="size-4 shrink-0 text-violet-400" aria-hidden="true" />
               <span className="text-white font-bold text-lg">
                 {peakScansPerMin}
               </span>
@@ -1195,19 +1167,7 @@ function CheckInContent({ eventId }: { eventId: string }) {
           <div className="hidden 2xl:flex items-center gap-4">
             <div className="h-8 w-px bg-white/10" />
             <div className="flex items-center gap-2 min-w-0">
-              <svg
-                className="w-4 h-4 text-amber-400"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z"
-                />
-              </svg>
+              <StarIcon className="size-4 shrink-0 text-amber-400" aria-hidden="true" />
               <span className="text-white text-sm font-medium truncate max-w-[120px]">
                 {topScanner.name}
               </span>
@@ -1223,19 +1183,7 @@ function CheckInContent({ eventId }: { eventId: string }) {
           <>
             <div className="h-8 w-px bg-white/10 hidden sm:block" />
             <div className="flex items-center gap-2">
-              <svg
-                className="w-4 h-4 text-blue-400"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
-                />
-              </svg>
+              <ClockIcon className="size-4 shrink-0 text-blue-400" aria-hidden="true" />
               <span className="text-zinc-300 text-sm">
                 ~{estimatedCompletion} min left
               </span>
@@ -1248,19 +1196,7 @@ function CheckInContent({ eventId }: { eventId: string }) {
           <div className="hidden 2xl:flex items-center gap-4">
             <div className="h-8 w-px bg-white/10" />
             <div className="flex items-center gap-2">
-              <svg
-                className="w-4 h-4 text-zinc-400"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
-                />
-              </svg>
+              <ClockIcon className="size-4 shrink-0 text-zinc-400" aria-hidden="true" />
               <span className="text-zinc-300 text-sm">
                 Doors open {formatDuration(doorsDuration)} ago
               </span>
@@ -1354,19 +1290,7 @@ function CheckInContent({ eventId }: { eventId: string }) {
               <span className="text-xs font-medium tracking-wide text-rose-400">
                 Waitlist
               </span>
-              <svg
-                className="w-4 h-4 text-rose-400"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
-                />
-              </svg>
+              <ClockIcon className="size-4 shrink-0 text-rose-400" aria-hidden="true" />
             </div>
             <p className="text-2xl text-white font-bold tabular-nums">
               {waitlistCount}
@@ -1619,19 +1543,7 @@ export default function CheckInClient() {
       {!selectedEventId ? (
         <div className="text-center py-16 bg-zinc-900/60 rounded-2xl border border-white/10">
           <div className="w-16 h-16 bg-white/5 rounded-full flex items-center justify-center mx-auto mb-4">
-            <svg
-              className="w-8 h-8 text-zinc-600"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-              />
-            </svg>
+            <CheckCircleIcon className="size-8 text-zinc-600" aria-hidden="true" />
           </div>
           <p className="text-zinc-400 text-lg mb-2">No event selected</p>
           <p className="text-zinc-600 text-sm">

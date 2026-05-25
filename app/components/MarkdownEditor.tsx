@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState, useCallback, useId } from "react";
+import { LinkIcon } from "@heroicons/react/16/solid";
 import ReactMarkdown from "react-markdown";
 import rehypeRaw from "rehype-raw";
 import rehypeSanitize from "rehype-sanitize";
@@ -175,19 +176,7 @@ export default function MarkdownEditor({
               title="Link"
               className="w-7 h-7 flex items-center justify-center rounded-md text-zinc-400 hover:text-white hover:bg-white/10 transition-colors"
             >
-              <svg
-                className="w-3.5 h-3.5"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth={2}
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M10 6H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4M14 4h6m0 0v6m0-6L10 14"
-                />
-              </svg>
+              <LinkIcon className="size-4 shrink-0" aria-hidden="true" />
             </button>
           </div>
           <textarea

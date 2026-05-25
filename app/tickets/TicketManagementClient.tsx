@@ -19,6 +19,18 @@ import { BulkSendProgressState, runChunkedSend } from "@/app/lib/bulkSend";
 import { formatDate } from "@/app/lib/formatting";
 import { isValidEmail } from "@/app/lib/validation";
 import {
+  ArrowPathIcon,
+  BellIcon,
+  CheckIcon,
+  ClockIcon,
+  EnvelopeIcon,
+  MagnifyingGlassIcon,
+  PencilIcon,
+  PlusIcon,
+  TrashIcon,
+  XMarkIcon,
+} from "@heroicons/react/16/solid";
+import {
   Alert,
   Button,
   Card,
@@ -1276,19 +1288,10 @@ export default function TicketManagementClient({
         title="Click to edit name"
       >
         <span className="truncate">{ticket.name || "—"}</span>
-        <svg
-          className="h-3.5 w-3.5 shrink-0 text-zinc-600 opacity-0 transition-opacity group-hover:opacity-100"
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
-          />
-        </svg>
+        <PencilIcon
+          aria-hidden="true"
+          className="size-4 shrink-0 text-zinc-600 opacity-0 transition-opacity group-hover:opacity-100"
+        />
       </button>
     );
   }
@@ -1368,19 +1371,7 @@ export default function TicketManagementClient({
           {resendingEmailId === ticket.id ? (
             spinner("border-blue-400")
           ) : (
-            <svg
-              className="h-5 w-5"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
-              />
-            </svg>
+            <EnvelopeIcon aria-hidden="true" className="size-4 shrink-0" />
           )}
         </button>
         <button
@@ -1393,19 +1384,7 @@ export default function TicketManagementClient({
           {sendingEarlyReminderId === ticket.id ? (
             spinner("border-violet-400")
           ) : (
-            <svg
-              className="h-5 w-5"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
-              />
-            </svg>
+            <ClockIcon aria-hidden="true" className="size-4 shrink-0" />
           )}
         </button>
         <button
@@ -1418,19 +1397,7 @@ export default function TicketManagementClient({
           {sendingReminderId === ticket.id ? (
             spinner("border-amber-400")
           ) : (
-            <svg
-              className="h-5 w-5"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"
-              />
-            </svg>
+            <BellIcon aria-hidden="true" className="size-4 shrink-0" />
           )}
         </button>
         <button
@@ -1439,19 +1406,7 @@ export default function TicketManagementClient({
           className="rounded-md p-2 text-rose-400 transition-colors hover:bg-rose-500/10 hover:text-rose-300"
           title="Delete ticket"
         >
-          <svg
-            className="h-5 w-5"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-            />
-          </svg>
+          <TrashIcon aria-hidden="true" className="size-4 shrink-0" />
         </button>
       </div>
     );
@@ -1525,19 +1480,7 @@ export default function TicketManagementClient({
               {isSendingEarlyReminders || isSendingReminders ? (
                 <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
               ) : (
-                <svg
-                  className="h-4 w-4"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
-                  />
-                </svg>
+                <EnvelopeIcon aria-hidden="true" className="size-4 shrink-0" />
               )}
               <span className="hidden sm:inline">Send</span>
             </button>
@@ -1548,19 +1491,10 @@ export default function TicketManagementClient({
             className="flex items-center gap-2"
             title="Reload tickets"
           >
-            <svg
-              className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`}
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-              />
-            </svg>
+            <ArrowPathIcon
+              aria-hidden="true"
+              className={`size-4 shrink-0 ${isLoading ? "animate-spin" : ""}`}
+            />
             <span className="hidden sm:inline">Reload</span>
           </Button>
           <Button
@@ -1571,19 +1505,7 @@ export default function TicketManagementClient({
             }}
             className="flex items-center gap-2"
           >
-            <svg
-              className="h-4 w-4"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M12 6v6m0 0v6m0-6h6m-6 0H6"
-              />
-            </svg>
+            <PlusIcon aria-hidden="true" className="size-4 shrink-0" />
             Add ticket
           </Button>
         </div>
@@ -1746,19 +1668,7 @@ export default function TicketManagementClient({
                   }
                   className="flex items-center gap-1 rounded-md px-2.5 py-1.5 text-sm font-medium text-zinc-400 hover:bg-white/5 hover:text-white"
                 >
-                  <svg
-                    className="h-4 w-4"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M12 4v16m8-8H4"
-                    />
-                  </svg>
+                  <PlusIcon aria-hidden="true" className="size-4 shrink-0" />
                   Add row
                 </button>
               </div>
@@ -1842,19 +1752,7 @@ export default function TicketManagementClient({
                         className="flex shrink-0 items-center justify-center gap-1.5 rounded-md p-2 text-zinc-400 transition-colors hover:bg-white/5 hover:text-rose-400 sm:gap-0"
                         title="Remove row"
                       >
-                        <svg
-                          className="h-4 w-4"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                          />
-                        </svg>
+                        <TrashIcon aria-hidden="true" className="size-4 shrink-0" />
                         <span className="text-sm sm:hidden">Remove row</span>
                       </button>
                     ) : null}
@@ -1887,19 +1785,7 @@ export default function TicketManagementClient({
                   }
                   className="flex items-center justify-center gap-2"
                 >
-                  <svg
-                    className="h-4 w-4"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M5 13l4 4L19 7"
-                    />
-                  </svg>
+                  <CheckIcon aria-hidden="true" className="size-4 shrink-0" />
                   Create{" "}
                   {newTicketRows.filter((r) => r.email.trim() && r.name.trim())
                     .length || 0}{" "}
@@ -1953,19 +1839,7 @@ export default function TicketManagementClient({
               onClick={() => handleAffiliationFilterChange("")}
               className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium text-zinc-500 transition-colors hover:text-zinc-300"
             >
-              <svg
-                className="h-3 w-3"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M6 18L18 6M6 6l12 12"
-                />
-              </svg>
+              <XMarkIcon aria-hidden="true" className="size-4 shrink-0" />
               Clear
             </button>
           )}
@@ -1974,19 +1848,10 @@ export default function TicketManagementClient({
 
       <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center">
         <div className="relative flex-1">
-          <svg
-            className="pointer-events-none absolute top-1/2 left-3 h-5 w-5 -translate-y-1/2 text-zinc-500"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-            />
-          </svg>
+          <MagnifyingGlassIcon
+            aria-hidden="true"
+            className="pointer-events-none absolute top-1/2 left-3 size-4 shrink-0 -translate-y-1/2 text-zinc-500"
+          />
           <Input
             type="search"
             name="search"
@@ -2045,19 +1910,7 @@ export default function TicketManagementClient({
             }}
             className="flex items-center justify-center gap-1.5 py-2.5"
           >
-            <svg
-              className="h-4 w-4"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M6 18L18 6M6 6l12 12"
-              />
-            </svg>
+            <XMarkIcon aria-hidden="true" className="size-4 shrink-0" />
             Clear filters
           </Button>
         )}

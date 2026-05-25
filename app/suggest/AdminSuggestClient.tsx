@@ -2,6 +2,17 @@
 
 import { useState } from "react";
 import {
+  ArrowPathIcon,
+  ArrowsRightLeftIcon,
+  CheckIcon,
+  ClockIcon,
+  EyeIcon,
+  PencilIcon,
+  UserIcon,
+  HandThumbUpIcon,
+  XMarkIcon,
+} from "@heroicons/react/16/solid";
+import {
   Button,
   EmptyState,
   Input,
@@ -377,19 +388,7 @@ export default function AdminSuggestClient({
           {isSyncingVotes ? (
             <div className="size-4 border-2 border-zinc-400 border-t-transparent rounded-full animate-spin" />
           ) : (
-            <svg
-              className="size-4"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-              />
-            </svg>
+            <ArrowPathIcon className="size-4 shrink-0" aria-hidden="true" />
           )}
           {isSyncingVotes ? "Syncing…" : "Resync votes"}
         </Button>
@@ -424,19 +423,7 @@ export default function AdminSuggestClient({
             onClick={() => handleBulkAction("approve")}
             className="flex items-center gap-2 px-3 py-2 bg-emerald-500/20 text-emerald-400 rounded-lg text-sm font-medium hover:bg-emerald-500/30 transition-colors"
           >
-            <svg
-              className="w-4 h-4"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M5 13l4 4L19 7"
-              />
-            </svg>
+            <CheckIcon className="size-4 shrink-0" aria-hidden="true" />
             Approve All ({pendingCount})
           </button>
           <button
@@ -444,19 +431,7 @@ export default function AdminSuggestClient({
             onClick={() => handleBulkAction("reject")}
             className="flex items-center gap-2 px-3 py-2 bg-rose-500/20 text-rose-400 rounded-lg text-sm font-medium hover:bg-rose-500/30 transition-colors"
           >
-            <svg
-              className="w-4 h-4"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M6 18L18 6M6 6l12 12"
-              />
-            </svg>
+            <XMarkIcon className="size-4 shrink-0" aria-hidden="true" />
             Reject All
           </button>
         </div>
@@ -537,51 +512,15 @@ export default function AdminSuggestClient({
                     </div>
                     <div className="flex flex-wrap items-center gap-4 text-sm text-zinc-500">
                       <span className="flex items-center gap-1.5">
-                        <svg
-                          className="w-4 h-4"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
-                          />
-                        </svg>
+                        <UserIcon className="size-4 shrink-0" aria-hidden="true" />
                         {suggestion.email}
                       </span>
                       <span className="flex items-center gap-1.5">
-                        <svg
-                          className="w-4 h-4"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M14 10h4.764a2 2 0 011.789 2.894l-3.5 7A2 2 0 0115.263 21h-4.017c-.163 0-.326-.02-.485-.06L7 20m7-10V5a2 2 0 00-2-2h-.095c-.5 0-.905.405-.905.905 0 .714-.211 1.412-.608 2.006L7 11v9m7-10h-2M7 20H5a2 2 0 01-2-2v-6a2 2 0 012-2h2.5"
-                          />
-                        </svg>
+                        <HandThumbUpIcon className="size-4 shrink-0" aria-hidden="true" />
                         {suggestion.votes} votes
                       </span>
                       <span className="flex items-center gap-1.5">
-                        <svg
-                          className="w-4 h-4"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
-                          />
-                        </svg>
+                        <ClockIcon className="size-4 shrink-0" aria-hidden="true" />
                         {new Date(suggestion.created_at).toLocaleDateString(
                           "en-US",
                           { timeZone: "America/Los_Angeles" },
@@ -617,19 +556,7 @@ export default function AdminSuggestClient({
                     <div className="mt-3">
                       <div className="flex items-center justify-between mb-2">
                         <div className="flex items-center gap-1.5 text-sm text-zinc-400">
-                          <svg
-                            className="w-4 h-4"
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
-                              d="M14 10h4.764a2 2 0 011.789 2.894l-3.5 7A2 2 0 0115.263 21h-4.017c-.163 0-.326-.02-.485-.06L7 20m7-10V5a2 2 0 00-2-2h-.095c-.5 0-.905.405-.905.905 0 .714-.211 1.412-.608 2.006L7 11v9m7-10h-2M7 20H5a2 2 0 01-2-2v-6a2 2 0 012-2h2.5"
-                            />
-                          </svg>
+                          <HandThumbUpIcon className="size-4 shrink-0" aria-hidden="true" />
                           <span>
                             {suggestion.voters?.length ?? 0} voter
                             {(suggestion.voters?.length ?? 0) === 1 ? "" : "s"}
@@ -671,19 +598,7 @@ export default function AdminSuggestClient({
                           disabled={processingIds.has(suggestion.id)}
                           className="flex items-center gap-2 px-3 py-2 bg-amber-500/20 text-amber-400 rounded-lg text-sm font-medium hover:bg-amber-500/30 transition-colors disabled:opacity-50"
                         >
-                          <svg
-                            className="size-4"
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
-                              d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"
-                            />
-                          </svg>
+                          <ArrowsRightLeftIcon className="size-4 shrink-0" aria-hidden="true" />
                           Duplicate
                         </button>
                       )}
@@ -696,19 +611,7 @@ export default function AdminSuggestClient({
                         {processingIds.has(suggestion.id) ? (
                           <div className="size-4 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin" />
                         ) : (
-                          <svg
-                            className="w-4 h-4"
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
-                              d="M5 13l4 4L19 7"
-                            />
-                          </svg>
+                          <CheckIcon className="size-4 shrink-0" aria-hidden="true" />
                         )}
                         Approve
                       </button>
@@ -721,19 +624,7 @@ export default function AdminSuggestClient({
                         {processingIds.has(suggestion.id) ? (
                           <div className="size-4 border-2 border-rose-400 border-t-transparent rounded-full animate-spin" />
                         ) : (
-                          <svg
-                            className="w-4 h-4"
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
-                              d="M6 18L18 6M6 6l12 12"
-                            />
-                          </svg>
+                          <XMarkIcon className="size-4 shrink-0" aria-hidden="true" />
                         )}
                         Reject
                       </button>
@@ -742,19 +633,7 @@ export default function AdminSuggestClient({
                         onClick={() => startEditing(suggestion)}
                         className="flex items-center gap-2"
                       >
-                        <svg
-                          className="size-4"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
-                          />
-                        </svg>
+                        <PencilIcon className="size-4 shrink-0" aria-hidden="true" />
                         Edit
                       </Button>
                     </div>
@@ -776,29 +655,10 @@ export default function AdminSuggestClient({
                         >
                           {processingIds.has(suggestion.id) ? (
                             <div className="size-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                          ) : suggestion.spoke ? (
+                            <EyeIcon className="size-4 shrink-0" aria-hidden="true" />
                           ) : (
-                            <svg
-                              className="size-4"
-                              fill="none"
-                              stroke="currentColor"
-                              viewBox="0 0 24 24"
-                            >
-                              {suggestion.spoke ? (
-                                <path
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  strokeWidth={2}
-                                  d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-                                />
-                              ) : (
-                                <path
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  strokeWidth={2}
-                                  d="M5 13l4 4L19 7"
-                                />
-                              )}
-                            </svg>
+                            <CheckIcon className="size-4 shrink-0" aria-hidden="true" />
                           )}
                           {suggestion.spoke ? "Unhide" : "Mark Spoke"}
                         </button>
@@ -812,19 +672,7 @@ export default function AdminSuggestClient({
                             disabled={processingIds.has(suggestion.id)}
                             className="flex items-center gap-2 px-3 py-2 bg-amber-500/20 text-amber-400 rounded-lg text-sm font-medium hover:bg-amber-500/30 transition-colors disabled:opacity-50"
                           >
-                            <svg
-                              className="size-4"
-                              fill="none"
-                              stroke="currentColor"
-                              viewBox="0 0 24 24"
-                            >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"
-                              />
-                            </svg>
+                            <ArrowsRightLeftIcon className="size-4 shrink-0" aria-hidden="true" />
                             Duplicate
                           </button>
                         )}
@@ -833,19 +681,7 @@ export default function AdminSuggestClient({
                         onClick={() => startEditing(suggestion)}
                         className="flex items-center gap-2"
                       >
-                        <svg
-                          className="size-4"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
-                          />
-                        </svg>
+                        <PencilIcon className="size-4 shrink-0" aria-hidden="true" />
                         Edit
                       </Button>
                     </div>
@@ -875,19 +711,7 @@ export default function AdminSuggestClient({
                 aria-label="Close"
                 className="text-zinc-500 hover:text-white transition-colors"
               >
-                <svg
-                  className="size-5"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M6 18L18 6M6 6l12 12"
-                  />
-                </svg>
+                <XMarkIcon className="size-5 shrink-0" aria-hidden="true" />
               </button>
             </div>
 
@@ -919,19 +743,7 @@ export default function AdminSuggestClient({
                 {isSavingEdit ? (
                   <div className="size-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
                 ) : (
-                  <svg
-                    className="size-4"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M5 13l4 4L19 7"
-                    />
-                  </svg>
+                  <CheckIcon className="size-4 shrink-0" aria-hidden="true" />
                 )}
                 Save changes
               </Button>
@@ -970,19 +782,7 @@ export default function AdminSuggestClient({
                     aria-label="Close"
                     className="text-zinc-500 hover:text-white transition-colors"
                   >
-                    <svg
-                      className="size-5"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M6 18L18 6M6 6l12 12"
-                      />
-                    </svg>
+                    <XMarkIcon className="size-5 shrink-0" aria-hidden="true" />
                   </button>
                 </div>
 
@@ -1060,19 +860,7 @@ export default function AdminSuggestClient({
                 aria-label="Close"
                 className="text-zinc-500 hover:text-white transition-colors"
               >
-                <svg
-                  className="size-5"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M6 18L18 6M6 6l12 12"
-                  />
-                </svg>
+                <XMarkIcon className="size-5 shrink-0" aria-hidden="true" />
               </button>
             </div>
 
@@ -1122,19 +910,7 @@ export default function AdminSuggestClient({
                 {isSavingVoteCount ? (
                   <div className="size-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
                 ) : (
-                  <svg
-                    className="size-4"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M5 13l4 4L19 7"
-                    />
-                  </svg>
+                  <CheckIcon className="size-4 shrink-0" aria-hidden="true" />
                 )}
                 Save changes
               </Button>

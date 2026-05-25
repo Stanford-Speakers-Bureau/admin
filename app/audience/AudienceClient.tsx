@@ -1,6 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  ChevronDownIcon,
+  EnvelopeIcon,
+  ExclamationTriangleIcon,
+  FunnelIcon,
+} from "@heroicons/react/16/solid";
 import BulkSendProgress from "@/app/components/BulkSendProgress";
 import { useConfirmationDialog } from "@/app/components/ConfirmationDialog";
 import { useEventContext } from "@/app/EventContext";
@@ -216,36 +222,15 @@ function FilterDropdown({
         aria-expanded={isOpen}
         aria-haspopup="menu"
       >
-        <svg
-          className="size-4 shrink-0 text-zinc-400"
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M3 4a1 1 0 011-1h16a1 1 0 01.8 1.6L14 13.333V19a1 1 0 01-1.447.894l-2-1A1 1 0 0110 18v-4.667L3.2 4.6A1 1 0 013 4z"
-          />
-        </svg>
+        <FunnelIcon aria-hidden="true" className="size-4 shrink-0 text-zinc-400" />
         <span>{title}</span>
         <span className="max-w-40 truncate text-zinc-400">{summary}</span>
-        <svg
+        <ChevronDownIcon
+          aria-hidden="true"
           className={`ml-auto size-4 shrink-0 text-zinc-500 transition-transform ${
             isOpen ? "rotate-180" : ""
           }`}
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M19 9l-7 7-7-7"
-          />
-        </svg>
+        />
       </button>
 
       {isOpen && (
@@ -833,19 +818,10 @@ export default function AudienceClient() {
         <PageHeader title="Event audience" />
         <div className="flex items-center justify-center py-20">
           <div className="text-center">
-            <svg
-              className="w-10 h-10 text-rose-400 mx-auto mb-2"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-              />
-            </svg>
+            <ExclamationTriangleIcon
+              aria-hidden="true"
+              className="size-4 shrink-0 text-rose-400 mx-auto mb-2"
+            />
             <p className="text-rose-400 text-sm">{error}</p>
           </div>
         </div>
@@ -899,19 +875,7 @@ export default function AudienceClient() {
             disabled={sendState?.active}
             className="inline-flex items-center gap-2"
           >
-            <svg
-              className="size-4 shrink-0"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth={2}
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75"
-              />
-            </svg>
+            <EnvelopeIcon aria-hidden="true" className="size-4 shrink-0" />
             Send announcement
           </Button>
         )}
@@ -1397,19 +1361,7 @@ export default function AudienceClient() {
                                 {individualSending === user.email ? (
                                   <div className="size-3.5 rounded-full border-2 border-zinc-600 border-t-zinc-400 animate-spin" />
                                 ) : (
-                                  <svg
-                                    className="size-3.5"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    strokeWidth={2}
-                                    viewBox="0 0 24 24"
-                                  >
-                                    <path
-                                      strokeLinecap="round"
-                                      strokeLinejoin="round"
-                                      d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75"
-                                    />
-                                  </svg>
+                                  <EnvelopeIcon aria-hidden="true" className="size-4 shrink-0" />
                                 )}
                               </button>
                             )}

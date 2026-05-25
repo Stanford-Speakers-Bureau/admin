@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useMemo, useCallback, useRef } from "react";
+import { InformationCircleIcon } from "@heroicons/react/16/solid";
 import { useRouter } from "next/navigation";
 import ReactECharts from "echarts-for-react";
 import { getAnalyticsCardGridStyle } from "@/app/lib/utils";
@@ -451,19 +452,7 @@ export default function TicketSalesGraph({
     return (
       <div className="flex-1 flex items-center justify-center py-20">
         <div className="text-center">
-          <svg
-            className="w-10 h-10 text-rose-400 mx-auto mb-2"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-            />
-          </svg>
+          <InformationCircleIcon className="size-4 shrink-0 text-rose-400 mx-auto mb-2 w-10 h-10" aria-hidden="true" />
           <p className="text-rose-400 text-sm">{error}</p>
         </div>
       </div>

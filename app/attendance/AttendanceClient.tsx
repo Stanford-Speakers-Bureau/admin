@@ -1,6 +1,11 @@
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
+import {
+  ArrowDownTrayIcon,
+  InformationCircleIcon,
+  UsersIcon,
+} from "@heroicons/react/16/solid";
 import { getAnalyticsCardGridStyle } from "@/app/lib/utils";
 import { formatDateShort as formatDate } from "@/app/lib/formatting";
 import {
@@ -357,19 +362,7 @@ export default function AttendanceClient() {
         <PageHeader title="Attendance Overview" />
         <div className="mt-8 flex items-center justify-center py-20">
           <div className="text-center">
-            <svg
-              className="w-10 h-10 text-rose-400 mx-auto mb-2"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-              />
-            </svg>
+            <InformationCircleIcon className="size-4 shrink-0 text-rose-400 mx-auto mb-2 w-10 h-10" aria-hidden="true" />
             <p className="text-rose-400 text-sm">{error}</p>
           </div>
         </div>
@@ -383,19 +376,7 @@ export default function AttendanceClient() {
         <PageHeader title="Attendance Overview" />
         <div className="mt-8 text-center py-16 bg-zinc-900/60 rounded-2xl border border-white/10">
           <div className="w-16 h-16 bg-white/5 rounded-full flex items-center justify-center mx-auto mb-4">
-            <svg
-              className="w-8 h-8 text-zinc-600"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"
-              />
-            </svg>
+            <UsersIcon className="size-4 shrink-0 text-zinc-600 w-8 h-8" aria-hidden="true" />
           </div>
           <p className="text-zinc-400 text-lg mb-2">No attendance data yet</p>
           <p className="text-zinc-600 text-sm">
@@ -438,19 +419,7 @@ export default function AttendanceClient() {
         />
         <div className="rounded-2xl border border-white/10 bg-zinc-900/60 p-4 xl:min-w-[360px]">
           <div className="flex items-center gap-2 mb-3">
-            <svg
-              className="w-4 h-4 text-zinc-400"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
-              />
-            </svg>
+            <ArrowDownTrayIcon className="size-4 shrink-0 text-zinc-400" aria-hidden="true" />
             <p className="text-xs font-medium tracking-wide text-zinc-500">
               Export CSV
             </p>

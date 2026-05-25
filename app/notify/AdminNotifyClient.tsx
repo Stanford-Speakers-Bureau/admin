@@ -1,6 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import {
+  EnvelopeIcon,
+  MagnifyingGlassIcon,
+  XMarkIcon,
+} from "@heroicons/react/16/solid";
 import BulkSendProgress from "@/app/components/BulkSendProgress";
 import { useConfirmationDialog } from "@/app/components/ConfirmationDialog";
 import { useEventContext } from "@/app/EventContext";
@@ -612,37 +617,13 @@ export default function AdminNotifyClient() {
                       onClick={() => setAffiliationFilter(null)}
                       className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium text-zinc-500 hover:text-zinc-300 transition-colors"
                     >
-                      <svg
-                        className="w-3 h-3"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M6 18L18 6M6 6l12 12"
-                        />
-                      </svg>
+                      <XMarkIcon className="size-4 shrink-0" aria-hidden="true" />
                       Clear
                     </button>
                   )}
                 </div>
                 <div className="relative">
-                  <svg
-                    className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-                    />
-                  </svg>
+                  <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 size-4 shrink-0 text-zinc-500" aria-hidden="true" />
                   <Input
                     type="text"
                     placeholder="Search name, email, or affiliation..."
@@ -740,19 +721,7 @@ export default function AdminNotifyClient() {
                           className="text-blue-400 hover:text-blue-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                           title="Send email to this person"
                         >
-                          <svg
-                            className="w-5 h-5 inline"
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
-                              d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
-                            />
-                          </svg>
+                          <EnvelopeIcon className="size-4 shrink-0 inline" aria-hidden="true" />
                         </button>
                       )}
                     </TD>
