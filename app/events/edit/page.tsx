@@ -1,5 +1,10 @@
 import { getSignedImageUrl, serializeEvent } from "@/app/lib/supabase";
-import { currentUserHoldsAction } from "@/app/lib/permissions";
+import {
+  canUseActionForEvent,
+  getEffectivePermissions,
+  permittedEventIdsForAction,
+} from "@/app/lib/permissions";
+import { getSessionUser } from "@/app/lib/auth";
 import { db } from "@ssb/db";
 import { connection } from "next/server";
 import { Event } from "../AdminEventsClient";
@@ -9,14 +14,20 @@ export const dynamic = "force-dynamic";
 
 async function getAllEvents(): Promise<Event[]> {
   try {
-    if (
-      !(await currentUserHoldsAction("events.edit")) &&
-      !(await currentUserHoldsAction("events.create"))
-    ) {
+    const user = await getSessionUser();
+    const perms = await getEffectivePermissions(user?.email);
+    const editableEventIds = permittedEventIdsForAction(perms, "events.edit");
+    const canCreate = canUseActionForEvent(perms, "events.create", null);
+
+    if (!canCreate && editableEventIds?.size === 0) {
       return [];
     }
+    if (editableEventIds?.size === 0) return [];
 
     const eventList = await db.query.events.findMany({
+      where: editableEventIds
+        ? (table, { inArray }) => inArray(table.id, [...editableEventIds])
+        : undefined,
       orderBy: (table, operators) => [operators.desc(table.startTimeDate)],
     });
 

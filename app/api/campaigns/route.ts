@@ -1,8 +1,12 @@
 import { NextResponse } from "next/server";
 import {
+  getEffectivePermissions,
   requireActionAnyScope,
-  requirePermission,
 } from "@/app/lib/permissions";
+import {
+  canManageStoredCampaignScope,
+  requireCampaignSendPermission,
+} from "@/app/lib/campaignPermissions";
 import { db, desc, emailCampaigns } from "@ssb/db";
 import { logAuditEvent } from "@/app/lib/audit";
 import { hasUnsafeHeaderChars, isValidUUID } from "@/app/lib/validation";
@@ -47,9 +51,19 @@ export async function GET() {
         event: { columns: { name: true } },
       },
     });
+    const perms = await getEffectivePermissions(auth.email);
+    const visibleCampaigns = campaigns.filter((c) =>
+      canManageStoredCampaignScope(perms, {
+        audiences: c.audiences,
+        eventId: c.eventId,
+        includeHeroCard: c.includeHeroCard,
+        feedbackEventId: c.feedbackEventId,
+        includeFeedbackPrompt: c.includeFeedbackPrompt,
+      }),
+    );
 
     return NextResponse.json({
-      campaigns: campaigns.map((c) => ({
+      campaigns: visibleCampaigns.map((c) => ({
         id: c.id,
         subject: c.subject,
         status: c.status,
@@ -106,16 +120,6 @@ export async function POST(req: Request) {
       includeFeedbackPrompt,
       footerType,
     } = body;
-
-    // A campaign tied to an event needs campaigns.send for that event; an
-    // at-large campaign (no event) needs the all-events scope.
-    const auth = await requirePermission(
-      "campaigns.send",
-      eventId && isValidUUID(eventId) ? eventId : null,
-    );
-    if (!auth.authorized) {
-      return NextResponse.json({ error: auth.error }, { status: 401 });
-    }
 
     if (footerType !== undefined && !isValidFooterType(footerType)) {
       return NextResponse.json(
@@ -202,18 +206,29 @@ export async function POST(req: Request) {
       );
     }
 
+    const normalizedEventId = eventId && isValidUUID(eventId) ? eventId : null;
+    const normalizedFeedbackEventId =
+      feedbackEventId && isValidUUID(feedbackEventId) ? feedbackEventId : null;
+    const auth = await requireCampaignSendPermission({
+      audiences,
+      eventId: normalizedEventId,
+      includeHeroCard: includeHeroCard ?? false,
+      feedbackEventId: normalizedFeedbackEventId,
+      includeFeedbackPrompt: includeFeedbackPrompt ?? false,
+    });
+    if (!auth.authorized) {
+      return NextResponse.json({ error: auth.error }, { status: 401 });
+    }
+
     const [campaign] = await db
       .insert(emailCampaigns)
       .values({
         subject: validatedSubject,
         body: typeof emailBody === "string" ? emailBody : "",
         audiences: JSON.stringify(audiences),
-        eventId: eventId && isValidUUID(eventId) ? eventId : null,
+        eventId: normalizedEventId,
         includeHeroCard: includeHeroCard ?? false,
-        feedbackEventId:
-          feedbackEventId && isValidUUID(feedbackEventId)
-            ? feedbackEventId
-            : null,
+        feedbackEventId: normalizedFeedbackEventId,
         includeFeedbackPrompt: includeFeedbackPrompt ?? false,
         footerType: resolvedFooterType,
         createdBy: auth.email!,

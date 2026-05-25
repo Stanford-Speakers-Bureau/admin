@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requirePermission } from "@/app/lib/permissions";
+import { requireCampaignSendPermission } from "@/app/lib/campaignPermissions";
 import {
   and,
   db,
@@ -154,7 +154,13 @@ export async function POST(req: Request, { params }: Params) {
       return NextResponse.json({ error: "Campaign not found" }, { status: 404 });
     }
 
-    const auth = await requirePermission("campaigns.send", campaign.eventId);
+    const auth = await requireCampaignSendPermission({
+      audiences: parseAudiences(campaign.audiences),
+      eventId: campaign.eventId,
+      includeHeroCard: campaign.includeHeroCard,
+      feedbackEventId: campaign.feedbackEventId,
+      includeFeedbackPrompt: campaign.includeFeedbackPrompt,
+    });
     if (!auth.authorized) {
       return NextResponse.json({ error: auth.error }, { status: 401 });
     }

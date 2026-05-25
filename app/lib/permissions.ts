@@ -119,6 +119,9 @@ export function grantSatisfies(
 const PERMISSION_ACTION_SET = new Set<string>(
   PERMISSION_DEFS.map((d) => d.action),
 );
+const EVENT_SCOPED_ACTION_SET = new Set<PermissionAction>(
+  PERMISSION_DEFS.filter((d) => d.scope === "event").map((d) => d.action),
+);
 
 export function isPermissionAction(value: unknown): value is PermissionAction {
   return typeof value === "string" && PERMISSION_ACTION_SET.has(value);
@@ -335,10 +338,31 @@ export function hasAnyPermission(perms: EffectivePermissions): boolean {
 export function permittedEventIds(
   perms: EffectivePermissions,
 ): Set<string> | null {
-  if (perms.isAdmin || perms.allEventActions.size > 0) return null;
+  if (perms.isAdmin) return null;
+  for (const action of perms.allEventActions) {
+    if (EVENT_SCOPED_ACTION_SET.has(action)) return null;
+  }
   const ids = new Set<string>();
   for (const set of perms.eventScopes.values()) {
     for (const id of set) ids.add(id);
   }
   return ids;
+}
+
+export function permittedEventIdsForAction(
+  perms: EffectivePermissions,
+  action: PermissionAction,
+): Set<string> | null {
+  if (perms.isAdmin || perms.allEventActions.has(action)) return null;
+  return new Set(perms.eventScopes.get(action) ?? []);
+}
+
+export function canUseActionForEvent(
+  perms: EffectivePermissions,
+  action: PermissionAction,
+  eventId: string | null | undefined,
+): boolean {
+  if (perms.isAdmin || perms.allEventActions.has(action)) return true;
+  if (!eventId) return false;
+  return perms.eventScopes.get(action)?.has(eventId) ?? false;
 }

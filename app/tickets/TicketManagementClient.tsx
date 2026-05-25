@@ -1994,254 +1994,123 @@ export default function TicketManagementClient({
           </p>
         </div>
       ) : (
-        <div className="bg-zinc-900 rounded-2xl border border-zinc-800 overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-zinc-800/50 border-b border-zinc-800">
-                <tr>
-                  <th className="px-3 sm:px-4 py-3 sm:py-4 text-left text-xs font-medium text-zinc-400 uppercase tracking-wider whitespace-nowrap">
-                    Name
-                  </th>
-                  <th className="px-3 sm:px-4 py-3 sm:py-4 text-left text-xs font-medium text-zinc-400 uppercase tracking-wider whitespace-nowrap">
-                    Email
-                  </th>
-                  <th className="px-3 sm:px-4 py-3 sm:py-4 text-left text-xs font-medium text-zinc-400 uppercase tracking-wider whitespace-nowrap">
-                    Type
-                  </th>
-                  <th className="hidden lg:table-cell px-3 sm:px-4 py-3 sm:py-4 text-left text-xs font-medium text-zinc-400 uppercase tracking-wider whitespace-nowrap">
-                    Created
-                  </th>
-                  <th className="px-3 sm:px-4 py-3 sm:py-4 text-left text-xs font-medium text-zinc-400 uppercase tracking-wider whitespace-nowrap">
-                    Status
-                  </th>
-                  <th className="px-3 sm:px-4 py-3 sm:py-4 text-left text-xs font-medium text-zinc-400 uppercase tracking-wider whitespace-nowrap">
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-zinc-800">
-                {tickets.map((ticket) => (
-                  <tr
-                    key={ticket.id}
-                    className="hover:bg-zinc-800/30 transition-colors"
-                  >
-                    <td className="px-3 sm:px-4 py-3 sm:py-4 whitespace-nowrap">
-                      {editingNameId === ticket.id ? (
-                        <input
-                          type="text"
-                          value={editingNameValue}
-                          onChange={(e) => setEditingNameValue(e.target.value)}
-                          onBlur={() => handleUpdateName(ticket.id, editingNameValue)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") {
-                              handleUpdateName(ticket.id, editingNameValue);
-                            } else if (e.key === "Escape") {
-                              setEditingNameId(null);
-                            }
-                          }}
-                          autoFocus
-                          disabled={updatingTicketId === ticket.id}
-                          className="w-full px-2 py-1 text-sm bg-zinc-800 border border-zinc-600 rounded text-white focus:outline-none focus:border-emerald-500/50 disabled:opacity-50"
-                          placeholder="Enter name"
-                        />
-                      ) : (
-                        <button
-                          onClick={() => {
-                            setEditingNameId(ticket.id);
-                            setEditingNameValue(ticket.name || "");
-                          }}
-                          className="text-sm text-zinc-300 hover:text-white transition-colors cursor-pointer"
-                          title="Click to edit name"
-                        >
-                          {ticket.name || "--"}
-                        </button>
-                      )}
-                    </td>
-                    <td className="px-3 sm:px-4 py-3 sm:py-4 whitespace-nowrap">
-                      <div className="text-sm text-zinc-300">
-                        {ticket.email}
-                      </div>
-                    </td>
-                    <td className="px-3 sm:px-4 py-3 sm:py-4 whitespace-nowrap">
-                      <select
-                        value={ticket.type || "STANDARD"}
-                        onChange={(e) => {
-                          if (e.target.value !== ticket.type) {
-                            handleUpdateType(ticket.id, e.target.value);
-                          }
-                        }}
-                        disabled={updatingTicketId === ticket.id}
-                        className={`px-2 py-1 text-xs font-medium rounded-lg bg-zinc-800 border border-zinc-700 text-white focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 disabled:opacity-50 disabled:cursor-not-allowed ${ticket.type === "VIP"
-                          ? "bg-blue-500/20 text-blue-400 border-blue-500/30"
-                          : ticket.type === "EXTERNAL"
-                            ? "bg-green-500/20 text-green-400 border-green-500/30"
-                            : ticket.type === "STANDBY"
-                              ? "bg-amber-500/20 text-amber-400 border-amber-500/30"
-                              : ""
-                          }`}
-                      >
-                        <option value="VIP">VIP</option>
-                        <option value="STANDARD">STANDARD</option>
-                        <option value="EXTERNAL">EXTERNAL</option>
-                        <option value="STANDBY">STANDBY</option>
-                      </select>
-                    </td>
-                    <td className="hidden lg:table-cell px-3 sm:px-4 py-3 sm:py-4 whitespace-nowrap">
-                      <div className="text-sm text-zinc-400">
-                        {formatDate(ticket.created_at)}
-                      </div>
-                    </td>
-                    <td className="px-3 sm:px-4 py-3 sm:py-4 whitespace-nowrap">
-                      <select
-                        value={ticket.scanned ? "scanned" : "not-scanned"}
-                        onChange={(e) => {
-                          const newScanned = e.target.value === "scanned";
-                          if (newScanned !== ticket.scanned) {
-                            handleUpdateScanned(ticket.id, newScanned);
-                          }
-                        }}
-                        disabled={updatingTicketId === ticket.id}
-                        className={`px-2 py-1 text-xs font-medium rounded-lg bg-zinc-800 border border-zinc-700 text-white focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 disabled:opacity-50 disabled:cursor-not-allowed ${ticket.scanned
-                          ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/30"
-                          : ""
-                          }`}
-                      >
-                        <option value="scanned">Scanned</option>
-                        <option value="not-scanned">Not Scanned</option>
-                      </select>
-                    </td>
-                    <td className="px-3 sm:px-4 py-3 sm:py-4 whitespace-nowrap">
-                      <div className="flex items-center gap-1.5">
-                        <button
-                          onClick={() => handleResendEmail(ticket.id)}
-                          disabled={resendingEmailId === ticket.id}
-                          className="text-blue-400 hover:text-blue-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                          title="Resend email"
-                        >
-                          {resendingEmailId === ticket.id ? (
-                            <div className="w-5 h-5 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
-                          ) : (
-                            <svg
-                              className="w-5 h-5"
-                              fill="none"
-                              stroke="currentColor"
-                              viewBox="0 0 24 24"
-                            >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
-                              />
-                            </svg>
-                          )}
-                        </button>
-                        <button
-                          onClick={() =>
-                            handleSendIndividualEarlyReminder(ticket.id)
-                          }
-                          disabled={sendingEarlyReminderId === ticket.id}
-                          className="text-indigo-400 hover:text-indigo-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                          title="Send early reminder"
-                        >
-                          {sendingEarlyReminderId === ticket.id ? (
-                            <div className="w-5 h-5 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin" />
-                          ) : (
-                            <svg
-                              className="w-5 h-5"
-                              fill="none"
-                              stroke="currentColor"
-                              viewBox="0 0 24 24"
-                            >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
-                              />
-                            </svg>
-                          )}
-                        </button>
-                        <button
-                          onClick={() =>
-                            handleSendIndividualReminder(ticket.id)
-                          }
-                          disabled={sendingReminderId === ticket.id}
-                          className="text-amber-400 hover:text-amber-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                          title="Send day-of reminder"
-                        >
-                          {sendingReminderId === ticket.id ? (
-                            <div className="w-5 h-5 border-2 border-amber-400 border-t-transparent rounded-full animate-spin" />
-                          ) : (
-                            <svg
-                              className="w-5 h-5"
-                              fill="none"
-                              stroke="currentColor"
-                              viewBox="0 0 24 24"
-                            >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"
-                              />
-                            </svg>
-                          )}
-                        </button>
-                        <button
-                          onClick={() => openDeleteModal(ticket)}
-                          className="text-rose-400 hover:text-rose-300 transition-colors"
-                          title="Delete ticket"
-                        >
-                          <svg
-                            className="w-5 h-5"
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
-                              d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                            />
-                          </svg>
-                        </button>
-                      </div>
-                    </td>
+        <>
+          {/* Desktop table */}
+          <div className="hidden overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900 md:block">
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="border-b border-zinc-800 bg-zinc-800/50">
+                  <tr>
+                    <th className="px-4 py-3.5 text-left text-xs font-semibold whitespace-nowrap text-zinc-400">
+                      Name
+                    </th>
+                    <th className="px-4 py-3.5 text-left text-xs font-semibold whitespace-nowrap text-zinc-400">
+                      Email
+                    </th>
+                    <th className="px-4 py-3.5 text-left text-xs font-semibold whitespace-nowrap text-zinc-400">
+                      Type
+                    </th>
+                    <th className="hidden px-4 py-3.5 text-left text-xs font-semibold whitespace-nowrap text-zinc-400 lg:table-cell">
+                      Created
+                    </th>
+                    <th className="px-4 py-3.5 text-left text-xs font-semibold whitespace-nowrap text-zinc-400">
+                      Status
+                    </th>
+                    <th className="px-4 py-3.5 text-right text-xs font-semibold whitespace-nowrap text-zinc-400">
+                      Actions
+                    </th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-zinc-800">
+                  {tickets.map((ticket) => (
+                    <tr key={ticket.id} className="transition-colors hover:bg-zinc-800/40">
+                      <td className="max-w-[220px] px-4 py-3">{renderNameCell(ticket)}</td>
+                      <td className="px-4 py-3">
+                        <div className="max-w-[280px] truncate text-sm text-zinc-300">
+                          {ticket.email}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap">{renderTypeSelect(ticket)}</td>
+                      <td className="hidden px-4 py-3 whitespace-nowrap lg:table-cell">
+                        <div className="text-sm text-zinc-400">
+                          {formatDate(ticket.created_at)}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap">{renderScannedSelect(ticket)}</td>
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <div className="flex justify-end">{renderActions(ticket)}</div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Mobile cards */}
+          <div className="space-y-3 md:hidden">
+            {tickets.map((ticket) => (
+              <div
+                key={ticket.id}
+                className="rounded-2xl border border-zinc-800 bg-zinc-900 p-4"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    {renderNameCell(ticket)}
+                    <p className="mt-0.5 truncate text-sm text-zinc-400">
+                      {ticket.email}
+                    </p>
+                  </div>
+                  <div className="shrink-0">{renderTypeSelect(ticket)}</div>
+                </div>
+                <div className="mt-3 flex items-center justify-between gap-2">
+                  {renderScannedSelect(ticket)}
+                  <span className="text-xs text-zinc-500">
+                    {formatDate(ticket.created_at)}
+                  </span>
+                </div>
+                <div className="mt-3 flex items-center justify-end border-t border-zinc-800 pt-2">
+                  {renderActions(ticket)}
+                </div>
+              </div>
+            ))}
           </div>
 
           {/* Pagination */}
           {filteredCount > limit && (
-            <div className="px-6 py-4 border-t border-zinc-800 flex items-center justify-between">
+            <div className="mt-4 flex flex-col items-center justify-between gap-3 rounded-2xl border border-zinc-800 bg-zinc-900 px-4 py-3 sm:flex-row sm:px-6">
               <div className="text-sm text-zinc-400">
-                Showing {offset + 1} to{" "}
-                {Math.min(offset + limit, filteredCount)} of {filteredCount}{" "}
-                tickets
+                Showing{" "}
+                <span className="font-medium text-zinc-200">{offset + 1}</span>–
+                <span className="font-medium text-zinc-200">
+                  {Math.min(offset + limit, filteredCount)}
+                </span>{" "}
+                of{" "}
+                <span className="font-medium text-zinc-200">
+                  {filteredCount.toLocaleString()}
+                </span>
               </div>
               <div className="flex items-center gap-2">
                 <button
+                  type="button"
                   onClick={() => setOffset(Math.max(0, offset - limit))}
                   disabled={offset === 0}
-                  className="px-4 py-2 bg-zinc-800 text-white rounded-lg text-sm font-medium hover:bg-zinc-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="rounded-lg bg-zinc-800 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   Previous
                 </button>
                 <button
+                  type="button"
                   onClick={() => setOffset(offset + limit)}
                   disabled={offset + limit >= filteredCount}
-                  className="px-4 py-2 bg-zinc-800 text-white rounded-lg text-sm font-medium hover:bg-zinc-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="rounded-lg bg-zinc-800 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   Next
                 </button>
               </div>
             </div>
           )}
-        </div>
+        </>
       )}
 
       <ConfirmationDialog

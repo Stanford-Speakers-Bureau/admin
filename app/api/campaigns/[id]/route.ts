@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { requirePermission } from "@/app/lib/permissions";
 import { db, eq, emailCampaigns, events } from "@ssb/db";
+import { requireCampaignSendPermission } from "@/app/lib/campaignPermissions";
 import {
   hasUnsafeHeaderChars,
   isValidUUID,
@@ -53,7 +53,13 @@ export async function GET(_req: Request, { params }: Params) {
       return NextResponse.json({ error: "Campaign not found" }, { status: 404 });
     }
 
-    const auth = await requirePermission("campaigns.send", campaign.eventId);
+    const auth = await requireCampaignSendPermission({
+      audiences: parseAudiences(campaign.audiences),
+      eventId: campaign.eventId,
+      includeHeroCard: campaign.includeHeroCard,
+      feedbackEventId: campaign.feedbackEventId,
+      includeFeedbackPrompt: campaign.includeFeedbackPrompt,
+    });
     if (!auth.authorized) {
       return NextResponse.json({ error: auth.error }, { status: 401 });
     }
@@ -140,6 +146,7 @@ export async function PATCH(req: Request, { params }: Params) {
       columns: {
         id: true,
         status: true,
+        audiences: true,
         eventId: true,
         includeHeroCard: true,
         feedbackEventId: true,
@@ -151,9 +158,15 @@ export async function PATCH(req: Request, { params }: Params) {
       return NextResponse.json({ error: "Campaign not found" }, { status: 404 });
     }
 
-    const auth = await requirePermission("campaigns.send", campaign.eventId);
-    if (!auth.authorized) {
-      return NextResponse.json({ error: auth.error }, { status: 401 });
+    const existingAuth = await requireCampaignSendPermission({
+      audiences: parseAudiences(campaign.audiences),
+      eventId: campaign.eventId,
+      includeHeroCard: campaign.includeHeroCard,
+      feedbackEventId: campaign.feedbackEventId,
+      includeFeedbackPrompt: campaign.includeFeedbackPrompt,
+    });
+    if (!existingAuth.authorized) {
+      return NextResponse.json({ error: existingAuth.error }, { status: 401 });
     }
 
     let body: {
@@ -300,6 +313,23 @@ export async function PATCH(req: Request, { params }: Params) {
       );
     }
 
+    const auth = await requireCampaignSendPermission({
+      audiences: body.audiences ?? parseAudiences(campaign.audiences),
+      eventId:
+        effectiveHeroEventId && isValidUUID(effectiveHeroEventId)
+          ? effectiveHeroEventId
+          : null,
+      includeHeroCard: effectiveIncludeHeroCard,
+      feedbackEventId:
+        effectiveFeedbackEventId && isValidUUID(effectiveFeedbackEventId)
+          ? effectiveFeedbackEventId
+          : null,
+      includeFeedbackPrompt: effectiveIncludeFeedbackPrompt,
+    });
+    if (!auth.authorized) {
+      return NextResponse.json({ error: auth.error }, { status: 401 });
+    }
+
     const updates: Record<string, unknown> = { updatedAt: new Date() };
     if (body.subject !== undefined) {
       updates.subject = validateCampaignSubject(body.subject)!;
@@ -355,14 +385,28 @@ export async function DELETE(_req: Request, { params }: Params) {
 
     const campaign = await db.query.emailCampaigns.findFirst({
       where: eq(emailCampaigns.id, id),
-      columns: { id: true, status: true, eventId: true },
+      columns: {
+        id: true,
+        status: true,
+        audiences: true,
+        eventId: true,
+        includeHeroCard: true,
+        feedbackEventId: true,
+        includeFeedbackPrompt: true,
+      },
     });
 
     if (!campaign) {
       return NextResponse.json({ error: "Campaign not found" }, { status: 404 });
     }
 
-    const auth = await requirePermission("campaigns.send", campaign.eventId);
+    const auth = await requireCampaignSendPermission({
+      audiences: parseAudiences(campaign.audiences),
+      eventId: campaign.eventId,
+      includeHeroCard: campaign.includeHeroCard,
+      feedbackEventId: campaign.feedbackEventId,
+      includeFeedbackPrompt: campaign.includeFeedbackPrompt,
+    });
     if (!auth.authorized) {
       return NextResponse.json({ error: auth.error }, { status: 401 });
     }

@@ -1,21 +1,41 @@
 import AdminEventsClient, { Event } from "./AdminEventsClient";
 import { getSignedImageUrl, serializeEvent } from "@/app/lib/supabase";
-import { currentUserHoldsAction } from "@/app/lib/permissions";
-import { db, eq, ne, count as dbCount, tickets, waitlist } from "@ssb/db";
+import {
+  canUseActionForEvent,
+  getEffectivePermissions,
+  permittedEventIdsForAction,
+} from "@/app/lib/permissions";
+import { getSessionUser } from "@/app/lib/auth";
+import {
+  and,
+  count as dbCount,
+  db,
+  eq,
+  inArray,
+  ne,
+  tickets,
+  waitlist,
+} from "@ssb/db";
 import { connection } from "next/server";
 
 export const dynamic = "force-dynamic";
 
 async function getInitialEvents(): Promise<Event[]> {
   try {
-    if (
-      !(await currentUserHoldsAction("events.edit")) &&
-      !(await currentUserHoldsAction("events.create"))
-    ) {
+    const user = await getSessionUser();
+    const perms = await getEffectivePermissions(user?.email);
+    const editableEventIds = permittedEventIdsForAction(perms, "events.edit");
+    const canCreate = canUseActionForEvent(perms, "events.create", null);
+
+    if (!canCreate && editableEventIds?.size === 0) {
       return [];
     }
+    if (editableEventIds?.size === 0) return [];
 
     const events = await db.query.events.findMany({
+      where: editableEventIds
+        ? (t, { inArray: inArrayOp }) => inArrayOp(t.id, [...editableEventIds])
+        : undefined,
       orderBy: (t, { desc }) => [desc(t.startTimeDate)],
     });
 
@@ -23,14 +43,33 @@ async function getInitialEvents(): Promise<Event[]> {
     const [ticketCounts, waitlistCounts, standbyCounts] = await Promise.all([
       db.select({ eventId: tickets.eventId, count: dbCount() })
         .from(tickets)
-        .where(ne(tickets.type, "STANDBY"))
+        .where(
+          editableEventIds
+            ? and(
+                ne(tickets.type, "STANDBY"),
+                inArray(tickets.eventId, [...editableEventIds]),
+              )
+            : ne(tickets.type, "STANDBY"),
+        )
         .groupBy(tickets.eventId),
       db.select({ eventId: waitlist.eventId, count: dbCount() })
         .from(waitlist)
+        .where(
+          editableEventIds
+            ? inArray(waitlist.eventId, [...editableEventIds])
+            : undefined,
+        )
         .groupBy(waitlist.eventId),
       db.select({ eventId: tickets.eventId, count: dbCount() })
         .from(tickets)
-        .where(eq(tickets.type, "STANDBY"))
+        .where(
+          editableEventIds
+            ? and(
+                eq(tickets.type, "STANDBY"),
+                inArray(tickets.eventId, [...editableEventIds]),
+              )
+            : eq(tickets.type, "STANDBY"),
+        )
         .groupBy(tickets.eventId),
     ]);
 

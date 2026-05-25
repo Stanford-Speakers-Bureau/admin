@@ -47,7 +47,7 @@ type AdminLayoutProps = {
 
 // `perm` controls visibility: null = always shown, "admin" = super-admins only,
 // otherwise the PermissionAction that reveals the item.
-type NavPerm = PermissionAction | "admin" | null;
+type NavPerm = PermissionAction | PermissionAction[] | "admin" | null;
 type NavItemDef = {
   href: string;
   label: string;
@@ -68,7 +68,7 @@ const navItems: NavItemDef[] = [
     href: "/events",
     label: "Events",
     group: "events",
-    perm: "events.edit",
+    perm: ["events.edit", "events.create"],
     icon: "M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z",
   },
   {
@@ -203,6 +203,9 @@ function canSeeNav(perm: NavPerm, perms: EffectivePermissions): boolean {
   if (perm === null) return true;
   if (perms.isAdmin) return true;
   if (perm === "admin") return false;
+  if (Array.isArray(perm)) {
+    return perm.some((action) => perms.actions.has(action));
+  }
   return perms.actions.has(perm);
 }
 

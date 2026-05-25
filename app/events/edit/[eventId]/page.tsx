@@ -1,18 +1,31 @@
 import { EventSync } from "@/app/EventSync";
 import EditEventClient from "../EditEventClient";
 import { getSignedImageUrl, serializeEvent } from "@/app/lib/supabase";
-import { currentUserHoldsAction } from "@/app/lib/permissions";
+import {
+  canUseActionForEvent,
+  getEffectivePermissions,
+  permittedEventIdsForAction,
+} from "@/app/lib/permissions";
+import { getSessionUser } from "@/app/lib/auth";
 import { db } from "@ssb/db";
 import { connection } from "next/server";
 import { Event } from "../../AdminEventsClient";
 
 export const dynamic = "force-dynamic";
 
-async function getAllEvents(): Promise<Event[]> {
+async function getAllEvents(requestedEventId: string): Promise<Event[]> {
   try {
-    if (!(await currentUserHoldsAction("events.edit"))) return [];
+    const user = await getSessionUser();
+    const perms = await getEffectivePermissions(user?.email);
+    if (!canUseActionForEvent(perms, "events.edit", requestedEventId)) {
+      return [];
+    }
+    const editableEventIds = permittedEventIdsForAction(perms, "events.edit");
 
     const eventList = await db.query.events.findMany({
+      where: editableEventIds
+        ? (table, { inArray }) => inArray(table.id, [...editableEventIds])
+        : undefined,
       orderBy: (table, operators) => [operators.desc(table.startTimeDate)],
     });
 
@@ -48,7 +61,7 @@ export default async function EditEventWithIdPage({
 }) {
   await connection();
   const { eventId } = await params;
-  const events = await getAllEvents();
+  const events = await getAllEvents(eventId);
   return (
     <>
       <EventSync eventId={eventId} />
