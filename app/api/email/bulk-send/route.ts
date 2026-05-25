@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { verifyAdminRequest } from "@/app/lib/auth";
+import { requirePermission } from "@/app/lib/permissions";
 import {
   sendClaimTicketEmail,
   sendEventAnnouncedEmail,
@@ -42,11 +42,6 @@ function normalizeEmails(emails: string[]): string[] {
 
 export async function POST(req: Request) {
   try {
-    const auth = await verifyAdminRequest();
-    if (!auth.authorized) {
-      return NextResponse.json({ error: auth.error }, { status: 401 });
-    }
-
     let body: BulkSendRequest;
     try {
       body = await req.json();
@@ -67,6 +62,11 @@ export async function POST(req: Request) {
         { error: "eventId is required and must be a valid UUID" },
         { status: 400 },
       );
+    }
+
+    const auth = await requirePermission("campaigns.send", eventId);
+    if (!auth.authorized) {
+      return NextResponse.json({ error: auth.error }, { status: 401 });
     }
 
     if (!Array.isArray(rawEmails) || rawEmails.length === 0) {

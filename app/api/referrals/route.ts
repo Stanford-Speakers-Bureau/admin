@@ -1,16 +1,11 @@
 import { NextResponse } from "next/server";
-import { verifyAdminRequest } from "@/app/lib/auth";
+import { requirePermission } from "@/app/lib/permissions";
 import { isValidUUID } from "@/app/lib/validation";
 import { db, eq, and, isNotNull, count as dbCount, referrals, tickets, events } from "@ssb/db";
 import { logAuditEvent } from "@/app/lib/audit";
 
 export async function GET(req: Request) {
   try {
-    const auth = await verifyAdminRequest();
-    if (!auth.authorized) {
-      return NextResponse.json({ error: auth.error }, { status: 401 });
-    }
-
     const { searchParams } = new URL(req.url);
     const eventId = searchParams.get("eventId");
 
@@ -19,6 +14,11 @@ export async function GET(req: Request) {
         { error: "Valid event ID is required" },
         { status: 400 },
       );
+    }
+
+    const auth = await requirePermission("events.edit", eventId);
+    if (!auth.authorized) {
+      return NextResponse.json({ error: auth.error }, { status: 401 });
     }
 
     // Build where conditions
@@ -140,11 +140,6 @@ export async function GET(req: Request) {
 
 export async function PATCH(req: Request) {
   try {
-    const auth = await verifyAdminRequest();
-    if (!auth.authorized) {
-      return NextResponse.json({ error: auth.error }, { status: 401 });
-    }
-
     const body = await req.json();
     const { eventId, referrals_enabled } = body;
 
@@ -160,6 +155,11 @@ export async function PATCH(req: Request) {
         { error: "referrals_enabled must be a boolean" },
         { status: 400 },
       );
+    }
+
+    const auth = await requirePermission("events.edit", eventId);
+    if (!auth.authorized) {
+      return NextResponse.json({ error: auth.error }, { status: 401 });
     }
 
     const event = await db.query.events.findFirst({

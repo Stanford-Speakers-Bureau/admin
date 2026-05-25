@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
-import { verifyAdminRequest } from "@/app/lib/auth";
+import {
+  requireActionAnyScope,
+  requirePermission,
+} from "@/app/lib/permissions";
 import { db, desc, emailCampaigns } from "@ssb/db";
 import { logAuditEvent } from "@/app/lib/audit";
 import { hasUnsafeHeaderChars, isValidUUID } from "@/app/lib/validation";
@@ -33,7 +36,7 @@ function isValidFooterType(value: unknown): value is FooterType {
 
 export async function GET() {
   try {
-    const auth = await verifyAdminRequest();
+    const auth = await requireActionAnyScope("campaigns.send");
     if (!auth.authorized) {
       return NextResponse.json({ error: auth.error }, { status: 401 });
     }
@@ -77,11 +80,6 @@ export async function GET() {
 
 export async function POST(req: Request) {
   try {
-    const auth = await verifyAdminRequest();
-    if (!auth.authorized) {
-      return NextResponse.json({ error: auth.error }, { status: 401 });
-    }
-
     let body: {
       subject?: string;
       body?: string;
@@ -108,6 +106,16 @@ export async function POST(req: Request) {
       includeFeedbackPrompt,
       footerType,
     } = body;
+
+    // A campaign tied to an event needs campaigns.send for that event; an
+    // at-large campaign (no event) needs the all-events scope.
+    const auth = await requirePermission(
+      "campaigns.send",
+      eventId && isValidUUID(eventId) ? eventId : null,
+    );
+    if (!auth.authorized) {
+      return NextResponse.json({ error: auth.error }, { status: 401 });
+    }
 
     if (footerType !== undefined && !isValidFooterType(footerType)) {
       return NextResponse.json(

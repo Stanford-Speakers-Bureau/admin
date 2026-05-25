@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
-import { verifyAdminRequest } from "@/app/lib/auth";
+import { requirePermission } from "@/app/lib/permissions";
 import { db, desc, events, tickets, lt, inArray } from "@ssb/db";
 
 export async function GET() {
   try {
-    const auth = await verifyAdminRequest();
+    // Attendance spans all events, so it needs the all-events audience scope.
+    const auth = await requirePermission("audience.view");
     if (!auth.authorized) {
       return NextResponse.json({ error: auth.error }, { status: 401 });
     }

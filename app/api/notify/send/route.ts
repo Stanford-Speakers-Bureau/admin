@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { verifyAdminRequest } from "@/app/lib/auth";
+import { requirePermission } from "@/app/lib/permissions";
 import {
   REMINDER_EMAIL_BATCH_SIZE,
   REMINDER_EMAIL_MIN_BATCH_DURATION_MS,
@@ -15,11 +15,6 @@ import { logAuditEvent } from "@/app/lib/audit";
 
 export async function POST(req: Request) {
   try {
-    const auth = await verifyAdminRequest();
-    if (!auth.authorized) {
-      return NextResponse.json({ error: auth.error }, { status: 401 });
-    }
-
     let body: {
       eventId?: string;
       variant?: "now" | "in" | "claim";
@@ -39,6 +34,11 @@ export async function POST(req: Request) {
         { error: "eventId is required and must be a valid UUID" },
         { status: 400 },
       );
+    }
+
+    const auth = await requirePermission("campaigns.send", eventId);
+    if (!auth.authorized) {
+      return NextResponse.json({ error: auth.error }, { status: 401 });
     }
     if (!variant || (variant !== "now" && variant !== "in" && variant !== "claim")) {
       return NextResponse.json(

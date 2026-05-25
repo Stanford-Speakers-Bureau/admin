@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { verifyAdminRequest } from "@/app/lib/auth";
+import { requirePermission } from "@/app/lib/permissions";
 import { db, eq, emailCampaigns, events } from "@ssb/db";
 import {
   hasUnsafeHeaderChars,
@@ -39,11 +39,6 @@ function isValidFooterType(value: unknown): value is FooterType {
 
 export async function GET(_req: Request, { params }: Params) {
   try {
-    const auth = await verifyAdminRequest();
-    if (!auth.authorized) {
-      return NextResponse.json({ error: auth.error }, { status: 401 });
-    }
-
     const { id } = await params;
     if (!isValidUUID(id)) {
       return NextResponse.json({ error: "Invalid campaign ID" }, { status: 400 });
@@ -56,6 +51,11 @@ export async function GET(_req: Request, { params }: Params) {
 
     if (!campaign) {
       return NextResponse.json({ error: "Campaign not found" }, { status: 404 });
+    }
+
+    const auth = await requirePermission("campaigns.send", campaign.eventId);
+    if (!auth.authorized) {
+      return NextResponse.json({ error: auth.error }, { status: 401 });
     }
 
     const feedbackEvent = campaign?.feedbackEventId
@@ -130,11 +130,6 @@ export async function GET(_req: Request, { params }: Params) {
 
 export async function PATCH(req: Request, { params }: Params) {
   try {
-    const auth = await verifyAdminRequest();
-    if (!auth.authorized) {
-      return NextResponse.json({ error: auth.error }, { status: 401 });
-    }
-
     const { id } = await params;
     if (!isValidUUID(id)) {
       return NextResponse.json({ error: "Invalid campaign ID" }, { status: 400 });
@@ -154,6 +149,11 @@ export async function PATCH(req: Request, { params }: Params) {
 
     if (!campaign) {
       return NextResponse.json({ error: "Campaign not found" }, { status: 404 });
+    }
+
+    const auth = await requirePermission("campaigns.send", campaign.eventId);
+    if (!auth.authorized) {
+      return NextResponse.json({ error: auth.error }, { status: 401 });
     }
 
     let body: {
@@ -348,11 +348,6 @@ export async function PATCH(req: Request, { params }: Params) {
 
 export async function DELETE(_req: Request, { params }: Params) {
   try {
-    const auth = await verifyAdminRequest();
-    if (!auth.authorized) {
-      return NextResponse.json({ error: auth.error }, { status: 401 });
-    }
-
     const { id } = await params;
     if (!isValidUUID(id)) {
       return NextResponse.json({ error: "Invalid campaign ID" }, { status: 400 });
@@ -360,11 +355,16 @@ export async function DELETE(_req: Request, { params }: Params) {
 
     const campaign = await db.query.emailCampaigns.findFirst({
       where: eq(emailCampaigns.id, id),
-      columns: { id: true, status: true },
+      columns: { id: true, status: true, eventId: true },
     });
 
     if (!campaign) {
       return NextResponse.json({ error: "Campaign not found" }, { status: 404 });
+    }
+
+    const auth = await requirePermission("campaigns.send", campaign.eventId);
+    if (!auth.authorized) {
+      return NextResponse.json({ error: auth.error }, { status: 401 });
     }
     if (campaign.status !== "draft") {
       return NextResponse.json(

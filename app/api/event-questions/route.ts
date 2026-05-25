@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { verifyAdminRequest } from "@/app/lib/auth";
+import { requirePermission } from "@/app/lib/permissions";
 import { getAdminEventQuestions } from "@/app/event-questions/data";
 import { isValidUUID, isValidEmail } from "@/app/lib/validation";
 import {
@@ -116,11 +116,6 @@ function requestErrorResponse(error: unknown) {
 
 export async function POST(req: Request) {
   try {
-    const auth = await verifyAdminRequest();
-    if (!auth.authorized) {
-      return NextResponse.json({ error: auth.error }, { status: 401 });
-    }
-
     const body = await req.json();
     const { id, action } = body as { id?: string; action?: string };
 
@@ -149,6 +144,11 @@ export async function POST(req: Request) {
         { error: "Question not found" },
         { status: 404 },
       );
+    }
+
+    const auth = await requirePermission("questions.manage", existing.eventId);
+    if (!auth.authorized) {
+      return NextResponse.json({ error: auth.error }, { status: 401 });
     }
 
     await db
@@ -208,11 +208,6 @@ export async function POST(req: Request) {
 
 export async function PATCH(req: Request) {
   try {
-    const auth = await verifyAdminRequest();
-    if (!auth.authorized) {
-      return NextResponse.json({ error: auth.error }, { status: 401 });
-    }
-
     const body = await req.json();
     const { id, question, duplicate, hidden, targetId } = body as {
       id?: string;
@@ -241,6 +236,11 @@ export async function PATCH(req: Request) {
         { error: "Question not found" },
         { status: 404 },
       );
+    }
+
+    const auth = await requirePermission("questions.manage", existing.eventId);
+    if (!auth.authorized) {
+      return NextResponse.json({ error: auth.error }, { status: 401 });
     }
 
     if (typeof hidden === "boolean") {
@@ -349,11 +349,6 @@ export async function PATCH(req: Request) {
 
 export async function PUT(req: Request) {
   try {
-    const auth = await verifyAdminRequest();
-    if (!auth.authorized) {
-      return NextResponse.json({ error: auth.error }, { status: 401 });
-    }
-
     const body = await req.json();
     const { sourceId, targetId } = body as {
       sourceId?: string;
@@ -372,6 +367,22 @@ export async function PUT(req: Request) {
         { error: "Invalid question ID format" },
         { status: 400 },
       );
+    }
+
+    const source = await db.query.eventQuestions.findFirst({
+      where: eq(eventQuestions.id, sourceId),
+      columns: { eventId: true },
+    });
+    if (!source) {
+      return NextResponse.json(
+        { error: "Source question not found" },
+        { status: 404 },
+      );
+    }
+
+    const auth = await requirePermission("questions.manage", source.eventId);
+    if (!auth.authorized) {
+      return NextResponse.json({ error: auth.error }, { status: 401 });
     }
 
     const result = await mergeDuplicateQuestion(sourceId, targetId);

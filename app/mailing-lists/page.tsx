@@ -1,5 +1,6 @@
 import MailingListsClient from "./MailingListsClient";
-import { verifyAdminRequest } from "@/app/lib/auth";
+import { getSessionUser } from "@/app/lib/auth";
+import { hasPermission } from "@/app/lib/permissions";
 import {
   announceStats,
   listAnnounceMembers,
@@ -15,8 +16,8 @@ const INITIAL_LIMIT = 50;
 
 async function getInitialData() {
   try {
-    const auth = await verifyAdminRequest();
-    if (!auth.authorized) {
+    const user = await getSessionUser();
+    if (!user?.email || !(await hasPermission(user.email, "audience.view"))) {
       return {
         rows: [],
         total: 0,

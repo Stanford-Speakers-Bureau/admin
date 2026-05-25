@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { normalizeEmail, verifyAdminRequest } from "@/app/lib/auth";
+import { normalizeEmail } from "@/app/lib/auth";
+import { requirePermission } from "@/app/lib/permissions";
 import { getHighestAffiliation } from "@/app/lib/affiliation";
 import { db, eq, events, inArray, tickets, userProfiles } from "@ssb/db";
 
@@ -24,11 +25,6 @@ export async function GET(
   { params }: { params: Promise<{ eventId: string }> },
 ) {
   try {
-    const auth = await verifyAdminRequest();
-    if (!auth.authorized) {
-      return NextResponse.json({ error: auth.error }, { status: 401 });
-    }
-
     const { eventId } = await params;
 
     if (!eventId) {
@@ -36,6 +32,11 @@ export async function GET(
         { error: "Event ID is required" },
         { status: 400 },
       );
+    }
+
+    const auth = await requirePermission("audience.view", eventId);
+    if (!auth.authorized) {
+      return NextResponse.json({ error: auth.error }, { status: 401 });
     }
 
     // Get event capacity

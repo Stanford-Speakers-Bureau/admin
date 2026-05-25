@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { verifyAdminRequest } from "@/app/lib/auth";
+import { requirePermission } from "@/app/lib/permissions";
 import { isValidEmail, isValidUUID, normalizeEmail } from "@/app/lib/validation";
 import { db, eq, events } from "@ssb/db";
 import {
@@ -20,7 +20,8 @@ const DEFAULT_LIMIT = 50;
 
 export async function GET(req: Request) {
   try {
-    const auth = await verifyAdminRequest();
+    // Mailing-list views span all events, so they need the all-events scope.
+    const auth = await requirePermission("audience.view");
     if (!auth.authorized) {
       return NextResponse.json({ error: auth.error }, { status: 401 });
     }
@@ -102,11 +103,6 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
-    const auth = await verifyAdminRequest();
-    if (!auth.authorized) {
-      return NextResponse.json({ error: auth.error }, { status: 401 });
-    }
-
     let body: {
       action?: unknown;
       scope?: unknown;
@@ -155,6 +151,14 @@ export async function POST(req: Request) {
         { error: "valid eventId required for event scope" },
         { status: 400 },
       );
+    }
+
+    const auth = await requirePermission(
+      "audience.view",
+      scope === "event" ? eventId : null,
+    );
+    if (!auth.authorized) {
+      return NextResponse.json({ error: auth.error }, { status: 401 });
     }
 
     const reason = typeof body.reason === "string" && body.reason.trim().length > 0

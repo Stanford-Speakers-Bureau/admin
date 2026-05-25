@@ -1,5 +1,5 @@
 import { getSignedImageUrl, serializeEvent } from "@/app/lib/supabase";
-import { verifyAdminRequest } from "@/app/lib/auth";
+import { currentUserHoldsAction } from "@/app/lib/permissions";
 import { db } from "@ssb/db";
 import { connection } from "next/server";
 import { Event } from "../AdminEventsClient";
@@ -9,8 +9,12 @@ export const dynamic = "force-dynamic";
 
 async function getAllEvents(): Promise<Event[]> {
   try {
-    const auth = await verifyAdminRequest();
-    if (!auth.authorized) return [];
+    if (
+      !(await currentUserHoldsAction("events.edit")) &&
+      !(await currentUserHoldsAction("events.create"))
+    ) {
+      return [];
+    }
 
     const eventList = await db.query.events.findMany({
       orderBy: (table, operators) => [operators.desc(table.startTimeDate)],

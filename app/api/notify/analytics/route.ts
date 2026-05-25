@@ -1,15 +1,10 @@
 import { NextResponse } from "next/server";
-import { verifyAdminRequest } from "@/app/lib/auth";
+import { requirePermission } from "@/app/lib/permissions";
 import { isValidUUID } from "@/app/lib/validation";
 import { db, eq, ne, and, lt, events, inArray, notify, tickets, userProfiles } from "@ssb/db";
 
 export async function GET(req: Request) {
   try {
-    const auth = await verifyAdminRequest();
-    if (!auth.authorized) {
-      return NextResponse.json({ error: auth.error }, { status: 401 });
-    }
-
     const { searchParams } = new URL(req.url);
     const eventId = searchParams.get("eventId");
 
@@ -25,6 +20,11 @@ export async function GET(req: Request) {
         { error: "Invalid event ID format" },
         { status: 400 },
       );
+    }
+
+    const auth = await requirePermission("audience.view", eventId);
+    if (!auth.authorized) {
+      return NextResponse.json({ error: auth.error }, { status: 401 });
     }
 
     // Phase 1: Parallel queries for event, signups, and tickets

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { verifyAdminRequest } from "@/app/lib/auth";
+import { requirePermission } from "@/app/lib/permissions";
 import { getAdminEventQuestions } from "@/app/event-questions/data";
 import { db, eq, eventQuestions } from "@ssb/db";
 import { isValidUUID } from "@/app/lib/validation";
@@ -7,11 +7,6 @@ import { logAuditEvent } from "@/app/lib/audit";
 
 export async function PATCH(req: Request) {
   try {
-    const auth = await verifyAdminRequest();
-    if (!auth.authorized) {
-      return NextResponse.json({ error: auth.error }, { status: 401 });
-    }
-
     const body = await req.json();
     const { id, votes } = body as { id?: string; votes?: number };
 
@@ -39,13 +34,18 @@ export async function PATCH(req: Request) {
 
     const existing = await db.query.eventQuestions.findFirst({
       where: eq(eventQuestions.id, id),
-      columns: { id: true, votes: true },
+      columns: { id: true, votes: true, eventId: true },
     });
     if (!existing) {
       return NextResponse.json(
         { error: "Question not found" },
         { status: 404 },
       );
+    }
+
+    const auth = await requirePermission("questions.manage", existing.eventId);
+    if (!auth.authorized) {
+      return NextResponse.json({ error: auth.error }, { status: 401 });
     }
 
     await db

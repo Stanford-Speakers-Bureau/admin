@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { verifyAdminRequest } from "@/app/lib/auth";
+import { requirePermission } from "@/app/lib/permissions";
 import { and, db, eq, emailCampaigns, events, sql, tickets } from "@ssb/db";
 import { buildEventFeedbackLink } from "@/app/lib/feedback-links";
 import { isValidUUID, normalizeEmail } from "@/app/lib/validation";
@@ -31,11 +31,6 @@ function buildPreviewFeedbackPrompt(baseUrl: string, eventRoute: string, eventNa
 
 export async function POST(_req: Request, { params }: Params) {
   try {
-    const auth = await verifyAdminRequest();
-    if (!auth.authorized) {
-      return NextResponse.json({ error: auth.error }, { status: 401 });
-    }
-
     const { id } = await params;
     if (!isValidUUID(id)) {
       return NextResponse.json({ error: "Invalid campaign ID" }, { status: 400 });
@@ -61,6 +56,11 @@ export async function POST(_req: Request, { params }: Params) {
 
     if (!campaign) {
       return NextResponse.json({ error: "Campaign not found" }, { status: 404 });
+    }
+
+    const auth = await requirePermission("campaigns.send", campaign.eventId);
+    if (!auth.authorized) {
+      return NextResponse.json({ error: auth.error }, { status: 401 });
     }
 
     const baseUrl =

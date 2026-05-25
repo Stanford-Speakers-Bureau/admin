@@ -17,6 +17,8 @@ type AuditAction =
   | "event.delete"
   | "user.add_role"
   | "user.remove_role"
+  | "permission.grant"
+  | "permission.revoke"
   | "suggestion.approve"
   | "suggestion.reject"
   | "suggestion.edit"

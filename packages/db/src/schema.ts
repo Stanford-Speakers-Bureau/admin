@@ -362,6 +362,37 @@ export const roles = pgTable("roles", {
   roles: text("roles"),
 });
 
+// ── Permission Grants ────────────────────────────────────────────────────────
+// Fine-grained, optionally event-scoped capabilities granted to a person by
+// email. `action` is one of the PERMISSION_ACTIONS (see app/lib/permissions.ts).
+// A NULL eventId means the grant applies to ALL events (and to global actions
+// like suggestions.manage / events.create). The `admin` role in `roles` is a
+// super-admin that bypasses these checks entirely.
+export const permissionGrants = pgTable(
+  "permission_grants",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    email: text("email").notNull(),
+    action: text("action").notNull(),
+    eventId: uuid("event_id").references(() => events.id, {
+      onDelete: "cascade",
+      onUpdate: "cascade",
+    }),
+    grantedBy: text("granted_by").notNull(),
+  },
+  (t) => [
+    // Unique per (person, action, event). NULL eventId rows (all-events grants)
+    // are treated as distinct by Postgres, so the grant API also dedupes them
+    // explicitly before inserting.
+    uniqueIndex("permission_grants_unique").on(t.email, t.action, t.eventId),
+    index("permission_grants_email_idx").on(t.email),
+    index("permission_grants_event_id_idx").on(t.eventId),
+  ],
+);
+
 // ── User Profiles ────────────────────────────────────────────────────────────
 export const userProfiles = pgTable(
   "user_profiles",

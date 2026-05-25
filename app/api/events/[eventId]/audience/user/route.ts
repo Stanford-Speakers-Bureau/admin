@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { verifyAdminRequest } from "@/app/lib/auth";
+import { requirePermission } from "@/app/lib/permissions";
 import { isValidEmail, isValidUUID } from "@/app/lib/validation";
 import { db, eq, events, inArray, notify, tickets, waitlist } from "@ssb/db";
 
@@ -39,11 +39,6 @@ export async function GET(
   { params }: { params: Promise<{ eventId: string }> },
 ) {
   try {
-    const auth = await verifyAdminRequest();
-    if (!auth.authorized) {
-      return NextResponse.json({ error: auth.error }, { status: 401 });
-    }
-
     const { eventId } = await params;
     const { searchParams } = new URL(req.url);
     const emailParam = searchParams.get("email");
@@ -53,6 +48,11 @@ export async function GET(
         { error: "Valid event ID is required" },
         { status: 400 },
       );
+    }
+
+    const auth = await requirePermission("audience.view", eventId);
+    if (!auth.authorized) {
+      return NextResponse.json({ error: auth.error }, { status: 401 });
     }
 
     if (!emailParam || !isValidEmail(emailParam)) {

@@ -119,6 +119,78 @@ function parseSpreadsheetTicketRows(clipboardText: string): TicketRow[] {
   return parsedRows;
 }
 
+const TICKET_TYPES = ["VIP", "STANDARD", "EXTERNAL", "STANDBY"] as const;
+
+function typeBadgeClasses(type: string | null): string {
+  switch (type) {
+    case "VIP":
+      return "bg-blue-500/15 text-blue-300 ring-blue-500/30";
+    case "EXTERNAL":
+      return "bg-green-500/15 text-green-300 ring-green-500/30";
+    case "STANDBY":
+      return "bg-amber-500/15 text-amber-300 ring-amber-500/30";
+    default:
+      return "bg-zinc-700/40 text-zinc-200 ring-zinc-600/40";
+  }
+}
+
+function StatCard({
+  label,
+  value,
+  valueClass = "text-white",
+  active = false,
+  onClick,
+}: {
+  label: string;
+  value: number;
+  valueClass?: string;
+  active?: boolean;
+  onClick?: () => void;
+}) {
+  const className = `rounded-xl border px-3.5 py-3 text-left transition-colors ${
+    active
+      ? "border-emerald-500/50 bg-emerald-500/10"
+      : "border-zinc-800 bg-zinc-900 hover:border-zinc-700"
+  } ${onClick ? "cursor-pointer" : "cursor-default"}`;
+
+  const inner = (
+    <>
+      <div className="flex items-center gap-1.5">
+        <span className="truncate text-xs font-medium tracking-wide text-zinc-400">
+          {label}
+        </span>
+        {active && (
+          <span className="ml-auto inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400" />
+        )}
+      </div>
+      <div className={`mt-1 text-2xl font-bold tabular-nums ${valueClass}`}>
+        {value.toLocaleString()}
+      </div>
+    </>
+  );
+
+  if (onClick) {
+    return (
+      <button type="button" onClick={onClick} className={className}>
+        {inner}
+      </button>
+    );
+  }
+  return <div className={className}>{inner}</div>;
+}
+
+const SelectChevron = () => (
+  <svg
+    viewBox="0 0 8 5"
+    width="8"
+    height="5"
+    fill="none"
+    className="pointer-events-none col-start-2 row-start-1 place-self-center text-current opacity-60"
+  >
+    <path d="M.5.5 4 4 7.5.5" stroke="currentColor" />
+  </svg>
+);
+
 export default function TicketManagementClient({
   initialTickets,
   initialTotal,
@@ -1090,201 +1162,363 @@ export default function TicketManagementClient({
       value: affiliationCounts[key],
     }));
 
+  const filtersActive = Boolean(
+    search || ticketTypeFilter || scannedFilter || feeWaiverFilter || affiliationFilter,
+  );
+
+  function toggleTypeFilter(type: string) {
+    setTicketTypeFilter((prev) => (prev === type ? "" : type));
+    setOffset(0);
+  }
+
+  function toggleScannedFilter(value: string) {
+    setScannedFilter((prev) => (prev === value ? "" : value));
+    setOffset(0);
+  }
+
+  function toggleFeeWaiverFilter() {
+    setFeeWaiverFilter((prev) => (prev === "true" ? "" : "true"));
+    setOffset(0);
+  }
+
+  function renderNameCell(ticket: Ticket) {
+    if (editingNameId === ticket.id) {
+      return (
+        <input
+          type="text"
+          name="ticket-name"
+          aria-label="Ticket holder name"
+          value={editingNameValue}
+          onChange={(e) => setEditingNameValue(e.target.value)}
+          onBlur={() => handleUpdateName(ticket.id, editingNameValue)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              handleUpdateName(ticket.id, editingNameValue);
+            } else if (e.key === "Escape") {
+              setEditingNameId(null);
+            }
+          }}
+          autoFocus
+          disabled={updatingTicketId === ticket.id}
+          className="w-full rounded-md border border-zinc-600 bg-zinc-800 px-2 py-1 text-base text-white focus:border-emerald-500/50 focus:outline-none disabled:opacity-50 sm:text-sm"
+          placeholder="Enter name"
+        />
+      );
+    }
+    return (
+      <button
+        type="button"
+        onClick={() => {
+          setEditingNameId(ticket.id);
+          setEditingNameValue(ticket.name || "");
+        }}
+        className="group inline-flex max-w-full items-center gap-1.5 text-left text-sm font-medium text-zinc-200 transition-colors hover:text-white"
+        title="Click to edit name"
+      >
+        <span className="truncate">{ticket.name || "—"}</span>
+        <svg
+          className="h-3.5 w-3.5 shrink-0 text-zinc-600 opacity-0 transition-opacity group-hover:opacity-100"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+          />
+        </svg>
+      </button>
+    );
+  }
+
+  function renderTypeSelect(ticket: Ticket) {
+    const type = ticket.type || "STANDARD";
+    return (
+      <div className="inline-grid grid-cols-[1fr_--spacing(7)] items-center">
+        <select
+          aria-label="Ticket type"
+          value={type}
+          onChange={(e) => {
+            if (e.target.value !== ticket.type) {
+              handleUpdateType(ticket.id, e.target.value);
+            }
+          }}
+          disabled={updatingTicketId === ticket.id}
+          className={`col-span-full row-start-1 appearance-none rounded-lg py-1.5 pr-7 pl-2.5 text-xs font-semibold ring-1 ring-inset focus:ring-emerald-500/60 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50 sm:py-1 ${typeBadgeClasses(type)}`}
+        >
+          {TICKET_TYPES.map((t) => (
+            <option key={t} value={t} className="bg-zinc-900 text-white">
+              {t}
+            </option>
+          ))}
+        </select>
+        <SelectChevron />
+      </div>
+    );
+  }
+
+  function renderScannedSelect(ticket: Ticket) {
+    return (
+      <div className="inline-grid grid-cols-[1fr_--spacing(7)] items-center">
+        <select
+          aria-label="Scanned status"
+          value={ticket.scanned ? "scanned" : "not-scanned"}
+          onChange={(e) => {
+            const newScanned = e.target.value === "scanned";
+            if (newScanned !== ticket.scanned) {
+              handleUpdateScanned(ticket.id, newScanned);
+            }
+          }}
+          disabled={updatingTicketId === ticket.id}
+          className={`col-span-full row-start-1 appearance-none rounded-lg py-1.5 pr-7 pl-2.5 text-xs font-semibold ring-1 ring-inset focus:ring-emerald-500/60 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50 sm:py-1 ${
+            ticket.scanned
+              ? "bg-emerald-500/15 text-emerald-300 ring-emerald-500/30"
+              : "bg-zinc-700/40 text-zinc-200 ring-zinc-600/40"
+          }`}
+        >
+          <option value="scanned" className="bg-zinc-900 text-white">
+            Scanned
+          </option>
+          <option value="not-scanned" className="bg-zinc-900 text-white">
+            Not scanned
+          </option>
+        </select>
+        <SelectChevron />
+      </div>
+    );
+  }
+
+  function renderActions(ticket: Ticket) {
+    const spinner = (color: string) => (
+      <div
+        className={`h-5 w-5 animate-spin rounded-full border-2 border-t-transparent ${color}`}
+      />
+    );
+    return (
+      <div className="flex items-center gap-0.5">
+        <button
+          type="button"
+          onClick={() => handleResendEmail(ticket.id)}
+          disabled={resendingEmailId === ticket.id}
+          className="rounded-lg p-2 text-blue-400 transition-colors hover:bg-blue-500/10 hover:text-blue-300 disabled:cursor-not-allowed disabled:opacity-50"
+          title="Resend confirmation email"
+        >
+          {resendingEmailId === ticket.id ? (
+            spinner("border-blue-400")
+          ) : (
+            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+            </svg>
+          )}
+        </button>
+        <button
+          type="button"
+          onClick={() => handleSendIndividualEarlyReminder(ticket.id)}
+          disabled={sendingEarlyReminderId === ticket.id}
+          className="rounded-lg p-2 text-indigo-400 transition-colors hover:bg-indigo-500/10 hover:text-indigo-300 disabled:cursor-not-allowed disabled:opacity-50"
+          title="Send early reminder"
+        >
+          {sendingEarlyReminderId === ticket.id ? (
+            spinner("border-indigo-400")
+          ) : (
+            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          )}
+        </button>
+        <button
+          type="button"
+          onClick={() => handleSendIndividualReminder(ticket.id)}
+          disabled={sendingReminderId === ticket.id}
+          className="rounded-lg p-2 text-amber-400 transition-colors hover:bg-amber-500/10 hover:text-amber-300 disabled:cursor-not-allowed disabled:opacity-50"
+          title="Send day-of reminder"
+        >
+          {sendingReminderId === ticket.id ? (
+            spinner("border-amber-400")
+          ) : (
+            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+            </svg>
+          )}
+        </button>
+        <button
+          type="button"
+          onClick={() => openDeleteModal(ticket)}
+          className="rounded-lg p-2 text-rose-400 transition-colors hover:bg-rose-500/10 hover:text-rose-300"
+          title="Delete ticket"
+        >
+          <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+          </svg>
+        </button>
+      </div>
+    );
+  }
+
   return (
-    <div className="px-4 sm:px-6 py-8">
-      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-8">
+    <div className="mx-auto max-w-[1600px] px-4 py-6 sm:px-6 sm:py-8">
+      <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0">
-          <h1 className="text-2xl sm:text-3xl font-bold text-white font-serif mb-2">
+          <h1 className="font-serif text-2xl font-bold text-white sm:text-3xl">
             Ticket Management
           </h1>
-          <div className="flex flex-wrap items-center gap-3 sm:gap-6 mt-2">
-            <div className="flex items-center gap-2">
-              <span className="text-zinc-400">Total Tickets Sold:</span>
-              <span className="text-white font-bold text-lg">
-                {total.toLocaleString()}
-              </span>
-            </div>
-            {tickets.length > 0 && (
+          <p className="mt-1 text-sm text-zinc-400">
+            {selectedEventId ? (
               <>
-                <div className="flex items-center gap-2">
-                  <span className="text-zinc-400">Standard:</span>
-                  <span className="text-zinc-300 font-semibold">
-                    {standardCount}
-                  </span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-zinc-400">VIP:</span>
-                  <span className="text-blue-400 font-semibold">
-                    {vipCount}
-                  </span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-zinc-400">External:</span>
-                  <span className="text-green-400 font-semibold">
-                    {externalCount}
-                  </span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-zinc-400">Standby:</span>
-                  <span className="text-amber-400 font-semibold">
-                    {standbyCount}
-                  </span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-zinc-400">Scanned:</span>
-                  <span className="text-emerald-400 font-semibold">
-                    {scannedCount}
-                  </span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-zinc-400">Not Scanned:</span>
-                  <span className="text-zinc-300 font-semibold">
-                    {unscannedCount}
-                  </span>
-                </div>
-                {feeWaiverCount > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setFeeWaiverFilter((prev) =>
-                        prev === "true" ? "" : "true",
-                      );
-                      setOffset(0);
-                    }}
-                    className={`flex items-center gap-2 rounded-lg px-2 py-1 transition-colors ${
-                      feeWaiverFilter === "true"
-                        ? "bg-amber-500/15 text-amber-300"
-                        : "hover:bg-zinc-800 text-inherit"
-                    }`}
-                    title={
-                      feeWaiverFilter === "true"
-                        ? "Show all tickets"
-                        : "Filter to fee waiver tickets"
-                    }
-                  >
-                    <span className="text-zinc-400">Fee Waiver:</span>
-                    <span className="text-amber-400 font-semibold">
-                      {feeWaiverCount}
-                    </span>
-                  </button>
+                <span className="font-semibold text-zinc-200">
+                  {total.toLocaleString()}
+                </span>{" "}
+                ticket{total === 1 ? "" : "s"} sold
+                {filtersActive && (
+                  <>
+                    {" · "}
+                    <span className="font-semibold text-blue-300">
+                      {filteredCount.toLocaleString()}
+                    </span>{" "}
+                    matching filters
+                  </>
                 )}
               </>
+            ) : (
+              "Select an event to manage tickets"
             )}
-            {(search || ticketTypeFilter || scannedFilter || feeWaiverFilter || affiliationFilter) &&
-              selectedEventId && (
-                <div className="flex items-center gap-2">
-                  <span className="text-zinc-400">Matching Filters:</span>
-                  <span className="text-blue-400 font-semibold">
-                    {filteredCount}
-                  </span>
-                </div>
-              )}
-          </div>
+          </p>
         </div>
-        <div className="flex flex-col items-end gap-2 shrink-0">
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="flex items-stretch rounded-xl overflow-hidden border border-zinc-600 bg-zinc-800/80 shadow-sm">
-              <select
-                value={massEmailType}
-                onChange={(e) =>
-                  setMassEmailType(e.target.value as "early" | "day-of")
-                }
-                disabled={
-                  isSendingEarlyReminders ||
-                  isSendingReminders ||
-                  !selectedEventId ||
-                  total === 0
-                }
-                className="pl-4 pr-8 py-2.5 bg-transparent text-zinc-200 font-medium border-0 focus:ring-0 focus:outline-none cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed appearance-none bg-[length:1rem_1rem] bg-[right_0.75rem_center] bg-no-repeat"
-                style={{
-                  backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%239ca3af' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e")`,
-                }}
-                aria-label="Email type"
-              >
-                <option value="early">Early reminders</option>
-                <option value="day-of">Day-of reminders</option>
-              </select>
-              <button
-                onClick={handleSendMassEmail}
-                disabled={
-                  !selectedEventId ||
-                  total === 0 ||
-                  isSendingEarlyReminders ||
-                  isSendingReminders
-                }
-                className="flex items-center gap-2 px-4 py-2.5 bg-zinc-600 text-white font-medium hover:bg-zinc-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed border-l border-zinc-600"
-                title={
-                  massEmailType === "early"
-                    ? "Send early reminder emails to all ticket holders"
-                    : "Send day-of reminder emails to all ticket holders"
-                }
-              >
-                {(isSendingEarlyReminders || isSendingReminders) ? (
-                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                ) : (
-                  <svg
-                    className="w-4 h-4"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
-                    />
-                  </svg>
-                )}
-                Send
-              </button>
-            </div>
-            <button
-              onClick={() => fetchTickets()}
-              disabled={isLoading}
-              className="flex items-center gap-2 px-5 py-2.5 bg-zinc-800 border border-zinc-700 text-white rounded-xl font-medium hover:bg-zinc-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              title="Reload tickets"
-            >
-              <svg
-                className={`w-5 h-5 ${isLoading ? "animate-spin" : ""}`}
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-                />
-              </svg>
-              Reload
-            </button>
-            <button
-              onClick={() => {
-                setShowAddForm((prev) => !prev);
-                setNewTicketEventId((prev) => prev || selectedEventId);
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-stretch overflow-hidden rounded-xl border border-zinc-700 bg-zinc-800/80">
+            <select
+              value={massEmailType}
+              onChange={(e) =>
+                setMassEmailType(e.target.value as "early" | "day-of")
+              }
+              disabled={
+                isSendingEarlyReminders ||
+                isSendingReminders ||
+                !selectedEventId ||
+                total === 0
+              }
+              className="appearance-none border-0 bg-transparent bg-[length:1rem_1rem] bg-[right_0.75rem_center] bg-no-repeat py-2.5 pr-8 pl-3.5 font-medium text-zinc-200 focus:ring-0 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+              style={{
+                backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%239ca3af' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e")`,
               }}
-              className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-emerald-500 to-teal-500 text-white rounded-xl font-medium hover:opacity-90 transition-opacity"
+              aria-label="Email type"
             >
-              <svg
-                className="w-5 h-5"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M12 6v6m0 0v6m0-6h6m-6 0H6"
-                />
-              </svg>
-              Add Ticket
+              <option value="early">Early reminders</option>
+              <option value="day-of">Day-of reminders</option>
+            </select>
+            <button
+              type="button"
+              onClick={handleSendMassEmail}
+              disabled={
+                !selectedEventId ||
+                total === 0 ||
+                isSendingEarlyReminders ||
+                isSendingReminders
+              }
+              className="flex items-center gap-2 border-l border-zinc-700 bg-zinc-600 px-4 py-2.5 font-medium text-white transition-colors hover:bg-zinc-500 disabled:cursor-not-allowed disabled:opacity-50"
+              title={
+                massEmailType === "early"
+                  ? "Send early reminder emails to all ticket holders"
+                  : "Send day-of reminder emails to all ticket holders"
+              }
+            >
+              {isSendingEarlyReminders || isSendingReminders ? (
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+              ) : (
+                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                </svg>
+              )}
+              <span className="hidden sm:inline">Send</span>
             </button>
           </div>
+          <button
+            type="button"
+            onClick={() => fetchTickets()}
+            disabled={isLoading}
+            className="flex items-center gap-2 rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-2.5 font-medium text-white transition-colors hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-50"
+            title="Reload tickets"
+          >
+            <svg className={`h-5 w-5 ${isLoading ? "animate-spin" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+            <span className="hidden sm:inline">Reload</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setShowAddForm((prev) => !prev);
+              setNewTicketEventId((prev) => prev || selectedEventId);
+            }}
+            className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 px-4 py-2.5 font-medium text-white transition-opacity hover:opacity-90"
+          >
+            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+            </svg>
+            Add Ticket
+          </button>
         </div>
       </div>
+
+      {/* Stat cards */}
+      {selectedEventId && (
+        <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <StatCard label="Total sold" value={total} />
+          <StatCard
+            label="Standard"
+            value={standardCount}
+            valueClass="text-zinc-200"
+            active={ticketTypeFilter === "STANDARD"}
+            onClick={() => toggleTypeFilter("STANDARD")}
+          />
+          <StatCard
+            label="VIP"
+            value={vipCount}
+            valueClass="text-blue-300"
+            active={ticketTypeFilter === "VIP"}
+            onClick={() => toggleTypeFilter("VIP")}
+          />
+          <StatCard
+            label="External"
+            value={externalCount}
+            valueClass="text-green-300"
+            active={ticketTypeFilter === "EXTERNAL"}
+            onClick={() => toggleTypeFilter("EXTERNAL")}
+          />
+          <StatCard
+            label="Standby"
+            value={standbyCount}
+            valueClass="text-amber-300"
+            active={ticketTypeFilter === "STANDBY"}
+            onClick={() => toggleTypeFilter("STANDBY")}
+          />
+          <StatCard
+            label="Scanned"
+            value={scannedCount}
+            valueClass="text-emerald-300"
+            active={scannedFilter === "true"}
+            onClick={() => toggleScannedFilter("true")}
+          />
+          <StatCard
+            label="Not scanned"
+            value={unscannedCount}
+            valueClass="text-zinc-200"
+            active={scannedFilter === "false"}
+            onClick={() => toggleScannedFilter("false")}
+          />
+          {feeWaiverCount > 0 && (
+            <StatCard
+              label="Fee waiver"
+              value={feeWaiverCount}
+              valueClass="text-amber-300"
+              active={feeWaiverFilter === "true"}
+              onClick={toggleFeeWaiverFilter}
+            />
+          )}
+        </div>
+      )}
 
       {/* Messages */}
       {error && (
@@ -1372,21 +1606,26 @@ export default function TicketManagementClient({
 
       {/* Add Ticket Form */}
       {showAddForm && (
-        <div className="mb-6 bg-zinc-900 rounded-2xl border border-zinc-800 p-6">
-          <h2 className="text-xl font-bold text-white mb-4">Add Tickets</h2>
-          <p className="text-sm text-zinc-400 mb-4">
-            Each row is one ticket. Name and email are required. Paste 2 columns
-            from Google Sheets into any attendee cell to auto-fill rows for
-            review.
+        <div className="mb-6 rounded-2xl border border-zinc-800 bg-zinc-900 p-4 sm:p-6">
+          <h2 className="text-lg font-bold text-white sm:text-xl">Add Tickets</h2>
+          <p className="mt-1 mb-5 text-sm text-zinc-400">
+            Each row is one ticket — name and email are required. Paste two
+            columns (name, email) from Google Sheets into any field to fill rows
+            automatically.
           </p>
-          <form onSubmit={handleAddTicket} className="space-y-4">
+          <form onSubmit={handleAddTicket} className="space-y-5">
             {/* Shared: Event + Type */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
-                <label className="block text-sm font-medium text-zinc-300 mb-2">
+                <label
+                  htmlFor="add-event"
+                  className="mb-1.5 block text-sm font-medium text-zinc-300"
+                >
                   Event
                 </label>
                 <select
+                  id="add-event"
+                  name="event"
                   value={newTicketEventId}
                   onChange={(e) => {
                     const eventId = e.target.value;
@@ -1396,7 +1635,7 @@ export default function TicketManagementClient({
                       debouncedEmailLookup(i, row.email, eventId);
                     });
                   }}
-                  className="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50"
+                  className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 text-base text-white focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 focus:outline-none sm:text-sm"
                   required
                 >
                   <option value="">Select an event</option>
@@ -1408,18 +1647,24 @@ export default function TicketManagementClient({
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-zinc-300 mb-2">
-                  Ticket Type
+                <label
+                  htmlFor="add-type"
+                  className="mb-1.5 block text-sm font-medium text-zinc-300"
+                >
+                  Ticket type
                 </label>
                 <select
+                  id="add-type"
+                  name="type"
                   value={newTicketType}
                   onChange={(e) => setNewTicketType(e.target.value)}
-                  className="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50"
+                  className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 text-base text-white focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 focus:outline-none sm:text-sm"
                 >
-                  <option value="VIP">VIP</option>
-                  <option value="STANDARD">STANDARD</option>
-                  <option value="EXTERNAL">EXTERNAL</option>
-                  <option value="STANDBY">STANDBY</option>
+                  {TICKET_TYPES.map((t) => (
+                    <option key={t} value={t}>
+                      {t}
+                    </option>
+                  ))}
                 </select>
               </div>
             </div>
@@ -1428,132 +1673,115 @@ export default function TicketManagementClient({
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <span className="text-sm font-medium text-zinc-300">
-                  Attendees (one per row)
+                  Attendees ({newTicketRows.length})
                 </span>
                 <button
                   type="button"
                   onClick={() =>
                     setNewTicketRows((prev) => [...prev, { name: "", email: "" }])
                   }
-                  className="text-sm text-emerald-400 hover:text-emerald-300 font-medium flex items-center gap-1"
+                  className="flex items-center gap-1 text-sm font-medium text-emerald-400 hover:text-emerald-300"
                 >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                   </svg>
                   Add row
                 </button>
               </div>
-              <div className="rounded-xl border border-zinc-700 overflow-hidden">
-                <table className="w-full text-left">
-                  <thead>
-                    <tr className="bg-zinc-800/80 border-b border-zinc-700">
-                      <th className="px-4 py-3 text-xs font-medium text-zinc-400 uppercase tracking-wider w-[40%]">
-                        Name
-                      </th>
-                      <th className="px-4 py-3 text-xs font-medium text-zinc-400 uppercase tracking-wider">
-                        Email
-                      </th>
-                      <th className="w-12" />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {newTicketRows.map((row, index) => (
-                      <tr
-                        key={index}
-                        className="border-b border-zinc-800 last:border-0 bg-zinc-800/30"
+              <div className="space-y-2">
+                {newTicketRows.map((row, index) => (
+                  <div
+                    key={index}
+                    className="flex flex-col gap-2 rounded-xl border border-zinc-800 bg-zinc-800/40 p-2 sm:flex-row sm:items-center"
+                  >
+                    <span className="hidden w-6 shrink-0 text-center text-xs font-medium text-zinc-500 tabular-nums sm:block">
+                      {index + 1}
+                    </span>
+                    <input
+                      type="text"
+                      name={`attendee-name-${index}`}
+                      aria-label={`Attendee ${index + 1} name`}
+                      value={row.name}
+                      onPaste={(event) => handleSpreadsheetPaste(index, event)}
+                      onChange={(e) => {
+                        setNewTicketRows((prev) => {
+                          const next = [...prev];
+                          next[index] = { ...next[index], name: e.target.value };
+                          return next;
+                        });
+                      }}
+                      placeholder="Attendee name"
+                      className="w-full rounded-lg border border-zinc-600 bg-zinc-800 px-3 py-2 text-base text-white placeholder-zinc-500 focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 focus:outline-none sm:w-2/5 sm:text-sm"
+                    />
+                    <div className="relative w-full sm:flex-1">
+                      <input
+                        type="email"
+                        name={`attendee-email-${index}`}
+                        aria-label={`Attendee ${index + 1} email`}
+                        value={row.email}
+                        onPaste={(event) => handleSpreadsheetPaste(index, event)}
+                        onChange={(e) => {
+                          const value = e.target.value;
+                          setNewTicketRows((prev) => {
+                            const next = [...prev];
+                            next[index] = { ...next[index], email: value };
+                            return next;
+                          });
+                          debouncedEmailLookup(index, value, newTicketEventId);
+                        }}
+                        placeholder="email@example.com"
+                        className="w-full rounded-lg border border-zinc-600 bg-zinc-800 py-2 pr-24 pl-3 text-base text-white placeholder-zinc-500 focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 focus:outline-none sm:text-sm"
+                      />
+                      {emailLookups[index] ? (
+                        <div className="pointer-events-none absolute top-1/2 right-2 flex -translate-y-1/2 items-center gap-1">
+                          <span className="inline-flex items-center rounded bg-amber-500/15 px-1.5 py-0.5 text-[11px] font-medium text-amber-400">
+                            Exists
+                          </span>
+                          {emailLookups[index]!.type !== newTicketType && (
+                            <span className="inline-flex items-center rounded bg-blue-500/15 px-1.5 py-0.5 text-[11px] font-medium text-blue-400">
+                              {emailLookups[index]!.type}
+                            </span>
+                          )}
+                        </div>
+                      ) : null}
+                    </div>
+                    {newTicketRows.length > 1 ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setNewTicketRows((prev) =>
+                            prev.filter((_, i) => i !== index)
+                          );
+                          setEmailLookups((prev) => {
+                            const next: Record<number, EmailLookupResult> = {};
+                            for (const [k, v] of Object.entries(prev)) {
+                              const ki = Number(k);
+                              if (ki < index) next[ki] = v;
+                              else if (ki > index) next[ki - 1] = v;
+                            }
+                            return next;
+                          });
+                        }}
+                        className="flex shrink-0 items-center justify-center gap-1.5 rounded-lg p-2 text-zinc-400 transition-colors hover:bg-zinc-700 hover:text-rose-400 sm:gap-0"
+                        title="Remove row"
                       >
-                        <td className="px-4 py-2">
-                          <input
-                            type="text"
-                            value={row.name}
-                            onPaste={(event) =>
-                              handleSpreadsheetPaste(index, event)
-                            }
-                            onChange={(e) => {
-                              setNewTicketRows((prev) => {
-                                const next = [...prev];
-                                next[index] = { ...next[index], name: e.target.value };
-                                return next;
-                              });
-                            }}
-                            placeholder="Attendee name"
-                            className="w-full px-3 py-2 bg-zinc-800 border border-zinc-600 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 text-sm"
-                          />
-                        </td>
-                        <td className="px-4 py-2">
-                          <div className="relative">
-                          <input
-                            type="email"
-                            value={row.email}
-                            onPaste={(event) =>
-                              handleSpreadsheetPaste(index, event)
-                            }
-                            onChange={(e) => {
-                              const value = e.target.value;
-                              setNewTicketRows((prev) => {
-                                const next = [...prev];
-                                next[index] = { ...next[index], email: value };
-                                return next;
-                              });
-                              debouncedEmailLookup(index, value, newTicketEventId);
-                            }}
-                            placeholder="email@example.com"
-                            className="w-full px-3 py-2 bg-zinc-800 border border-zinc-600 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 text-sm"
-                          />
-                          {emailLookups[index] ? (
-                            <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1 pointer-events-none">
-                              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-medium bg-amber-500/15 text-amber-400">
-                                Exists
-                              </span>
-                              {emailLookups[index]!.type !== newTicketType && (
-                                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-medium bg-blue-500/15 text-blue-400">
-                                  {emailLookups[index]!.type}
-                                </span>
-                              )}
-                            </div>
-                          ) : null}
-                          </div>
-                        </td>
-                        <td className="px-2 py-2">
-                          {newTicketRows.length > 1 ? (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setNewTicketRows((prev) =>
-                                  prev.filter((_, i) => i !== index)
-                                );
-                                setEmailLookups((prev) => {
-                                  const next: Record<number, EmailLookupResult> = {};
-                                  for (const [k, v] of Object.entries(prev)) {
-                                    const ki = Number(k);
-                                    if (ki < index) next[ki] = v;
-                                    else if (ki > index) next[ki - 1] = v;
-                                  }
-                                  return next;
-                                });
-                              }}
-                              className="p-1.5 text-zinc-400 hover:text-red-400 rounded-lg hover:bg-zinc-700 transition-colors"
-                              title="Remove row"
-                            >
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                              </svg>
-                            </button>
-                          ) : null}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                        <span className="text-sm sm:hidden">Remove row</span>
+                      </button>
+                    ) : null}
+                  </div>
+                ))}
               </div>
             </div>
 
-            <div className="flex items-center gap-4 pt-4 border-t border-zinc-800">
+            <div className="flex flex-col-reverse items-stretch gap-3 border-t border-zinc-800 pt-4 sm:flex-row sm:items-center sm:gap-4">
               {isSubmitting ? (
-                <div className="flex items-center gap-3 px-6 py-3">
-                  <div className="w-40 h-2 bg-zinc-700 rounded-full overflow-hidden">
+                <div className="flex items-center gap-3 px-2 py-1 sm:px-6 sm:py-3">
+                  <div className="h-2 w-40 overflow-hidden rounded-full bg-zinc-700">
                     <div
-                      className="h-full bg-gradient-to-r from-emerald-500 to-teal-500 rounded-full transition-all duration-300"
+                      className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-teal-500 transition-all duration-300"
                       style={{ width: `${submitProgress.total ? (submitProgress.completed / submitProgress.total) * 100 : 0}%` }}
                     />
                   </div>
@@ -1562,34 +1790,22 @@ export default function TicketManagementClient({
                   </span>
                 </div>
               ) : (
-              <button
-                type="submit"
-                disabled={
-                  !newTicketRows.some(
-                    (r) => r.email.trim() && r.name.trim()
-                  )
-                }
-                className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-emerald-500 to-teal-500 text-white rounded-xl font-medium hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                  <svg
-                    className="w-5 h-5"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M5 13l4 4L19 7"
-                    />
+                <button
+                  type="submit"
+                  disabled={
+                    !newTicketRows.some((r) => r.email.trim() && r.name.trim())
+                  }
+                  className="flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 px-6 py-3 font-medium text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                   </svg>
-                Create{" "}
-                {newTicketRows.filter(
-                  (r) => r.email.trim() && r.name.trim()
-                ).length || 0}{" "}
-                ticket(s)
-              </button>
+                  Create{" "}
+                  {newTicketRows.filter(
+                    (r) => r.email.trim() && r.name.trim()
+                  ).length || 0}{" "}
+                  ticket(s)
+                </button>
               )}
               <button
                 type="button"
@@ -1597,7 +1813,7 @@ export default function TicketManagementClient({
                   setShowAddForm(false);
                   resetNewTicketForm();
                 }}
-                className="px-6 py-3 text-zinc-400 hover:text-white transition-colors"
+                className="px-6 py-3 text-zinc-400 transition-colors hover:text-white"
               >
                 Cancel
               </button>
@@ -1656,58 +1872,87 @@ export default function TicketManagementClient({
         </div>
       )}
 
-      <div className="mb-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        <div>
-          <label className="block text-sm font-medium text-zinc-300 mb-2">
-            Search by Name or Email
-          </label>
+      <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center">
+        <div className="relative flex-1">
+          <svg
+            className="pointer-events-none absolute top-1/2 left-3 h-5 w-5 -translate-y-1/2 text-zinc-500"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+          </svg>
           <input
-            type="text"
+            type="search"
+            name="search"
+            aria-label="Search by name or email"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search name or email..."
+            placeholder="Search by name or email…"
             disabled={!selectedEventId}
-            className="w-full px-4 py-3 bg-zinc-900 border border-zinc-800 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full rounded-xl border border-zinc-800 bg-zinc-900 py-2.5 pr-4 pl-10 text-base text-white placeholder-zinc-500 focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50 sm:text-sm"
           />
         </div>
-        <div>
-          <label className="block text-sm font-medium text-zinc-300 mb-2">
-            Ticket Type
-          </label>
-          <select
-            value={ticketTypeFilter}
-            onChange={(e) => {
-              setTicketTypeFilter(e.target.value);
-              setOffset(0);
-            }}
-            disabled={!selectedEventId}
-            className="w-full px-4 py-3 bg-zinc-900 border border-zinc-800 rounded-xl text-white focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <option value="">All Types</option>
-            <option value="VIP">VIP</option>
-            <option value="STANDARD">STANDARD</option>
-            <option value="EXTERNAL">EXTERNAL</option>
-            <option value="STANDBY">STANDBY</option>
-          </select>
+        <div className="grid grid-cols-2 gap-3 sm:flex sm:w-auto">
+          <div className="inline-grid grid-cols-[1fr_--spacing(8)] items-center rounded-xl border border-zinc-800 bg-zinc-900 text-zinc-300 has-disabled:opacity-50">
+            <select
+              aria-label="Filter by ticket type"
+              name="type-filter"
+              value={ticketTypeFilter}
+              onChange={(e) => {
+                setTicketTypeFilter(e.target.value);
+                setOffset(0);
+              }}
+              disabled={!selectedEventId}
+              className="col-span-full row-start-1 appearance-none rounded-xl bg-transparent py-2.5 pr-8 pl-4 text-base text-white focus:outline-none disabled:cursor-not-allowed sm:text-sm"
+            >
+              <option value="">All types</option>
+              {TICKET_TYPES.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+            </select>
+            <SelectChevron />
+          </div>
+          <div className="inline-grid grid-cols-[1fr_--spacing(8)] items-center rounded-xl border border-zinc-800 bg-zinc-900 text-zinc-300 has-disabled:opacity-50">
+            <select
+              aria-label="Filter by scanned status"
+              name="scanned-filter"
+              value={scannedFilter}
+              onChange={(e) => {
+                setScannedFilter(e.target.value);
+                setOffset(0);
+              }}
+              disabled={!selectedEventId}
+              className="col-span-full row-start-1 appearance-none rounded-xl bg-transparent py-2.5 pr-8 pl-4 text-base text-white focus:outline-none disabled:cursor-not-allowed sm:text-sm"
+            >
+              <option value="">All statuses</option>
+              <option value="true">Scanned</option>
+              <option value="false">Not scanned</option>
+            </select>
+            <SelectChevron />
+          </div>
         </div>
-        <div>
-          <label className="block text-sm font-medium text-zinc-300 mb-2">
-            Scanned Status
-          </label>
-          <select
-            value={scannedFilter}
-            onChange={(e) => {
-              setScannedFilter(e.target.value);
+        {filtersActive && (
+          <button
+            type="button"
+            onClick={() => {
+              setSearch("");
+              setTicketTypeFilter("");
+              setScannedFilter("");
+              setFeeWaiverFilter("");
               setOffset(0);
+              if (affiliationFilter) handleAffiliationFilterChange("");
             }}
-            disabled={!selectedEventId}
-            className="w-full px-4 py-3 bg-zinc-900 border border-zinc-800 rounded-xl text-white focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex items-center justify-center gap-1.5 rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-2.5 text-sm font-medium text-zinc-400 transition-colors hover:text-white"
           >
-            <option value="">All Statuses</option>
-            <option value="true">Scanned</option>
-            <option value="false">Not Scanned</option>
-          </select>
-        </div>
+            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+            Clear filters
+          </button>
+        )}
       </div>
 
       {/* Tickets Table */}

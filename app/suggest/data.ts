@@ -1,13 +1,14 @@
 import type { Suggestion } from "./AdminSuggestClient";
-import { verifyAdminRequest } from "@/app/lib/auth";
+import { getSessionUser } from "@/app/lib/auth";
+import { hasPermission } from "@/app/lib/permissions";
 import { db, inArray, votes } from "@ssb/db";
 
 export async function getAdminSuggestions(): Promise<{
   suggestions: Suggestion[];
 }> {
   try {
-    const auth = await verifyAdminRequest();
-    if (!auth.authorized) {
+    const user = await getSessionUser();
+    if (!user?.email || !(await hasPermission(user.email, "suggestions.manage"))) {
       return { suggestions: [] };
     }
 

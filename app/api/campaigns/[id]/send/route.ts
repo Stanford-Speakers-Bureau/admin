@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { verifyAdminRequest } from "@/app/lib/auth";
+import { requirePermission } from "@/app/lib/permissions";
 import {
   and,
   db,
@@ -51,11 +51,6 @@ function normalizedTicketEmailIn(emails: string[]) {
 export async function POST(req: Request, { params }: Params) {
   try {
     const batchStartTime = Date.now();
-    const auth = await verifyAdminRequest();
-    if (!auth.authorized) {
-      return NextResponse.json({ error: auth.error }, { status: 401 });
-    }
-
     const { id } = await params;
     if (!isValidUUID(id)) {
       return NextResponse.json({ error: "Invalid campaign ID" }, { status: 400 });
@@ -157,6 +152,11 @@ export async function POST(req: Request, { params }: Params) {
 
     if (!campaign) {
       return NextResponse.json({ error: "Campaign not found" }, { status: 404 });
+    }
+
+    const auth = await requirePermission("campaigns.send", campaign.eventId);
+    if (!auth.authorized) {
+      return NextResponse.json({ error: auth.error }, { status: 401 });
     }
 
     if (campaign.status === "sent") {

@@ -1,6 +1,6 @@
 import AdminEventsClient, { Event } from "./AdminEventsClient";
 import { getSignedImageUrl, serializeEvent } from "@/app/lib/supabase";
-import { verifyAdminRequest } from "@/app/lib/auth";
+import { currentUserHoldsAction } from "@/app/lib/permissions";
 import { db, eq, ne, count as dbCount, tickets, waitlist } from "@ssb/db";
 import { connection } from "next/server";
 
@@ -8,8 +8,10 @@ export const dynamic = "force-dynamic";
 
 async function getInitialEvents(): Promise<Event[]> {
   try {
-    const auth = await verifyAdminRequest();
-    if (!auth.authorized) {
+    if (
+      !(await currentUserHoldsAction("events.edit")) &&
+      !(await currentUserHoldsAction("events.create"))
+    ) {
       return [];
     }
 

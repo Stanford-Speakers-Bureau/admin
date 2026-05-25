@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { verifyAdminRequest } from "@/app/lib/auth";
+import { requirePermission } from "@/app/lib/permissions";
 import { getAdminEventQuestions } from "@/app/event-questions/data";
 import {
   count as dbCount,
@@ -13,11 +13,6 @@ import { logAuditEvent } from "@/app/lib/audit";
 
 export async function POST(req: Request) {
   try {
-    const auth = await verifyAdminRequest();
-    if (!auth.authorized) {
-      return NextResponse.json({ error: auth.error }, { status: 401 });
-    }
-
     let body: { id?: string } = {};
     try {
       body = await req.json();
@@ -31,6 +26,23 @@ export async function POST(req: Request) {
           { error: "Invalid question ID format" },
           { status: 400 },
         );
+      }
+      const question = await db.query.eventQuestions.findFirst({
+        where: eq(eventQuestions.id, body.id),
+        columns: { eventId: true },
+      });
+      if (!question) {
+        return NextResponse.json(
+          { error: "Question not found" },
+          { status: 404 },
+        );
+      }
+      const auth = await requirePermission(
+        "questions.manage",
+        question.eventId,
+      );
+      if (!auth.authorized) {
+        return NextResponse.json({ error: auth.error }, { status: 401 });
       }
       const [result] = await db
         .select({ count: dbCount() })
@@ -47,6 +59,12 @@ export async function POST(req: Request) {
         metadata: { questionId: body.id, newVotes: actual },
       });
     } else {
+      // Syncing every question is a cross-event operation: require the
+      // all-events scope (or admin).
+      const auth = await requirePermission("questions.manage");
+      if (!auth.authorized) {
+        return NextResponse.json({ error: auth.error }, { status: 401 });
+      }
       const all = await db.query.eventQuestions.findMany({
         columns: { id: true, votes: true },
       });

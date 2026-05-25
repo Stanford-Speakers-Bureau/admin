@@ -1,83 +1,277 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
-export type Admin = {
+export type GrantChip = {
   id: string;
-  email: string;
-  created_at: string;
+  action: string;
+  eventId: string | null;
+  eventName: string | null;
 };
 
-export type Ban = {
-  id: string;
+export type UnifiedUser = {
   email: string;
-  created_at: string;
+  /** roles-table row id (for adding/removing admin & scanner), or null. */
+  roleRowId: string | null;
+  isAdmin: boolean;
+  isScanner: boolean;
+  grants: GrantChip[];
 };
 
-export type Scanner = {
-  id: string;
-  email: string;
-  created_at: string;
+export type Ban = { id: string; email: string; created_at: string };
+export type FeeWaiver = { id: string; email: string; created_at: string };
+export type EmailSuppression = { id: string; email: string; created_at: string };
+
+export type EventOption = { id: string; name: string };
+
+type PermDef = {
+  action: string;
+  label: string;
+  description: string;
+  scope: "event" | "global";
 };
 
-export type FeeWaiver = {
-  id: string;
-  email: string;
-  created_at: string;
-};
-
-export type EmailSuppression = {
-  id: string;
-  email: string;
-  created_at: string;
+type Grantable = {
+  key: string;
+  label: string;
+  description: string;
+  scope: "event" | "global";
+  kind: "role" | "permission";
 };
 
 type AdminUsersClientProps = {
-  initialAdmins: Admin[];
+  initialUsers: UnifiedUser[];
   initialBans: Ban[];
   initialFeeWaivers: FeeWaiver[];
-  initialScanners: Scanner[];
   initialEmailSuppressions: EmailSuppression[];
+  events: EventOption[];
+  permissionDefs: PermDef[];
+  /** action -> actions it implies (e.g. tickets.edit -> [tickets.view]). */
+  implies: Record<string, string[]>;
 };
 
+type SimpleTab = "feeWaivers" | "bans" | "emailSuppressions";
+type SimpleRoleType = "fee_waiver" | "ban" | "email_suppression";
+
 export default function AdminUsersClient({
-  initialAdmins,
+  initialUsers,
   initialBans,
   initialFeeWaivers,
-  initialScanners,
   initialEmailSuppressions,
+  events,
+  permissionDefs,
+  implies,
 }: AdminUsersClientProps) {
-  const [admins, setAdmins] = useState<Admin[]>(initialAdmins);
+  const [users, setUsers] = useState<UnifiedUser[]>(initialUsers);
   const [bans, setBans] = useState<Ban[]>(initialBans);
   const [feeWaivers, setFeeWaivers] = useState<FeeWaiver[]>(initialFeeWaivers);
-  const [scanners, setScanners] = useState<Scanner[]>(initialScanners);
-  const [emailSuppressions, setEmailSuppressions] = useState<EmailSuppression[]>(
-    initialEmailSuppressions,
-  );
-  const [activeTab, setActiveTab] = useState<
-    "admins" | "bans" | "feeWaivers" | "scanners" | "emailSuppressions"
-  >("admins");
-  const [newEmail, setNewEmail] = useState("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [emailSuppressions, setEmailSuppressions] = useState<
+    EmailSuppression[]
+  >(initialEmailSuppressions);
+
+  const [activeTab, setActiveTab] = useState<"users" | SimpleTab>("users");
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
-  async function handleAddUser(
-    type: "admin" | "ban" | "fee_waiver" | "scanner" | "email_suppression",
-  ) {
-    if (!newEmail.trim()) {
-      setError("Please enter an email address");
+  // ── Grantable catalog (admin & scanner are global roles; rest are perms) ──
+  const grantables = useMemo<Grantable[]>(
+    () => [
+      {
+        key: "admin",
+        label: "Admin — full access",
+        description: "Super-admin. Can do everything, including manage users.",
+        scope: "global",
+        kind: "role",
+      },
+      {
+        key: "scanner",
+        label: "Scanner — all events",
+        description: "Legacy global door-scanning access across every event.",
+        scope: "global",
+        kind: "role",
+      },
+      ...permissionDefs.map<Grantable>((d) => ({
+        key: d.action,
+        label: d.label,
+        description: d.description,
+        scope: d.scope,
+        kind: "permission",
+      })),
+    ],
+    [permissionDefs],
+  );
+  const grantableByKey = useMemo(
+    () => new Map(grantables.map((g) => [g.key, g])),
+    [grantables],
+  );
+
+  // ── Grant form state (multi-select permissions + events) ──────────────────
+  const [grantEmail, setGrantEmail] = useState("");
+  const [selectedPerms, setSelectedPerms] = useState<Set<string>>(new Set());
+  // Empty set = "all events" (including future).
+  const [eventIds, setEventIds] = useState<Set<string>>(new Set());
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const allEvents = eventIds.size === 0;
+  const anyEventScoped = useMemo(
+    () =>
+      [...selectedPerms].some(
+        (k) => grantableByKey.get(k)?.scope === "event",
+      ),
+    [selectedPerms, grantableByKey],
+  );
+  // Permissions auto-included by the current selection (e.g. selecting Edit
+  // tickets includes View tickets). Shown checked + locked, not granted twice.
+  const impliedSet = useMemo(() => {
+    const s = new Set<string>();
+    for (const k of selectedPerms)
+      for (const imp of implies[k] ?? []) s.add(imp);
+    return s;
+  }, [selectedPerms, implies]);
+  // How many grants the current selection produces per person.
+  const perPersonGrantCount = useMemo(() => {
+    const eventCount = allEvents ? 1 : eventIds.size;
+    let n = 0;
+    for (const k of selectedPerms) {
+      const g = grantableByKey.get(k);
+      if (g) n += g.scope === "event" ? eventCount : 1;
+    }
+    return n;
+  }, [selectedPerms, allEvents, eventIds, grantableByKey]);
+
+  function togglePerm(key: string) {
+    setSelectedPerms((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+  function toggleEvent(id: string) {
+    setEventIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  // ── Simple-tab add form state ─────────────────────────────────────────────
+  const [newEmail, setNewEmail] = useState("");
+
+  function upsertUser(email: string, mutate: (u: UnifiedUser) => void) {
+    const key = email.trim().toLowerCase();
+    setUsers((prev) => {
+      const idx = prev.findIndex((u) => u.email === key);
+      if (idx === -1) {
+        const fresh: UnifiedUser = {
+          email: key,
+          roleRowId: null,
+          isAdmin: false,
+          isScanner: false,
+          grants: [],
+        };
+        mutate(fresh);
+        return [...prev, fresh].sort((a, b) => a.email.localeCompare(b.email));
+      }
+      const next = [...prev];
+      const copy = { ...next[idx], grants: [...next[idx].grants] };
+      mutate(copy);
+      next[idx] = copy;
+      return next;
+    });
+  }
+
+  function pruneEmptyUser(email: string) {
+    const key = email.trim().toLowerCase();
+    setUsers((prev) =>
+      prev.filter(
+        (u) =>
+          u.email !== key ||
+          u.isAdmin ||
+          u.isScanner ||
+          u.grants.length > 0,
+      ),
+    );
+  }
+
+  async function addRole(
+    email: string,
+    type: "admin" | "scanner",
+    errors: string[],
+  ): Promise<boolean> {
+    const res = await fetch("/api/users", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ emails: [email], type, action: "add" }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      errors.push(`${email} · ${type}: ${data.error || "Failed"}`);
+      return false;
+    }
+    const row = (data.users ?? [])[0] as { id: string } | undefined;
+    const errs = (data.errors ?? []) as Array<{ error: string }>;
+    if (errs.length > 0 && !row) {
+      errors.push(`${email} · ${type}: ${errs[0].error}`);
+      return false;
+    }
+    upsertUser(email, (u) => {
+      if (row?.id) u.roleRowId = row.id;
+      if (type === "admin") u.isAdmin = true;
+      else u.isScanner = true;
+    });
+    return true;
+  }
+
+  async function grantPermission(
+    email: string,
+    permission: string,
+    eventId: string | null,
+    errors: string[],
+  ): Promise<boolean> {
+    const res = await fetch("/api/permissions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "grant", email, permission, eventId }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      const where = eventId
+        ? (events.find((e) => e.id === eventId)?.name ?? "event")
+        : "all events";
+      errors.push(`${email} · ${permission} (${where}): ${data.error || "Failed"}`);
+      return false;
+    }
+    upsertUser(email, (u) =>
+      u.grants.push({
+        id: data.grant.id,
+        action: data.grant.action,
+        eventId: data.grant.eventId,
+        eventName: eventId
+          ? (events.find((e) => e.id === eventId)?.name ?? null)
+          : null,
+      }),
+    );
+    return true;
+  }
+
+  async function handleGrant() {
+    const emails = grantEmail
+      .split(",")
+      .map((e) => e.trim().toLowerCase())
+      .filter(Boolean);
+    if (emails.length === 0) {
+      setError("Please enter at least one email address");
       return;
     }
-
-    const emails = newEmail
-      .split(",")
-      .map((e) => e.trim())
-      .filter((e) => e);
-    const invalidEmails = emails.filter((e) => !e.includes("@"));
-
-    if (invalidEmails.length > 0) {
-      setError(`Invalid email(s): ${invalidEmails.join(", ")}`);
+    const invalid = emails.filter((e) => !e.includes("@"));
+    if (invalid.length > 0) {
+      setError(`Invalid email(s): ${invalid.join(", ")}`);
+      return;
+    }
+    if (selectedPerms.size === 0) {
+      setError("Select at least one permission");
       return;
     }
 
@@ -85,791 +279,613 @@ export default function AdminUsersClient({
     setError(null);
     setSuccess(null);
 
+    // Empty event selection = one all-events (null) grant.
+    const targetEvents: (string | null)[] = allEvents ? [null] : [...eventIds];
     const errors: string[] = [];
-    let successCount = 0;
+    let granted = 0;
 
+    for (const email of emails) {
+      for (const key of selectedPerms) {
+        const g = grantableByKey.get(key);
+        if (!g) continue;
+        try {
+          if (g.kind === "role") {
+            if (await addRole(email, key === "admin" ? "admin" : "scanner", errors))
+              granted++;
+          } else if (g.scope === "global") {
+            if (await grantPermission(email, key, null, errors)) granted++;
+          } else {
+            for (const ev of targetEvents) {
+              if (await grantPermission(email, key, ev, errors)) granted++;
+            }
+          }
+        } catch {
+          errors.push(`${email} · ${key}: Request failed`);
+        }
+      }
+    }
+
+    if (granted > 0) {
+      setGrantEmail("");
+      setSuccess(`Created ${granted} grant(s)`);
+    }
+    if (errors.length > 0) setError(errors.join("; "));
+    setIsSubmitting(false);
+  }
+
+  async function handleRevokeRole(user: UnifiedUser, role: "admin" | "scanner") {
+    if (!user.roleRowId) return;
     try {
-      const response = await fetch("/api/users", {
+      const res = await fetch("/api/users", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          emails: emails.map((e) => e.toLowerCase()),
-          type,
-          action: "add",
+          id: user.roleRowId,
+          type: role === "admin" ? "admin" : "scanner",
+          action: "remove",
         }),
       });
+      if (!res.ok) {
+        const data = await res.json();
+        setError(data.error || "Failed to revoke");
+        return;
+      }
+      upsertUser(user.email, (u) => {
+        if (role === "admin") u.isAdmin = false;
+        else u.isScanner = false;
+      });
+      pruneEmptyUser(user.email);
+      setSuccess(`Removed ${role} from ${user.email}`);
+    } catch {
+      setError("Failed to revoke. Please try again.");
+    }
+  }
 
-      const data = await response.json();
+  async function handleRevokeGrant(user: UnifiedUser, grant: GrantChip) {
+    try {
+      const res = await fetch("/api/permissions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "revoke", id: grant.id }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        setError(data.error || "Failed to revoke");
+        return;
+      }
+      upsertUser(user.email, (u) => {
+        u.grants = u.grants.filter((g) => g.id !== grant.id);
+      });
+      pruneEmptyUser(user.email);
+      setSuccess("Permission revoked");
+    } catch {
+      setError("Failed to revoke. Please try again.");
+    }
+  }
 
-      if (!response.ok) {
+  function grantScopeLabel(g: GrantChip): string {
+    const def = grantableByKey.get(g.action);
+    if (def?.scope === "global") return "Global";
+    return g.eventId ? (g.eventName ?? "Unknown event") : "All events";
+  }
+  function grantLabel(g: GrantChip): string {
+    return grantableByKey.get(g.action)?.label.split(" — ")[0] ?? g.action;
+  }
+
+  // ── Simple tabs (fee waiver / banned / email suppression) ─────────────────
+  const simpleType: SimpleRoleType =
+    activeTab === "feeWaivers"
+      ? "fee_waiver"
+      : activeTab === "bans"
+        ? "ban"
+        : "email_suppression";
+
+  async function handleAddSimple() {
+    const emails = newEmail
+      .split(",")
+      .map((e) => e.trim().toLowerCase())
+      .filter(Boolean);
+    if (emails.length === 0) {
+      setError("Please enter an email address");
+      return;
+    }
+    const invalid = emails.filter((e) => !e.includes("@"));
+    if (invalid.length > 0) {
+      setError(`Invalid email(s): ${invalid.join(", ")}`);
+      return;
+    }
+
+    setIsSubmitting(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      const res = await fetch("/api/users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ emails, type: simpleType, action: "add" }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
         setError(data.error || "Failed to add");
         setIsSubmitting(false);
         return;
       }
-
-      const createdUsers = (data.users ?? []) as Array<
-        Admin | Ban | FeeWaiver | Scanner | EmailSuppression
-      >;
-
-      if (createdUsers.length > 0) {
-        if (type === "admin") {
-          setAdmins((prev) => [...(createdUsers as Admin[]), ...prev]);
-        } else if (type === "fee_waiver") {
-          setFeeWaivers((prev) => [...(createdUsers as FeeWaiver[]), ...prev]);
-        } else if (type === "ban") {
-          setBans((prev) => [...(createdUsers as Ban[]), ...prev]);
-        } else if (type === "email_suppression") {
-          setEmailSuppressions((prev) => [
-            ...(createdUsers as EmailSuppression[]),
-            ...prev,
-          ]);
-        } else {
-          setScanners((prev) => [...(createdUsers as Scanner[]), ...prev]);
-        }
-      }
-
-      successCount = createdUsers.length;
-
-      const serverErrors = (data.errors ?? []) as Array<{
-        email: string;
-        error: string;
+      const created = (data.users ?? []) as Array<{
+        id: string;
+        email: string | null;
+        created_at: string;
       }>;
-      for (const e of serverErrors) {
-        errors.push(`${e.email}: ${e.error}`);
+      const rows = created.map((r) => ({
+        id: r.id,
+        email: r.email ?? "",
+        created_at: r.created_at,
+      }));
+      if (activeTab === "feeWaivers") setFeeWaivers((p) => [...rows, ...p]);
+      else if (activeTab === "bans") setBans((p) => [...rows, ...p]);
+      else setEmailSuppressions((p) => [...rows, ...p]);
+
+      const errs = (data.errors ?? []) as Array<{ email: string; error: string }>;
+      if (errs.length > 0) {
+        setError(errs.map((e) => `${e.email}: ${e.error}`).join("; "));
       }
-    } catch (err) {
-      console.error("Failed to add users:", err);
-      setError("Failed to add users. Please try again.");
-      setIsSubmitting(false);
-      return;
-    }
-
-    setIsSubmitting(false);
-
-    if (errors.length > 0) {
-      setError(errors.join("; "));
-    }
-
-    if (successCount > 0) {
-      const typeLabel =
-        type === "admin"
-          ? "admin(s)"
-          : type === "fee_waiver"
-            ? "fee waiver user(s)"
-          : type === "scanner"
-            ? "scanner(s)"
-          : type === "email_suppression"
-            ? "suppressed email(s)"
-            : "banned user(s)";
-      const successMsg = `Successfully added ${successCount} ${typeLabel}`;
-      setSuccess(
-        errors.length > 0 ? `${successMsg}, but with errors` : successMsg,
-      );
-      if (errors.length === 0) {
-        setNewEmail("");
+      if (rows.length > 0) {
+        setSuccess(`Added ${rows.length} entry(ies)`);
+        if (errs.length === 0) setNewEmail("");
       }
-    }
-  }
-
-  async function handleClearAllFeeWaivers() {
-    if (feeWaivers.length === 0) return;
-    const confirmed = window.confirm(
-      `Remove fee waiver from all ${feeWaivers.length} user(s)? This cannot be undone.`,
-    );
-    if (!confirmed) return;
-
-    setIsSubmitting(true);
-    setError(null);
-    setSuccess(null);
-
-    try {
-      const response = await fetch("/api/users", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type: "fee_waiver", action: "clear_all" }),
-      });
-      const data = await response.json();
-
-      if (!response.ok) {
-        setError(data.error || "Failed to clear fee waivers");
-      } else {
-        setFeeWaivers([]);
-        setSuccess(`Cleared fee waiver from ${data.removed ?? 0} user(s)`);
-      }
-    } catch (err) {
-      console.error("Failed to clear fee waivers:", err);
-      setError("Failed to clear fee waivers. Please try again.");
+    } catch {
+      setError("Failed to add. Please try again.");
     } finally {
       setIsSubmitting(false);
     }
   }
 
-  async function handleRemoveUser(
-    id: string,
-    type: "admin" | "ban" | "fee_waiver" | "scanner" | "email_suppression",
-  ) {
+  async function handleRemoveSimple(id: string) {
     try {
-      const response = await fetch("/api/users", {
+      const res = await fetch("/api/users", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id, type, action: "remove" }),
+        body: JSON.stringify({ id, type: simpleType, action: "remove" }),
       });
-
-      if (response.ok) {
-        if (type === "admin") {
-          setAdmins((prev) => prev.filter((a) => a.id !== id));
-        } else if (type === "fee_waiver") {
-          setFeeWaivers((prev) => prev.filter((user) => user.id !== id));
-        } else if (type === "ban") {
-          setBans((prev) => prev.filter((b) => b.id !== id));
-        } else if (type === "email_suppression") {
-          setEmailSuppressions((prev) => prev.filter((s) => s.id !== id));
-        } else {
-          setScanners((prev) => prev.filter((s) => s.id !== id));
-        }
-        setSuccess(`Successfully removed user`);
-      } else {
-        const data = await response.json();
-        setError(data.error || "Failed to remove user");
+      if (!res.ok) {
+        const data = await res.json();
+        setError(data.error || "Failed to remove");
+        return;
       }
-    } catch (error) {
-      console.error("Failed to remove user:", error);
-      setError("Failed to remove user. Please try again.");
+      if (activeTab === "feeWaivers")
+        setFeeWaivers((p) => p.filter((r) => r.id !== id));
+      else if (activeTab === "bans") setBans((p) => p.filter((r) => r.id !== id));
+      else setEmailSuppressions((p) => p.filter((r) => r.id !== id));
+      setSuccess("Removed");
+    } catch {
+      setError("Failed to remove. Please try again.");
     }
   }
 
+  const simpleRows: Array<{ id: string; email: string; created_at: string }> =
+    activeTab === "feeWaivers"
+      ? feeWaivers
+      : activeTab === "bans"
+        ? bans
+        : emailSuppressions;
+
+  const tabBtn = (key: "users" | SimpleTab, label: string, count: number) => {
+    const isActive = activeTab === key;
+    return (
+      <button
+        type="button"
+        onClick={() => {
+          setActiveTab(key);
+          setError(null);
+          setSuccess(null);
+        }}
+        className={`-mb-px flex items-center gap-2 border-b-2 px-1 pb-3 text-sm font-medium whitespace-nowrap ${
+          isActive
+            ? "border-rose-500 text-white"
+            : "border-transparent text-zinc-400 hover:text-zinc-200"
+        }`}
+      >
+        {label}
+        <span
+          className={`rounded-full px-2 py-0.5 text-xs tabular-nums ${
+            isActive ? "bg-rose-500/15 text-rose-300" : "bg-white/5 text-zinc-400"
+          }`}
+        >
+          {count}
+        </span>
+      </button>
+    );
+  };
+
   return (
-    <div className="px-4 sm:px-6 py-8">
-      <div className="mb-8">
-        <h1 className="text-2xl sm:text-3xl font-bold text-white font-serif mb-2">
-          User Management
+    <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6">
+      <header className="mb-6">
+        <h1 className="font-serif text-2xl font-semibold tracking-tight text-balance text-white sm:text-3xl">
+          Users &amp; permissions
         </h1>
-        <p className="text-zinc-400">
-          Manage admin access, scanners, fee waiver users, and banned users.
+        <p className="mt-2 max-w-prose text-sm text-pretty text-zinc-400">
+          Grant people targeted access — admin, scanning, or fine-grained
+          per-event permissions. Fee waivers, bans, and email suppression are
+          managed in their own tabs.
         </p>
+      </header>
+
+      <div className="mb-8 flex flex-wrap gap-x-6 border-b border-white/10">
+        {tabBtn("users", "Users & permissions", users.length)}
+        {tabBtn("feeWaivers", "Fee waiver", feeWaivers.length)}
+        {tabBtn("bans", "Banned", bans.length)}
+        {tabBtn("emailSuppressions", "Email suppression", emailSuppressions.length)}
       </div>
 
-      {/* Tabs */}
-      <div className="flex flex-wrap gap-2 mb-6">
-        <button
-          onClick={() => setActiveTab("admins")}
-          className={`flex items-center gap-2 px-4 py-2 rounded text-sm font-medium transition-all ${
-            activeTab === "admins"
-              ? "bg-purple-500/20 text-purple-400 border border-purple-500/30"
-              : "bg-zinc-900 text-zinc-400 border border-zinc-800 hover:border-zinc-700"
-          }`}
-        >
-          <svg
-            className="w-4 h-4"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"
-            />
-          </svg>
-          Admins ({admins.length})
-        </button>
-        <button
-          onClick={() => setActiveTab("scanners")}
-          className={`flex items-center gap-2 px-4 py-2 rounded text-sm font-medium transition-all ${
-            activeTab === "scanners"
-              ? "bg-blue-500/20 text-blue-400 border border-blue-500/30"
-              : "bg-zinc-900 text-zinc-400 border border-zinc-800 hover:border-zinc-700"
-          }`}
-        >
-          <svg
-            className="w-4 h-4"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"
-            />
-          </svg>
-          Scanners ({scanners.length})
-        </button>
-        <button
-          onClick={() => setActiveTab("feeWaivers")}
-          className={`flex items-center gap-2 px-4 py-2 rounded text-sm font-medium transition-all ${
-            activeTab === "feeWaivers"
-              ? "bg-amber-500/20 text-amber-400 border border-amber-500/30"
-              : "bg-zinc-900 text-zinc-400 border border-zinc-800 hover:border-zinc-700"
-          }`}
-        >
-          <svg
-            className="w-4 h-4"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M12 9v3.75m0 3.75h.008v.008H12v-.008Zm7.938-2.25A9 9 0 1112 3a9 9 0 017.938 9.75Z"
-            />
-          </svg>
-          Fee Waiver ({feeWaivers.length})
-        </button>
-        <button
-          onClick={() => setActiveTab("bans")}
-          className={`flex items-center gap-2 px-4 py-2 rounded text-sm font-medium transition-all ${
-            activeTab === "bans"
-              ? "bg-rose-500/20 text-rose-400 border border-rose-500/30"
-              : "bg-zinc-900 text-zinc-400 border border-zinc-800 hover:border-zinc-700"
-          }`}
-        >
-          <svg
-            className="w-4 h-4"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"
-            />
-          </svg>
-          Banned Users ({bans.length})
-        </button>
-        <button
-          onClick={() => setActiveTab("emailSuppressions")}
-          className={`flex items-center gap-2 px-4 py-2 rounded text-sm font-medium transition-all ${
-            activeTab === "emailSuppressions"
-              ? "bg-zinc-500/20 text-zinc-200 border border-zinc-500/30"
-              : "bg-zinc-900 text-zinc-400 border border-zinc-800 hover:border-zinc-700"
-          }`}
-        >
-          <svg
-            className="w-4 h-4"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
-            />
-          </svg>
-          Email Suppression ({emailSuppressions.length})
-        </button>
-      </div>
-
-      {/* Messages */}
       {error && (
-        <div className="mb-6 p-4 bg-rose-500/10 border border-rose-500/30 rounded-xl flex items-center gap-3">
-          <svg
-            className="w-5 h-5 text-rose-400 shrink-0"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-            />
-          </svg>
-          <p className="text-rose-400 text-sm">{error}</p>
+        <div className="mb-6 flex items-start gap-3 rounded-lg bg-rose-500/10 p-3.5 ring-1 ring-inset ring-rose-500/25">
+          <p className="flex-1 text-sm text-rose-300">{error}</p>
           <button
+            type="button"
             onClick={() => setError(null)}
-            className="ml-auto text-rose-400 hover:text-rose-300"
+            aria-label="Dismiss"
+            className="text-rose-400 hover:text-rose-300"
           >
-            <svg
-              className="w-4 h-4"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M6 18L18 6M6 6l12 12"
-              />
-            </svg>
+            ✕
           </button>
         </div>
       )}
-
       {success && (
-        <div className="mb-6 p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-xl flex items-center gap-3">
-          <svg
-            className="w-5 h-5 text-emerald-400 shrink-0"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M5 13l4 4L19 7"
-            />
-          </svg>
-          <p className="text-emerald-400 text-sm">{success}</p>
+        <div className="mb-6 flex items-start gap-3 rounded-lg bg-emerald-500/10 p-3.5 ring-1 ring-inset ring-emerald-500/25">
+          <p className="flex-1 text-sm text-emerald-300">{success}</p>
           <button
+            type="button"
             onClick={() => setSuccess(null)}
-            className="ml-auto text-emerald-400 hover:text-emerald-300"
+            aria-label="Dismiss"
+            className="text-emerald-400 hover:text-emerald-300"
           >
-            <svg
-              className="w-4 h-4"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M6 18L18 6M6 6l12 12"
-              />
-            </svg>
+            ✕
           </button>
         </div>
       )}
 
-      {/* Add User Form */}
-      <div className="mb-6 p-6 bg-zinc-900 rounded-xl border border-zinc-800">
-        <h3 className="text-lg font-semibold text-white mb-4">
-          {activeTab === "admins"
-            ? "Add New Admin"
-            : activeTab === "scanners"
-              ? "Add New Scanner"
-              : activeTab === "feeWaivers"
-                ? "Add Fee Waiver User"
-              : activeTab === "emailSuppressions"
-                ? "Suppress Email Address"
-              : "Ban a User"}
-        </h3>
-        <p className="text-zinc-500 text-sm mb-4">
-          You can add multiple emails separated by commas.
-        </p>
-        <div className="flex flex-col sm:flex-row gap-3">
-          <div className="flex-1 relative">
-            <svg
-              className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-500"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
-              />
-            </svg>
-            <input
-              type="text"
-              placeholder="Enter email addresses (comma separated)..."
-              value={newEmail}
-              onChange={(e) => setNewEmail(e.target.value)}
-              onKeyDown={(e) =>
-                e.key === "Enter" &&
-                handleAddUser(
-                  activeTab === "admins"
-                    ? "admin"
-                    : activeTab === "scanners"
-                      ? "scanner"
-                      : activeTab === "feeWaivers"
-                        ? "fee_waiver"
-                      : activeTab === "emailSuppressions"
-                        ? "email_suppression"
-                      : "ban",
-                )
-              }
-              className="w-full pl-12 pr-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:border-rose-500/50 focus:ring-1 focus:ring-rose-500/50"
-            />
-          </div>
-          <button
-            onClick={() =>
-              handleAddUser(
-                activeTab === "admins"
-                  ? "admin"
-                  : activeTab === "scanners"
-                    ? "scanner"
-                    : activeTab === "feeWaivers"
-                      ? "fee_waiver"
-                    : activeTab === "emailSuppressions"
-                      ? "email_suppression"
-                    : "ban",
-              )
-            }
-            disabled={isSubmitting}
-            className={`flex items-center justify-center gap-2 px-6 py-3 rounded-xl text:white font-medium transition-all disabled:opacity-50 ${
-              activeTab === "admins"
-                ? "bg-purple-500 hover:bg-purple-600"
-                : activeTab === "scanners"
-                  ? "bg-blue-500 hover:bg-blue-600"
-                  : activeTab === "feeWaivers"
-                    ? "bg-amber-500 hover:bg-amber-600"
-                  : activeTab === "emailSuppressions"
-                    ? "bg-zinc-600 hover:bg-zinc-500"
-                  : "bg-rose-500 hover:bg-rose-600"
-            }`}
-          >
-            {isSubmitting ? (
-              <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-            ) : (
-              <>
-                <svg
-                  className="w-5 h-5"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M12 6v6m0 0v6m0-6h6m-6 0H6"
-                  />
-                </svg>
-                {activeTab === "admins"
-                  ? "Add Admin"
-                  : activeTab === "scanners"
-                    ? "Add Scanner"
-                    : activeTab === "feeWaivers"
-                      ? "Add Fee Waiver"
-                    : activeTab === "emailSuppressions"
-                      ? "Suppress Email"
-                    : "Ban User"}
-              </>
-            )}
-          </button>
-        </div>
-      </div>
+      {activeTab === "users" ? (
+        <>
+          {/* Grant form */}
+          <section className="mb-8 rounded-2xl border border-white/10 bg-zinc-900/60 p-5 sm:p-6">
+            <h2 className="text-sm font-semibold text-white">Grant access</h2>
+            <p className="mt-1 text-sm text-zinc-400">
+              Choose people, one or more permissions, and the events they apply
+              to.
+            </p>
 
-      {/* User List */}
-      <div className="space-y-3">
-        {activeTab === "admins" ? (
-          admins.length === 0 ? (
-            <div className="text-center py-12 bg-zinc-900/50 rounded-xl border border-zinc-800">
-              <p className="text-zinc-400">No admins found</p>
-            </div>
-          ) : (
-            admins.map((admin) => (
-              <div
-                key={admin.id}
-                className="bg-zinc-900 rounded-xl border border-zinc-800 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:border-zinc-700 transition-colors"
-              >
-                <div className="flex items-center gap-4">
-                  <div className="w-10 h-10 bg-purple-500/20 rounded-full flex items-center justify-center">
-                    <svg
-                      className="w-5 h-5 text-purple-400"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
+            <div className="mt-5 space-y-6">
+              {/* People */}
+              <div>
+                <label
+                  htmlFor="grant-people"
+                  className="text-xs font-medium tracking-wide text-zinc-400"
+                >
+                  People
+                </label>
+                <input
+                  id="grant-people"
+                  name="people"
+                  type="text"
+                  placeholder="person@stanford.edu, other@stanford.edu"
+                  value={grantEmail}
+                  onChange={(e) => setGrantEmail(e.target.value)}
+                  className="mt-1.5 w-full rounded-lg bg-white/5 px-3 py-2 text-sm text-white ring-1 ring-inset ring-white/10 placeholder:text-zinc-500 focus:outline-2 focus:-outline-offset-1 focus:outline-rose-500 max-sm:text-base"
+                />
+                <p className="mt-1.5 text-xs text-zinc-500">
+                  Separate multiple emails with commas.
+                </p>
+              </div>
+
+              {/* Permissions */}
+              <div>
+                <p className="text-xs font-medium tracking-wide text-zinc-400">
+                  Permissions
+                </p>
+                <div className="mt-1.5 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  {(["global", "event"] as const).map((scope) => (
+                    <div
+                      key={scope}
+                      className="rounded-lg bg-white/5 p-4 ring-1 ring-inset ring-white/10"
                     >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"
-                      />
-                    </svg>
-                  </div>
-                  <div>
-                    <p className="text-white font-medium">{admin.email}</p>
-                    <p className="text-zinc-500 text-sm">
-                      Added {new Date(admin.created_at).toLocaleDateString("en-US", { timeZone: "America/Los_Angeles" })}
+                      <p className="text-xs font-medium tracking-wide text-zinc-500 uppercase">
+                        {scope === "global" ? "Global" : "Per-event"}
+                      </p>
+                      <div className="mt-3 space-y-2.5">
+                        {grantables
+                          .filter((g) => g.scope === scope)
+                          .map((g) => {
+                            const checked = selectedPerms.has(g.key);
+                            const included = impliedSet.has(g.key) && !checked;
+                            return (
+                              <label
+                                key={g.key}
+                                title={g.description}
+                                className={`flex items-center gap-2.5 text-sm ${
+                                  included
+                                    ? "text-zinc-500"
+                                    : "cursor-pointer text-zinc-200"
+                                }`}
+                              >
+                                <input
+                                  type="checkbox"
+                                  className="size-5 shrink-0 rounded accent-rose-500 sm:size-4"
+                                  checked={checked || included}
+                                  disabled={included}
+                                  onChange={() => togglePerm(g.key)}
+                                />
+                                <span>
+                                  {g.label}
+                                  {included && (
+                                    <span className="text-zinc-500"> · included</span>
+                                  )}
+                                </span>
+                              </label>
+                            );
+                          })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Scope */}
+              <div>
+                <p className="text-xs font-medium tracking-wide text-zinc-400">
+                  Scope
+                </p>
+                {anyEventScoped ? (
+                  <div className="mt-1.5 rounded-lg bg-white/5 p-4 ring-1 ring-inset ring-white/10">
+                    <div className="grid max-h-56 grid-cols-1 gap-x-6 gap-y-2.5 overflow-y-auto sm:grid-cols-2 lg:grid-cols-3">
+                      <label className="flex cursor-pointer items-center gap-2.5 text-sm text-zinc-200">
+                        <input
+                          type="checkbox"
+                          className="size-5 shrink-0 rounded accent-rose-500 sm:size-4"
+                          checked={allEvents}
+                          onChange={() => setEventIds(new Set())}
+                        />
+                        <span>
+                          All events{" "}
+                          <span className="text-zinc-500">· incl. future</span>
+                        </span>
+                      </label>
+                      {events.map((ev) => (
+                        <label
+                          key={ev.id}
+                          className="flex cursor-pointer items-center gap-2.5 text-sm text-zinc-200"
+                        >
+                          <input
+                            type="checkbox"
+                            className="size-5 shrink-0 rounded accent-rose-500 sm:size-4"
+                            checked={eventIds.has(ev.id)}
+                            onChange={() => toggleEvent(ev.id)}
+                          />
+                          <span className="truncate">{ev.name}</span>
+                        </label>
+                      ))}
+                    </div>
+                    <p className="mt-3 text-xs text-zinc-500">
+                      {allEvents
+                        ? "Applies to every event, including future ones."
+                        : `Applies to ${eventIds.size} selected event(s) — each event × permission becomes its own grant.`}
                     </p>
                   </div>
-                </div>
-                <button
-                  onClick={() => handleRemoveUser(admin.id, "admin")}
-                  className="flex items-center gap-2 px-3 py-1.5 text-rose-400 hover:bg-rose-500/10 rounded text-sm transition-colors"
-                >
-                  <svg
-                    className="w-4 h-4"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                    />
-                  </svg>
-                  Remove
-                </button>
+                ) : (
+                  <p className="mt-1.5 text-sm text-zinc-500">
+                    The selected permissions apply globally — no event scope
+                    needed.
+                  </p>
+                )}
               </div>
-            ))
-          )
-        ) : activeTab === "scanners" ? (
-          scanners.length === 0 ? (
-            <div className="text-center py-12 bg-zinc-900/50 rounded-xl border border-zinc-800">
-              <p className="text-zinc-400">No scanners found</p>
+            </div>
+
+            <div className="mt-6 flex items-center justify-between gap-3 border-t border-white/10 pt-5">
+              <p className="text-xs text-zinc-500">
+                {selectedPerms.size === 0
+                  ? "Select at least one permission."
+                  : `${perPersonGrantCount} grant(s) per person.`}
+              </p>
+              <button
+                type="button"
+                onClick={handleGrant}
+                disabled={isSubmitting}
+                className="rounded-lg bg-rose-500 px-3 py-2 text-sm font-semibold text-white hover:bg-rose-400 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose-500 disabled:opacity-50"
+              >
+                {isSubmitting ? "Granting…" : "Grant access"}
+              </button>
+            </div>
+          </section>
+
+          {/* One entry per user */}
+          {users.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-white/10 px-6 py-16 text-center">
+              <p className="text-sm font-medium text-zinc-300">
+                No users with access yet
+              </p>
+              <p className="mt-1 text-sm text-zinc-500">
+                Grant a permission above to get started.
+              </p>
             </div>
           ) : (
-            scanners.map((scanner) => (
-              <div
-                key={scanner.id}
-                className="bg-zinc-900 rounded-xl border border-zinc-800 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:border-zinc-700 transition-colors"
-              >
-                <div className="flex items-center gap-4">
-                  <div className="w-10 h-10 bg-blue-500/20 rounded-full flex items-center justify-center">
-                    <svg
-                      className="w-5 h-5 text-blue-400"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"
-                      />
-                    </svg>
-                  </div>
-                  <div>
-                    <p className="text-white font-medium">{scanner.email}</p>
-                    <p className="text-zinc-500 text-sm">
-                      Added {new Date(scanner.created_at).toLocaleDateString("en-US", { timeZone: "America/Los_Angeles" })}
+            <ul
+              role="list"
+              className="divide-y divide-white/10 overflow-hidden rounded-2xl border border-white/10 bg-zinc-900/60"
+            >
+              {users.map((user) => (
+                <li key={user.email} className="flex items-start gap-4 p-4 sm:p-5">
+                  <span
+                    aria-hidden="true"
+                    className="flex size-9 shrink-0 items-center justify-center rounded-full bg-white/10 text-sm font-medium text-zinc-300"
+                  >
+                    {user.email.charAt(0).toUpperCase()}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium text-white">
+                      {user.email}
                     </p>
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {user.isAdmin && (
+                        <Chip
+                          actionKey="admin"
+                          label="Admin"
+                          scope="Full access"
+                          onRemove={() => handleRevokeRole(user, "admin")}
+                        />
+                      )}
+                      {user.isScanner && (
+                        <Chip
+                          actionKey="scanner"
+                          label="Scanner"
+                          scope="All events"
+                          onRemove={() => handleRevokeRole(user, "scanner")}
+                        />
+                      )}
+                      {user.grants.map((g) => (
+                        <Chip
+                          key={g.id}
+                          actionKey={g.action}
+                          label={grantLabel(g)}
+                          scope={grantScopeLabel(g)}
+                          onRemove={() => handleRevokeGrant(user, g)}
+                        />
+                      ))}
+                      {!user.isAdmin &&
+                        !user.isScanner &&
+                        user.grants.length === 0 && (
+                          <span className="text-sm text-zinc-500">
+                            No active permissions
+                          </span>
+                        )}
+                    </div>
                   </div>
-                </div>
-                <button
-                  onClick={() => handleRemoveUser(scanner.id, "scanner")}
-                  className="flex items-center gap-2 px-3 py-1.5 text-rose-400 hover:bg-rose-500/10 rounded text-sm transition-colors"
-                >
-                  <svg
-                    className="w-4 h-4"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                    />
-                  </svg>
-                  Remove
-                </button>
-              </div>
-            ))
-          )
-        ) : activeTab === "feeWaivers" ? (
-          feeWaivers.length === 0 ? (
-            <div className="text-center py-12 bg-zinc-900/50 rounded-xl border border-zinc-800">
-              <p className="text-zinc-400">No fee waiver users</p>
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
+      ) : (
+        <>
+          {/* Simple add form */}
+          <section className="mb-6 rounded-2xl border border-white/10 bg-zinc-900/60 p-5 sm:p-6">
+            <h2 className="text-sm font-semibold text-white">
+              {activeTab === "feeWaivers"
+                ? "Add fee waiver"
+                : activeTab === "bans"
+                  ? "Ban a user"
+                  : "Suppress an email address"}
+            </h2>
+            <p className="mt-1 text-sm text-zinc-400">
+              Separate multiple emails with commas.
+            </p>
+            <div className="mt-4 flex flex-col gap-3 sm:flex-row">
+              <input
+                type="text"
+                name="email"
+                aria-label="Email addresses"
+                placeholder="person@stanford.edu, other@stanford.edu"
+                value={newEmail}
+                onChange={(e) => setNewEmail(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleAddSimple()}
+                className="flex-1 rounded-lg bg-white/5 px-3 py-2 text-sm text-white ring-1 ring-inset ring-white/10 placeholder:text-zinc-500 focus:outline-2 focus:-outline-offset-1 focus:outline-rose-500 max-sm:text-base"
+              />
+              <button
+                type="button"
+                onClick={handleAddSimple}
+                disabled={isSubmitting}
+                className="rounded-lg bg-rose-500 px-3 py-2 text-sm font-semibold text-white hover:bg-rose-400 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose-500 disabled:opacity-50"
+              >
+                {isSubmitting ? "Adding…" : "Add"}
+              </button>
+            </div>
+          </section>
+
+          {simpleRows.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-white/10 px-6 py-16 text-center">
+              <p className="text-sm font-medium text-zinc-300">Nothing here yet</p>
+              <p className="mt-1 text-sm text-zinc-500">
+                Add an email above to populate this list.
+              </p>
             </div>
           ) : (
-            <>
-              <div className="flex justify-end">
-                <button
-                  onClick={handleClearAllFeeWaivers}
-                  disabled={isSubmitting}
-                  className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-rose-500/10 text-rose-400 border border-rose-500/30 hover:bg-rose-500/20 transition-colors disabled:opacity-50"
+            <ul
+              role="list"
+              className="divide-y divide-white/10 overflow-hidden rounded-2xl border border-white/10 bg-zinc-900/60"
+            >
+              {simpleRows.map((row) => (
+                <li
+                  key={row.id}
+                  className="flex items-center justify-between gap-3 p-4 sm:px-5"
                 >
-                  <svg
-                    className="w-4 h-4"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                    />
-                  </svg>
-                  Clear All ({feeWaivers.length})
-                </button>
-              </div>
-              {feeWaivers.map((feeWaiver) => (
-              <div
-                key={feeWaiver.id}
-                className="bg-zinc-900 rounded-xl border border-zinc-800 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:border-zinc-700 transition-colors"
-              >
-                <div className="flex items-center gap-4">
-                  <div className="w-10 h-10 bg-amber-500/20 rounded-full flex items-center justify-center">
-                    <svg
-                      className="w-5 h-5 text-amber-400"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M12 9v3.75m0 3.75h.008v.008H12v-.008Zm7.938-2.25A9 9 0 1112 3a9 9 0 017.938 9.75Z"
-                      />
-                    </svg>
-                  </div>
-                  <div>
-                    <p className="text-white font-medium">{feeWaiver.email}</p>
-                    <p className="text-zinc-500 text-sm">
-                      Marked ineligible{" "}
-                      {new Date(feeWaiver.created_at).toLocaleDateString("en-US", {
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-white">
+                      {row.email}
+                    </p>
+                    <p className="mt-0.5 text-xs text-zinc-500">
+                      Added{" "}
+                      {new Date(row.created_at).toLocaleDateString("en-US", {
                         timeZone: "America/Los_Angeles",
                       })}
                     </p>
                   </div>
-                </div>
-                <button
-                  onClick={() => handleRemoveUser(feeWaiver.id, "fee_waiver")}
-                  className="flex items-center gap-2 px-3 py-1.5 text-emerald-400 hover:bg-emerald-500/10 rounded text-sm transition-colors"
-                >
-                  <svg
-                    className="w-4 h-4"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveSimple(row.id)}
+                    className="shrink-0 rounded-md px-2.5 py-1.5 text-sm font-medium text-zinc-400 hover:bg-white/5 hover:text-rose-400"
                   >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M5 13l4 4L19 7"
-                    />
-                  </svg>
-                  Remove Waiver
-                </button>
-              </div>
+                    Remove
+                  </button>
+                </li>
               ))}
-            </>
-          )
-        ) : activeTab === "bans" ? (
-          bans.length === 0 ? (
-            <div className="text-center py-12 bg-zinc-900/50 rounded-xl border border-zinc-800">
-              <p className="text-zinc-400">No banned users</p>
-            </div>
-          ) : (
-            bans.map((ban) => (
-            <div
-              key={ban.id}
-              className="bg-zinc-900 rounded-xl border border-zinc-800 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:border-zinc-700 transition-colors"
-            >
-              <div className="flex items-center gap-4">
-                <div className="w-10 h-10 bg-rose-500/20 rounded-full flex items-center justify-center">
-                  <svg
-                    className="w-5 h-5 text-rose-400"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"
-                    />
-                  </svg>
-                </div>
-                <div>
-                  <p className="text-white font-medium">{ban.email}</p>
-                  <p className="text-zinc-500 text-sm">
-                    Banned {new Date(ban.created_at).toLocaleDateString("en-US", { timeZone: "America/Los_Angeles" })}
-                  </p>
-                </div>
-              </div>
-              <button
-                onClick={() => handleRemoveUser(ban.id, "ban")}
-                className="flex items-center gap-2 px-3 py-1.5 text-emerald-400 hover:bg-emerald-500/10 rounded text-sm transition-colors"
-              >
-                <svg
-                  className="w-4 h-4"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-                  />
-                </svg>
-                Unban
-              </button>
-            </div>
-          ))
-          )
-        ) : emailSuppressions.length === 0 ? (
-          <div className="text-center py-12 bg-zinc-900/50 rounded-xl border border-zinc-800">
-            <p className="text-zinc-400">No suppressed emails</p>
-          </div>
-        ) : (
-          emailSuppressions.map((suppression) => (
-            <div
-              key={suppression.id}
-              className="bg-zinc-900 rounded-xl border border-zinc-800 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:border-zinc-700 transition-colors"
-            >
-              <div className="flex items-center gap-4">
-                <div className="w-10 h-10 bg-zinc-500/20 rounded-full flex items-center justify-center">
-                  <svg
-                    className="w-5 h-5 text-zinc-300"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
-                    />
-                  </svg>
-                </div>
-                <div>
-                  <p className="text-white font-medium">{suppression.email}</p>
-                  <p className="text-zinc-500 text-sm">
-                    Suppressed{" "}
-                    {new Date(suppression.created_at).toLocaleDateString(
-                      "en-US",
-                      { timeZone: "America/Los_Angeles" },
-                    )}
-                  </p>
-                </div>
-              </div>
-              <button
-                onClick={() =>
-                  handleRemoveUser(suppression.id, "email_suppression")
-                }
-                className="flex items-center gap-2 px-3 py-1.5 text-emerald-400 hover:bg-emerald-500/10 rounded text-sm transition-colors"
-              >
-                <svg
-                  className="w-4 h-4"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M5 13l4 4L19 7"
-                  />
-                </svg>
-                Unsuppress
-              </button>
-            </div>
-          ))
-        )}
-      </div>
+            </ul>
+          )}
+        </>
+      )}
     </div>
+  );
+}
+
+const DOT_COLORS: Record<string, string> = {
+  admin: "bg-rose-400",
+  scanner: "bg-sky-400",
+  "tickets.view": "bg-emerald-400",
+  "tickets.edit": "bg-emerald-400",
+  "tickets.delete": "bg-emerald-400",
+  "tickets.scan": "bg-emerald-400",
+  "questions.manage": "bg-violet-400",
+  "suggestions.manage": "bg-amber-400",
+  "events.create": "bg-blue-400",
+  "events.edit": "bg-blue-400",
+  "campaigns.send": "bg-pink-400",
+  "audience.view": "bg-teal-400",
+};
+
+function Chip({
+  actionKey,
+  label,
+  scope,
+  onRemove,
+}: {
+  actionKey: string;
+  label: string;
+  scope: string;
+  onRemove: () => void;
+}) {
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-md bg-white/5 py-1 pr-1 pl-2 text-xs ring-1 ring-inset ring-white/10">
+      <span
+        aria-hidden="true"
+        className={`size-1.5 shrink-0 rounded-full ${DOT_COLORS[actionKey] ?? "bg-zinc-400"}`}
+      />
+      <span className="font-medium text-zinc-200">{label}</span>
+      <span className="text-zinc-500">{scope}</span>
+      <button
+        type="button"
+        onClick={onRemove}
+        aria-label={`Revoke ${label}`}
+        title="Revoke"
+        className="ml-0.5 flex size-4 items-center justify-center rounded text-zinc-500 hover:bg-white/10 hover:text-rose-400"
+      >
+        ✕
+      </button>
+    </span>
   );
 }

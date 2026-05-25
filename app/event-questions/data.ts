@@ -1,8 +1,10 @@
-import { verifyAdminRequest } from "@/app/lib/auth";
+import { getSessionUser } from "@/app/lib/auth";
+import { getEffectivePermissions } from "@/app/lib/permissions";
 import {
   db,
   eventQuestionVotes,
   events,
+  eventQuestions,
   inArray,
 } from "@ssb/db";
 
@@ -26,12 +28,21 @@ export async function getAdminEventQuestions(): Promise<{
   questions: AdminEventQuestion[];
 }> {
   try {
-    const auth = await verifyAdminRequest();
-    if (!auth.authorized) {
+    const user = await getSessionUser();
+    const perms = await getEffectivePermissions(user?.email);
+    const canAllEvents =
+      perms.isAdmin || perms.allEventActions.has("questions.manage");
+    const scopedEventIds = perms.eventScopes.get("questions.manage");
+
+    // No questions.manage anywhere → nothing to show.
+    if (!canAllEvents && (!scopedEventIds || scopedEventIds.size === 0)) {
       return { questions: [] };
     }
 
     const rows = await db.query.eventQuestions.findMany({
+      where: canAllEvents
+        ? undefined
+        : inArray(eventQuestions.eventId, [...scopedEventIds!]),
       orderBy: (q, { desc }) => [desc(q.createdAt)],
     });
 

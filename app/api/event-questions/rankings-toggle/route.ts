@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { verifyAdminRequest } from "@/app/lib/auth";
+import { requirePermission } from "@/app/lib/permissions";
 import { getAdminEventQuestions } from "@/app/event-questions/data";
 import { db, eq, events } from "@ssb/db";
 import { isValidUUID } from "@/app/lib/validation";
@@ -7,11 +7,6 @@ import { logAuditEvent } from "@/app/lib/audit";
 
 export async function PATCH(req: Request) {
   try {
-    const auth = await verifyAdminRequest();
-    if (!auth.authorized) {
-      return NextResponse.json({ error: auth.error }, { status: 401 });
-    }
-
     const body = await req.json();
     const { eventId, rankingsHidden } = body as {
       eventId?: string;
@@ -36,6 +31,11 @@ export async function PATCH(req: Request) {
         { error: "Invalid event ID format" },
         { status: 400 },
       );
+    }
+
+    const auth = await requirePermission("questions.manage", eventId);
+    if (!auth.authorized) {
+      return NextResponse.json({ error: auth.error }, { status: 401 });
     }
 
     const existing = await db.query.events.findFirst({
