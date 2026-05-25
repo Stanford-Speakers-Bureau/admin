@@ -1,6 +1,21 @@
 "use client";
 
 import { Fragment, useState, useEffect, useCallback, useRef } from "react";
+import {
+  Button,
+  Card,
+  Input,
+  Label,
+  PageHeader,
+  StatusPill,
+  Table,
+  TableScroll,
+  THead,
+  TBody,
+  TR,
+  TH,
+  TD,
+} from "@/app/components/ui";
 
 type AuditLogEntry = {
   kind: "log";
@@ -94,18 +109,90 @@ const ACTION_LABELS: Record<string, string> = {
 };
 
 const ACTION_OPTIONS = [
-  { group: "Tickets", actions: ["ticket.get", "ticket.ineligible", "ticket.cancel", "ticket.create", "ticket.delete", "ticket.update_name", "ticket.update_type", "ticket.unscan"] },
+  {
+    group: "Tickets",
+    actions: [
+      "ticket.get",
+      "ticket.ineligible",
+      "ticket.cancel",
+      "ticket.create",
+      "ticket.delete",
+      "ticket.update_name",
+      "ticket.update_type",
+      "ticket.unscan",
+    ],
+  },
   { group: "Email", actions: ["email.send", "email.send_mass"] },
-  { group: "Events", actions: ["event.create", "event.edit", "event.toggle_live", "event.toggle_standby", "event.delete"] },
+  {
+    group: "Events",
+    actions: [
+      "event.create",
+      "event.edit",
+      "event.toggle_live",
+      "event.toggle_standby",
+      "event.delete",
+    ],
+  },
   { group: "Users", actions: ["user.add_role", "user.remove_role"] },
-  { group: "Suggestions", actions: ["suggestion.submit", "suggestion.approve", "suggestion.reject", "suggestion.edit", "suggestion.mark_duplicate", "suggestion.mark_spoke", "suggestion.merge", "suggestion.sync_votes", "suggestion.edit_votes"] },
-  { group: "Moderator Q&A", actions: ["event_question.submit", "event_question.approve", "event_question.reject", "event_question.edit", "event_question.hide", "event_question.unhide", "event_question.mark_duplicate", "event_question.merge", "event_question.sync_votes", "event_question.edit_votes", "event_question.event_enabled", "event_question.event_disabled", "event_question.rankings_shown", "event_question.rankings_hidden"] },
+  {
+    group: "Suggestions",
+    actions: [
+      "suggestion.submit",
+      "suggestion.approve",
+      "suggestion.reject",
+      "suggestion.edit",
+      "suggestion.mark_duplicate",
+      "suggestion.mark_spoke",
+      "suggestion.merge",
+      "suggestion.sync_votes",
+      "suggestion.edit_votes",
+    ],
+  },
+  {
+    group: "Moderator Q&A",
+    actions: [
+      "event_question.submit",
+      "event_question.approve",
+      "event_question.reject",
+      "event_question.edit",
+      "event_question.hide",
+      "event_question.unhide",
+      "event_question.mark_duplicate",
+      "event_question.merge",
+      "event_question.sync_votes",
+      "event_question.edit_votes",
+      "event_question.event_enabled",
+      "event_question.event_disabled",
+      "event_question.rankings_shown",
+      "event_question.rankings_hidden",
+    ],
+  },
   { group: "Campaigns", actions: ["campaign.create", "campaign.send"] },
-  { group: "Mailing List", actions: ["mailing_list.subscribe", "mailing_list.unsubscribe", "mailing_list.resubscribe", "mailing_list.admin_unsubscribe", "mailing_list.admin_resubscribe"] },
-  { group: "Waitlist", actions: ["waitlist.join", "waitlist.leave", "waitlist.pull", "waitlist.issue_standby"] },
+  {
+    group: "Mailing List",
+    actions: [
+      "mailing_list.subscribe",
+      "mailing_list.unsubscribe",
+      "mailing_list.resubscribe",
+      "mailing_list.admin_unsubscribe",
+      "mailing_list.admin_resubscribe",
+    ],
+  },
+  {
+    group: "Waitlist",
+    actions: [
+      "waitlist.join",
+      "waitlist.leave",
+      "waitlist.pull",
+      "waitlist.issue_standby",
+    ],
+  },
   { group: "Referrals", actions: ["referral.toggle"] },
   { group: "Notify", actions: ["notify.signup"] },
-  { group: "Wallet", actions: ["wallet.install", "wallet.uninstall", "wallet.push"] },
+  {
+    group: "Wallet",
+    actions: ["wallet.install", "wallet.uninstall", "wallet.push"],
+  },
 ];
 
 const ACTION_FILTER_OPTIONS = ACTION_OPTIONS.flatMap((group) =>
@@ -145,25 +232,31 @@ type FilterOption = {
 };
 
 function getActionColor(action: string) {
-  if (action.startsWith("ticket.")) return "bg-emerald-500/15 text-emerald-400 border-emerald-500/30";
-  if (action.startsWith("email.")) return "bg-blue-500/15 text-blue-400 border-blue-500/30";
-  if (action.startsWith("event_question.")) return "bg-violet-500/15 text-violet-400 border-violet-500/30";
-  if (action.startsWith("event.")) return "bg-amber-500/15 text-amber-400 border-amber-500/30";
-  if (action.startsWith("user.")) return "bg-pink-500/15 text-pink-400 border-pink-500/30";
-  if (action.startsWith("suggestion.")) return "bg-orange-500/15 text-orange-400 border-orange-500/30";
-  if (action.startsWith("campaign.")) return "bg-teal-500/15 text-teal-400 border-teal-500/30";
-  if (action.startsWith("mailing_list.")) return "bg-lime-500/15 text-lime-400 border-lime-500/30";
-  if (action.startsWith("waitlist.")) return "bg-cyan-500/15 text-cyan-400 border-cyan-500/30";
-  if (action.startsWith("referral.")) return "bg-indigo-500/15 text-indigo-400 border-indigo-500/30";
-  if (action.startsWith("notify.")) return "bg-purple-500/15 text-purple-400 border-purple-500/30";
-  if (action.startsWith("wallet.")) return "bg-sky-500/15 text-sky-400 border-sky-500/30";
-  return "bg-zinc-500/15 text-zinc-400 border-zinc-500/30";
-}
-
-function getSourceColor(source: string) {
-  return source === "admin"
-    ? "bg-rose-500/15 text-rose-400 border-rose-500/30"
-    : "bg-sky-500/15 text-sky-400 border-sky-500/30";
+  if (action.startsWith("ticket."))
+    return "bg-emerald-500/15 text-emerald-400 ring-1 ring-inset ring-emerald-500/30";
+  if (action.startsWith("email."))
+    return "bg-blue-500/15 text-blue-400 ring-1 ring-inset ring-blue-500/30";
+  if (action.startsWith("event_question."))
+    return "bg-violet-500/15 text-violet-400 ring-1 ring-inset ring-violet-500/30";
+  if (action.startsWith("event."))
+    return "bg-amber-500/15 text-amber-400 ring-1 ring-inset ring-amber-500/30";
+  if (action.startsWith("user."))
+    return "bg-pink-500/15 text-pink-400 ring-1 ring-inset ring-pink-500/30";
+  if (action.startsWith("suggestion."))
+    return "bg-orange-500/15 text-orange-400 ring-1 ring-inset ring-orange-500/30";
+  if (action.startsWith("campaign."))
+    return "bg-teal-500/15 text-teal-400 ring-1 ring-inset ring-teal-500/30";
+  if (action.startsWith("mailing_list."))
+    return "bg-lime-500/15 text-lime-400 ring-1 ring-inset ring-lime-500/30";
+  if (action.startsWith("waitlist."))
+    return "bg-cyan-500/15 text-cyan-400 ring-1 ring-inset ring-cyan-500/30";
+  if (action.startsWith("referral."))
+    return "bg-indigo-500/15 text-indigo-400 ring-1 ring-inset ring-indigo-500/30";
+  if (action.startsWith("notify."))
+    return "bg-purple-500/15 text-purple-400 ring-1 ring-inset ring-purple-500/30";
+  if (action.startsWith("wallet."))
+    return "bg-sky-500/15 text-sky-400 ring-1 ring-inset ring-sky-500/30";
+  return "bg-zinc-500/15 text-zinc-400 ring-1 ring-inset ring-zinc-500/30";
 }
 
 function timeAgo(dateStr: string): string {
@@ -266,11 +359,7 @@ function getMetadataEntries(
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    !Array.isArray(value)
-  );
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function isFromToChange(
@@ -345,7 +434,8 @@ function getDetailsSummary(log: AuditLogItem): string {
   if (log.action === "event.create" && isPlainObject(log.metadata?.initial)) {
     const initial = log.metadata!.initial as Record<string, unknown>;
     const parts: string[] = [];
-    if (initial.venue) parts.push(`Venue: ${formatMetadataValue(initial.venue)}`);
+    if (initial.venue)
+      parts.push(`Venue: ${formatMetadataValue(initial.venue)}`);
     if (typeof initial.capacity === "number")
       parts.push(`Capacity: ${initial.capacity.toLocaleString()}`);
     if (initial.startTime)
@@ -359,7 +449,10 @@ function getDetailsSummary(log: AuditLogItem): string {
     const sent = getMetadataNumber(log.metadata, "sent");
     const failed = getMetadataNumber(log.metadata, "failed");
     const skipped = getMetadataNumber(log.metadata, "skipped");
-    const skippedHasTicket = getMetadataNumber(log.metadata, "skippedHasTicket");
+    const skippedHasTicket = getMetadataNumber(
+      log.metadata,
+      "skippedHasTicket",
+    );
     const skippedOptedOut = getMetadataNumber(log.metadata, "skippedOptedOut");
     const suppressed = getMetadataNumber(log.metadata, "suppressed");
     const chunkCount = isAuditLogGroup(log) ? log.group_count : 1;
@@ -369,7 +462,9 @@ function getDetailsSummary(log: AuditLogItem): string {
       segments.push(`${failed.toLocaleString()} failed`);
     }
     if (skippedHasTicket > 0) {
-      segments.push(`${skippedHasTicket.toLocaleString()} already had a ticket`);
+      segments.push(
+        `${skippedHasTicket.toLocaleString()} already had a ticket`,
+      );
     }
     if (skippedOptedOut > 0) {
       segments.push(`${skippedOptedOut.toLocaleString()} opted out`);
@@ -396,26 +491,23 @@ function getDetailsSummary(log: AuditLogItem): string {
 
   return metadataEntries
     .slice(0, 2)
-    .map(([key, value]) => `${formatMetadataKey(key)}: ${formatMetadataValue(value)}`)
+    .map(
+      ([key, value]) =>
+        `${formatMetadataKey(key)}: ${formatMetadataValue(value)}`,
+    )
     .join(" • ");
 }
 
 const PAGE_SIZE = 50;
 
-function ChangesGrid({
-  changes,
-}: {
-  changes: Record<string, unknown>;
-}) {
+function ChangesGrid({ changes }: { changes: Record<string, unknown> }) {
   const entries = Object.entries(changes).filter(([, value]) =>
     isFromToChange(value),
   ) as Array<[string, { from: unknown; to: unknown }]>;
 
   if (entries.length === 0) {
     return (
-      <p className="text-sm text-zinc-500">
-        No field-level changes recorded.
-      </p>
+      <p className="text-sm text-zinc-500">No field-level changes recorded.</p>
     );
   }
 
@@ -424,17 +516,17 @@ function ChangesGrid({
       {entries.map(([field, change]) => (
         <div
           key={field}
-          className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-3"
+          className="rounded-lg border border-white/10 bg-zinc-900/60 p-3"
         >
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
+          <p className="text-[11px] font-semibold tracking-wide text-zinc-500">
             {formatMetadataKey(field)}
           </p>
           <div className="mt-1 flex flex-wrap items-center gap-2 text-sm">
-            <span className="rounded-md border border-rose-500/30 bg-rose-500/10 px-2 py-0.5 text-rose-200 break-words">
+            <span className="rounded-md bg-rose-500/10 px-2 py-0.5 text-rose-200 ring-1 ring-inset ring-rose-500/30 break-words">
               {formatChangeValue(change.from)}
             </span>
             <span className="text-zinc-500">→</span>
-            <span className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-emerald-200 break-words">
+            <span className="rounded-md bg-emerald-500/10 px-2 py-0.5 text-emerald-200 ring-1 ring-inset ring-emerald-500/30 break-words">
               {formatChangeValue(change.to)}
             </span>
           </div>
@@ -444,17 +536,15 @@ function ChangesGrid({
   );
 }
 
-function SnapshotGrid({
-  snapshot,
-}: {
-  snapshot: Record<string, unknown>;
-}) {
+function SnapshotGrid({ snapshot }: { snapshot: Record<string, unknown> }) {
   const entries = Object.entries(snapshot).filter(
     ([, value]) => value !== null && value !== undefined && value !== "",
   );
 
   if (entries.length === 0) {
-    return <p className="text-sm text-zinc-500">No starting values captured.</p>;
+    return (
+      <p className="text-sm text-zinc-500">No starting values captured.</p>
+    );
   }
 
   return (
@@ -462,9 +552,9 @@ function SnapshotGrid({
       {entries.map(([key, value]) => (
         <div
           key={key}
-          className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-3"
+          className="rounded-lg border border-white/10 bg-zinc-900/60 p-3"
         >
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
+          <p className="text-[11px] font-semibold tracking-wide text-zinc-500">
             {formatMetadataKey(key)}
           </p>
           <p className="mt-1 text-sm text-zinc-200 break-words">
@@ -485,7 +575,8 @@ function FailedRecipients({ failures }: { failures: AuditLogEntry[] }) {
     if (typeof err === "string" && err.trim().length > 0) return err;
     if (isPlainObject(err)) {
       const message = (err as Record<string, unknown>).message;
-      if (typeof message === "string" && message.trim().length > 0) return message;
+      if (typeof message === "string" && message.trim().length > 0)
+        return message;
       try {
         return JSON.stringify(err);
       } catch {
@@ -520,7 +611,7 @@ function FailedRecipients({ failures }: { failures: AuditLogEntry[] }) {
   };
 
   return (
-    <div className="rounded-xl border border-rose-500/30 bg-rose-950/20 p-4">
+    <div className="rounded-2xl bg-rose-950/20 p-4 ring-1 ring-inset ring-rose-500/30">
       <div className="mb-3 flex items-center justify-between gap-3">
         <div>
           <p className="text-sm font-semibold text-rose-200">
@@ -530,22 +621,22 @@ function FailedRecipients({ failures }: { failures: AuditLogEntry[] }) {
             Per-recipient send errors recorded during this run.
           </p>
         </div>
-        <button
-          type="button"
+        <Button
+          variant="secondary"
           onClick={downloadCsv}
-          className="rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-1.5 text-xs font-medium text-rose-200 transition-colors hover:bg-rose-500/20"
+          className="px-3 py-1.5 text-xs"
         >
           Download CSV
-        </button>
+        </Button>
       </div>
-      <div className="overflow-hidden rounded-lg border border-rose-500/20">
+      <div className="overflow-hidden rounded-lg ring-1 ring-inset ring-rose-500/20">
         <table className="w-full text-sm">
           <thead className="bg-rose-500/10">
             <tr>
-              <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-rose-200/80">
+              <th className="px-3 py-2 text-left text-[11px] font-semibold tracking-wide text-rose-200/80">
                 Email
               </th>
-              <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-rose-200/80">
+              <th className="px-3 py-2 text-left text-[11px] font-semibold tracking-wide text-rose-200/80">
                 Error
               </th>
             </tr>
@@ -596,11 +687,7 @@ function MetadataDetails({
   const hasInitial = isPlainObject(initial);
   const hasChanges = isPlainObject(changes) && Object.keys(changes).length > 0;
 
-  if (
-    metadataEntries.length === 0 &&
-    !hasInitial &&
-    !hasChanges
-  ) {
+  if (metadataEntries.length === 0 && !hasInitial && !hasChanges) {
     return <p className="text-sm text-zinc-500">No additional details.</p>;
   }
 
@@ -608,7 +695,7 @@ function MetadataDetails({
     <div className="space-y-4">
       {hasChanges ? (
         <div>
-          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
+          <p className="mb-2 text-[11px] font-semibold tracking-wide text-zinc-500">
             Changes
           </p>
           <ChangesGrid changes={changes as Record<string, unknown>} />
@@ -617,7 +704,7 @@ function MetadataDetails({
 
       {hasInitial ? (
         <div>
-          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
+          <p className="mb-2 text-[11px] font-semibold tracking-wide text-zinc-500">
             Starting values
           </p>
           <SnapshotGrid snapshot={initial as Record<string, unknown>} />
@@ -629,9 +716,9 @@ function MetadataDetails({
           {metadataEntries.map(([key, value]) => (
             <div
               key={key}
-              className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-3"
+              className="rounded-lg border border-white/10 bg-zinc-900/60 p-3"
             >
-              <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
+              <p className="text-[11px] font-semibold tracking-wide text-zinc-500">
                 {formatMetadataKey(key)}
               </p>
               <p className="mt-1 text-sm text-zinc-200 break-words">
@@ -717,7 +804,7 @@ function FilterDropdown({
       <button
         type="button"
         onClick={onToggle}
-        className="inline-flex w-full items-center gap-2 rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-2 text-sm font-medium text-zinc-200 transition-colors hover:border-zinc-500 hover:bg-zinc-800/80"
+        className="inline-flex w-full items-center gap-2 rounded-lg bg-white/5 px-4 py-2 text-sm font-medium text-zinc-200 ring-1 ring-inset ring-white/10 transition-colors hover:bg-white/10"
         aria-expanded={isOpen}
         aria-haspopup="menu"
       >
@@ -754,7 +841,7 @@ function FilterDropdown({
       </button>
 
       {isOpen && (
-        <div className="absolute left-0 top-full z-20 mt-2 w-full min-w-[20rem] rounded-2xl border border-zinc-800 bg-zinc-950/95 p-3 shadow-2xl backdrop-blur">
+        <div className="absolute left-0 top-full z-20 mt-2 w-full min-w-[20rem] rounded-2xl border border-white/10 bg-zinc-950/95 p-3 shadow-2xl backdrop-blur">
           <div className="mb-3 px-1">
             <p className="text-sm font-semibold text-white">{title}</p>
             <p className="text-xs text-zinc-500">
@@ -762,46 +849,48 @@ function FilterDropdown({
             </p>
           </div>
           <div className="mb-3 flex items-center gap-2 px-1">
-            <button
-              type="button"
+            <Button
+              variant="secondary"
               onClick={onSelectAll}
-              className="rounded-lg border border-zinc-700 px-2.5 py-1.5 text-xs font-medium text-zinc-300 transition-colors hover:border-zinc-500 hover:text-white"
+              className="px-2.5 py-1.5 text-xs"
             >
               Select all
-            </button>
-            <button
-              type="button"
+            </Button>
+            <Button
+              variant="secondary"
               onClick={onClear}
-              className="rounded-lg border border-zinc-700 px-2.5 py-1.5 text-xs font-medium text-zinc-300 transition-colors hover:border-zinc-500 hover:text-white"
+              className="px-2.5 py-1.5 text-xs"
             >
               Clear
-            </button>
+            </Button>
           </div>
           <div className="max-h-80 space-y-1 overflow-y-auto pr-1">
             {options.map((option, index) => {
               const checked = selectedValues.includes(option.value);
-              const previousGroup = index > 0 ? options[index - 1]?.group : undefined;
-              const showGroupLabel = option.group && option.group !== previousGroup;
+              const previousGroup =
+                index > 0 ? options[index - 1]?.group : undefined;
+              const showGroupLabel =
+                option.group && option.group !== previousGroup;
 
               return (
                 <div key={option.value}>
                   {showGroupLabel ? (
-                    <p className="px-2 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
+                    <p className="px-2 pb-1 pt-2 text-[11px] font-semibold tracking-wide text-zinc-500">
                       {option.group}
                     </p>
                   ) : null}
                   <label
-                    className={`flex cursor-pointer items-center gap-3 rounded-xl border px-3 py-2 text-sm transition-colors ${
+                    className={`flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2 text-sm ring-1 ring-inset transition-colors ${
                       checked
-                        ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-100"
-                        : "border-zinc-800 bg-zinc-900/60 text-zinc-300 hover:border-zinc-700"
+                        ? "bg-rose-500/10 text-rose-100 ring-rose-500/30"
+                        : "bg-zinc-900/60 text-zinc-300 ring-white/10 hover:bg-white/5"
                     }`}
                   >
                     <input
                       type="checkbox"
                       checked={checked}
                       onChange={() => onToggleValue(option.value)}
-                      className="h-4 w-4 rounded border-zinc-600 bg-zinc-900 text-emerald-500 focus:ring-emerald-500/40"
+                      className="size-5 rounded accent-rose-500 sm:size-4"
                     />
                     <span>{option.label}</span>
                   </label>
@@ -830,78 +919,78 @@ function ExpandedDetails({ log }: { log: AuditLogItem }) {
   return isAuditLogGroup(log) ? (
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
-        <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-3">
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
+        <div className="rounded-lg border border-white/10 bg-zinc-900/60 p-3">
+          <p className="text-[11px] font-semibold tracking-wide text-zinc-500">
             Sent
           </p>
-          <p className="mt-1 text-lg font-semibold text-white">
+          <p className="mt-1 text-lg font-semibold tabular-nums text-white">
             {sent.toLocaleString()}
           </p>
         </div>
-        <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-3">
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
+        <div className="rounded-lg border border-white/10 bg-zinc-900/60 p-3">
+          <p className="text-[11px] font-semibold tracking-wide text-zinc-500">
             Failed
           </p>
-          <p className="mt-1 text-lg font-semibold text-white">
+          <p className="mt-1 text-lg font-semibold tabular-nums text-white">
             {failed.toLocaleString()}
           </p>
         </div>
         {hasBrokenOutSkips ? (
           <>
-            <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-3">
-              <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
+            <div className="rounded-lg border border-white/10 bg-zinc-900/60 p-3">
+              <p className="text-[11px] font-semibold tracking-wide text-zinc-500">
                 Had ticket
               </p>
-              <p className="mt-1 text-lg font-semibold text-white">
+              <p className="mt-1 text-lg font-semibold tabular-nums text-white">
                 {skippedHasTicket.toLocaleString()}
               </p>
             </div>
-            <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-3">
-              <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
+            <div className="rounded-lg border border-white/10 bg-zinc-900/60 p-3">
+              <p className="text-[11px] font-semibold tracking-wide text-zinc-500">
                 Opted out
               </p>
-              <p className="mt-1 text-lg font-semibold text-white">
+              <p className="mt-1 text-lg font-semibold tabular-nums text-white">
                 {skippedOptedOut.toLocaleString()}
               </p>
             </div>
           </>
         ) : (
-          <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-3">
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
+          <div className="rounded-lg border border-white/10 bg-zinc-900/60 p-3">
+            <p className="text-[11px] font-semibold tracking-wide text-zinc-500">
               Skipped
             </p>
-            <p className="mt-1 text-lg font-semibold text-white">
+            <p className="mt-1 text-lg font-semibold tabular-nums text-white">
               {skipped.toLocaleString()}
             </p>
           </div>
         )}
-        <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-3">
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
+        <div className="rounded-lg border border-white/10 bg-zinc-900/60 p-3">
+          <p className="text-[11px] font-semibold tracking-wide text-zinc-500">
             Suppressed
           </p>
-          <p className="mt-1 text-lg font-semibold text-white">
+          <p className="mt-1 text-lg font-semibold tabular-nums text-white">
             {suppressed.toLocaleString()}
           </p>
         </div>
-        <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-3">
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
+        <div className="rounded-lg border border-white/10 bg-zinc-900/60 p-3">
+          <p className="text-[11px] font-semibold tracking-wide text-zinc-500">
             Recipients
           </p>
-          <p className="mt-1 text-lg font-semibold text-white">
+          <p className="mt-1 text-lg font-semibold tabular-nums text-white">
             {totalRecipients.toLocaleString()}
           </p>
         </div>
-        <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-3">
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
+        <div className="rounded-lg border border-white/10 bg-zinc-900/60 p-3">
+          <p className="text-[11px] font-semibold tracking-wide text-zinc-500">
             Chunks
           </p>
-          <p className="mt-1 text-lg font-semibold text-white">
+          <p className="mt-1 text-lg font-semibold tabular-nums text-white">
             {log.group_count.toLocaleString()}
           </p>
         </div>
       </div>
 
-      <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
+      <div className="rounded-2xl border border-white/10 bg-zinc-950/60 p-4">
         <div className="mb-3">
           <p className="text-sm font-semibold text-white">
             {getMassEmailLabel(log.metadata)}
@@ -919,7 +1008,7 @@ function ExpandedDetails({ log }: { log: AuditLogItem }) {
         {log.entries.map((entry, index) => (
           <div
             key={entry.id}
-            className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4"
+            className="rounded-2xl border border-white/10 bg-zinc-950/60 p-4"
           >
             <div className="mb-3 flex items-start justify-between gap-3">
               <div>
@@ -940,7 +1029,7 @@ function ExpandedDetails({ log }: { log: AuditLogItem }) {
       </div>
     </div>
   ) : (
-    <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
+    <div className="rounded-2xl border border-white/10 bg-zinc-950/60 p-4">
       <div className="mb-3 flex items-start justify-between gap-3">
         <div>
           <p className="text-sm font-semibold text-white">
@@ -950,11 +1039,9 @@ function ExpandedDetails({ log }: { log: AuditLogItem }) {
             {formatTimestamp(log.created_at)}
           </p>
         </div>
-        <span
-          className={`inline-block border rounded-full px-2 py-0.5 text-xs font-medium ${getSourceColor(log.source)}`}
-        >
+        <StatusPill color={log.source === "admin" ? "rose" : "sky"}>
           {log.source === "admin" ? "Admin" : "Web"}
-        </span>
+        </StatusPill>
       </div>
       <MetadataDetails metadata={log.metadata} />
     </div>
@@ -1118,339 +1205,367 @@ export default function AuditLogClient() {
   }, []);
 
   return (
-    <div className="px-4 sm:px-6 py-8">
+    <div className="px-4 sm:px-6 py-8 space-y-6">
       {/* Header */}
-      <div className="mb-6">
-        <h1 className="text-2xl sm:text-3xl font-bold text-white font-serif mb-1">
-          Audit Log
-        </h1>
-        <p className="text-zinc-400 text-sm">
-          Track all admin and user actions across the platform.
-        </p>
-      </div>
+      <PageHeader
+        title="Audit log"
+        subtitle="Track all admin and user actions across the platform."
+      />
 
       {/* Filters */}
-      <div
-        ref={filterDropdownRef}
-        className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 mb-6"
-      >
-        <div className="flex items-center justify-between gap-3 mb-4">
-          <div>
-            <h3 className="text-sm font-semibold text-zinc-300">Filters</h3>
-            <p className="text-xs text-zinc-500">
-              Use dropdowns with checkboxes to narrow the audit log
-            </p>
-          </div>
-          {hasCustomFilters ? (
-            <button
-              onClick={resetFilters}
-              className="text-xs text-zinc-400 hover:text-white transition-colors"
-            >
-              Reset filters
-            </button>
-          ) : null}
-        </div>
-
-        <div className="space-y-4">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <FilterDropdown
-              title="Action"
-              summary={actionFilterSummary}
-              isOpen={openFilterDropdown === "action"}
-              options={ACTION_FILTER_OPTIONS}
-              selectedValues={selectedActions}
-              onToggle={() =>
-                setOpenFilterDropdown((current) =>
-                  current === "action" ? null : "action",
-                )
-              }
-              onToggleValue={(value) => {
-                setSelectedActions((current) =>
-                  toggleSelection(current, value, ACTION_VALUES),
-                );
-                setPage(0);
-              }}
-              onSelectAll={() => {
-                setSelectedActions(ACTION_VALUES);
-                setPage(0);
-              }}
-              onClear={() => {
-                setSelectedActions([]);
-                setPage(0);
-              }}
-            />
-            <FilterDropdown
-              title="Source"
-              summary={sourceFilterSummary}
-              isOpen={openFilterDropdown === "source"}
-              options={SOURCE_FILTER_OPTIONS}
-              selectedValues={selectedSources}
-              onToggle={() =>
-                setOpenFilterDropdown((current) =>
-                  current === "source" ? null : "source",
-                )
-              }
-              onToggleValue={(value) => {
-                setSelectedSources((current) =>
-                  toggleSelection(current, value, SOURCE_VALUES),
-                );
-                setPage(0);
-              }}
-              onSelectAll={() => {
-                setSelectedSources([...SOURCE_VALUES]);
-                setPage(0);
-              }}
-              onClear={() => {
-                setSelectedSources([]);
-                setPage(0);
-              }}
-            />
+      <div ref={filterDropdownRef}>
+        <Card as="div" className="p-4 sm:p-4">
+          <div className="flex items-center justify-between gap-3 mb-4">
+            <div>
+              <h3 className="text-sm font-semibold text-white">Filters</h3>
+              <p className="text-xs text-zinc-500">
+                Use dropdowns with checkboxes to narrow the audit log
+              </p>
+            </div>
+            {hasCustomFilters ? (
+              <Button
+                variant="ghost"
+                onClick={resetFilters}
+                className="text-xs"
+              >
+                Reset filters
+              </Button>
+            ) : null}
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-            {/* Actor */}
-            <div>
-              <label className="block text-xs font-medium text-zinc-500 uppercase tracking-wider mb-1">
-                Actor
-              </label>
-              <input
-                type="text"
-                value={actorFilter}
-                onChange={(e) => handleTextFilter(setActorFilter, e.target.value)}
-                placeholder="Who did it..."
-                className="w-full bg-zinc-800 border border-zinc-700 text-zinc-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-rose-500/50 focus:ring-1 focus:ring-rose-500/50 placeholder:text-zinc-600"
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <FilterDropdown
+                title="Action"
+                summary={actionFilterSummary}
+                isOpen={openFilterDropdown === "action"}
+                options={ACTION_FILTER_OPTIONS}
+                selectedValues={selectedActions}
+                onToggle={() =>
+                  setOpenFilterDropdown((current) =>
+                    current === "action" ? null : "action",
+                  )
+                }
+                onToggleValue={(value) => {
+                  setSelectedActions((current) =>
+                    toggleSelection(current, value, ACTION_VALUES),
+                  );
+                  setPage(0);
+                }}
+                onSelectAll={() => {
+                  setSelectedActions(ACTION_VALUES);
+                  setPage(0);
+                }}
+                onClear={() => {
+                  setSelectedActions([]);
+                  setPage(0);
+                }}
+              />
+              <FilterDropdown
+                title="Source"
+                summary={sourceFilterSummary}
+                isOpen={openFilterDropdown === "source"}
+                options={SOURCE_FILTER_OPTIONS}
+                selectedValues={selectedSources}
+                onToggle={() =>
+                  setOpenFilterDropdown((current) =>
+                    current === "source" ? null : "source",
+                  )
+                }
+                onToggleValue={(value) => {
+                  setSelectedSources((current) =>
+                    toggleSelection(current, value, SOURCE_VALUES),
+                  );
+                  setPage(0);
+                }}
+                onSelectAll={() => {
+                  setSelectedSources([...SOURCE_VALUES]);
+                  setPage(0);
+                }}
+                onClear={() => {
+                  setSelectedSources([]);
+                  setPage(0);
+                }}
               />
             </div>
 
-            {/* Target */}
-            <div>
-              <label className="block text-xs font-medium text-zinc-500 uppercase tracking-wider mb-1">
-                Target
-              </label>
-              <input
-                type="text"
-                value={targetFilter}
-                onChange={(e) => handleTextFilter(setTargetFilter, e.target.value)}
-                placeholder="Done to whom..."
-                className="w-full bg-zinc-800 border border-zinc-700 text-zinc-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-rose-500/50 focus:ring-1 focus:ring-rose-500/50 placeholder:text-zinc-600"
-              />
-            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              {/* Actor */}
+              <div>
+                <Label htmlFor="audit-actor" className="mb-1 block">
+                  Actor
+                </Label>
+                <Input
+                  id="audit-actor"
+                  type="text"
+                  value={actorFilter}
+                  onChange={(e) =>
+                    handleTextFilter(setActorFilter, e.target.value)
+                  }
+                  placeholder="Who did it..."
+                />
+              </div>
 
-            {/* Event */}
-            <div>
-              <label className="block text-xs font-medium text-zinc-500 uppercase tracking-wider mb-1">
-                Event
-              </label>
-              <input
-                type="text"
-                value={eventFilter}
-                onChange={(e) => handleTextFilter(setEventFilter, e.target.value)}
-                placeholder="Which event..."
-                className="w-full bg-zinc-800 border border-zinc-700 text-zinc-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-rose-500/50 focus:ring-1 focus:ring-rose-500/50 placeholder:text-zinc-600"
-              />
-            </div>
+              {/* Target */}
+              <div>
+                <Label htmlFor="audit-target" className="mb-1 block">
+                  Target
+                </Label>
+                <Input
+                  id="audit-target"
+                  type="text"
+                  value={targetFilter}
+                  onChange={(e) =>
+                    handleTextFilter(setTargetFilter, e.target.value)
+                  }
+                  placeholder="Done to whom..."
+                />
+              </div>
 
-            {/* Start date */}
-            <div>
-              <label className="block text-xs font-medium text-zinc-500 uppercase tracking-wider mb-1">
-                From
-              </label>
-              <input
-                type="date"
-                value={startDate}
-                onChange={(e) => handleTextFilter(setStartDate, e.target.value)}
-                className="w-full bg-zinc-800 border border-zinc-700 text-zinc-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-rose-500/50 focus:ring-1 focus:ring-rose-500/50 [color-scheme:dark]"
-              />
-            </div>
+              {/* Event */}
+              <div>
+                <Label htmlFor="audit-event" className="mb-1 block">
+                  Event
+                </Label>
+                <Input
+                  id="audit-event"
+                  type="text"
+                  value={eventFilter}
+                  onChange={(e) =>
+                    handleTextFilter(setEventFilter, e.target.value)
+                  }
+                  placeholder="Which event..."
+                />
+              </div>
 
-            {/* End date */}
-            <div>
-              <label className="block text-xs font-medium text-zinc-500 uppercase tracking-wider mb-1">
-                To
-              </label>
-              <input
-                type="date"
-                value={endDate}
-                onChange={(e) => handleTextFilter(setEndDate, e.target.value)}
-                className="w-full bg-zinc-800 border border-zinc-700 text-zinc-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-rose-500/50 focus:ring-1 focus:ring-rose-500/50 [color-scheme:dark]"
-              />
+              {/* Start date */}
+              <div>
+                <Label htmlFor="audit-from" className="mb-1 block">
+                  From
+                </Label>
+                <Input
+                  id="audit-from"
+                  type="date"
+                  value={startDate}
+                  onChange={(e) =>
+                    handleTextFilter(setStartDate, e.target.value)
+                  }
+                  className="[color-scheme:dark]"
+                />
+              </div>
+
+              {/* End date */}
+              <div>
+                <Label htmlFor="audit-to" className="mb-1 block">
+                  To
+                </Label>
+                <Input
+                  id="audit-to"
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => handleTextFilter(setEndDate, e.target.value)}
+                  className="[color-scheme:dark]"
+                />
+              </div>
             </div>
           </div>
-        </div>
+        </Card>
       </div>
 
       {/* Results count + pagination info */}
-      <div className="flex items-center justify-between mb-3">
-        <p className="text-zinc-500 text-sm">
-          {total === 0 ? "No entries found" : `Showing ${showingFrom}\u2013${showingTo} of ${total}`}
+      <div className="flex items-center justify-between">
+        <p className="text-zinc-500 text-sm tabular-nums">
+          {total === 0
+            ? "No entries found"
+            : `Showing ${showingFrom}\u2013${showingTo} of ${total}`}
         </p>
         {totalPages > 1 && (
           <div className="flex items-center gap-2">
-            <button
+            <Button
+              variant="secondary"
               onClick={() => setPage((p) => Math.max(0, p - 1))}
               disabled={page === 0}
-              className="px-3 py-1.5 bg-zinc-800 border border-zinc-700 text-zinc-300 rounded-lg text-sm hover:bg-zinc-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              className="px-3 py-1.5 disabled:cursor-not-allowed"
             >
               Previous
-            </button>
-            <span className="text-zinc-500 text-sm">
+            </Button>
+            <span className="text-zinc-500 text-sm tabular-nums">
               {page + 1} / {totalPages}
             </span>
-            <button
+            <Button
+              variant="secondary"
               onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
               disabled={page >= totalPages - 1}
-              className="px-3 py-1.5 bg-zinc-800 border border-zinc-700 text-zinc-300 rounded-lg text-sm hover:bg-zinc-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              className="px-3 py-1.5 disabled:cursor-not-allowed"
             >
               Next
-            </button>
+            </Button>
           </div>
         )}
       </div>
 
       {/* Table */}
-      <div className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-zinc-800 bg-zinc-800/50">
-                <th className="text-left px-3 py-2 text-xs font-semibold text-zinc-500 uppercase tracking-wider">Time</th>
-                <th className="text-left px-3 py-2 text-xs font-semibold text-zinc-500 uppercase tracking-wider">Action</th>
-                <th className="text-left px-3 py-2 text-xs font-semibold text-zinc-500 uppercase tracking-wider">Actor</th>
-                <th className="text-left px-3 py-2 text-xs font-semibold text-zinc-500 uppercase tracking-wider">Event</th>
-                <th className="text-left px-3 py-2 text-xs font-semibold text-zinc-500 uppercase tracking-wider">Target</th>
-                <th className="text-left px-3 py-2 text-xs font-semibold text-zinc-500 uppercase tracking-wider">Source</th>
-                <th className="text-left px-3 py-2 text-xs font-semibold text-zinc-500 uppercase tracking-wider">Details</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                Array.from({ length: 10 }).map((_, i) => (
-                  <tr key={i} className="border-t border-zinc-800/50">
-                    {Array.from({ length: 7 }).map((_, j) => (
-                      <td key={j} className="px-3 py-2">
-                        <div className="h-3.5 bg-zinc-800 rounded animate-pulse" />
-                      </td>
-                    ))}
-                  </tr>
-                ))
-              ) : logs.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="px-3 py-12 text-center text-zinc-500">
-                    {isFiltered ? "No entries match your filters." : "No audit log entries yet."}
-                  </td>
-                </tr>
-              ) : (
-                logs.map((log) => {
-                  const isExpanded = expandedItems.includes(log.id);
-                  const summary = getDetailsSummary(log);
+      <TableScroll>
+        <Table>
+          <THead>
+            <TR className="border-b border-white/10">
+              <TH className="px-3">Time</TH>
+              <TH className="px-3">Action</TH>
+              <TH className="px-3">Actor</TH>
+              <TH className="px-3">Event</TH>
+              <TH className="px-3">Target</TH>
+              <TH className="px-3">Source</TH>
+              <TH className="px-3">Details</TH>
+            </TR>
+          </THead>
+          <TBody>
+            {loading ? (
+              Array.from({ length: 10 }).map((_, i) => (
+                <TR key={i}>
+                  {Array.from({ length: 7 }).map((_, j) => (
+                    <TD key={j} className="px-3 py-2">
+                      <div className="h-3.5 bg-white/5 rounded animate-pulse" />
+                    </TD>
+                  ))}
+                </TR>
+              ))
+            ) : logs.length === 0 ? (
+              <TR>
+                <TD
+                  colSpan={7}
+                  className="px-3 py-12 text-center text-zinc-500"
+                >
+                  {isFiltered
+                    ? "No entries match your filters."
+                    : "No audit log entries yet."}
+                </TD>
+              </TR>
+            ) : (
+              logs.map((log) => {
+                const isExpanded = expandedItems.includes(log.id);
+                const summary = getDetailsSummary(log);
 
-                  return (
-                    <Fragment key={log.id}>
-                      <tr
-                        onClick={() => toggleExpandedItem(log.id)}
-                        className="cursor-pointer border-t border-zinc-800/50 hover:bg-zinc-800/20 transition-colors"
+                return (
+                  <Fragment key={log.id}>
+                    <TR
+                      onClick={() => toggleExpandedItem(log.id)}
+                      className="cursor-pointer hover:bg-white/5 transition-colors"
+                    >
+                      <TD
+                        className="px-3 py-1.5 text-xs text-zinc-400 whitespace-nowrap"
+                        title={formatTimestamp(log.created_at)}
                       >
-                        <td
-                          className="px-3 py-1.5 text-xs text-zinc-400 whitespace-nowrap"
-                          title={formatTimestamp(log.created_at)}
+                        {timeAgo(log.created_at)}
+                      </TD>
+                      <TD className="px-3 py-1.5 whitespace-nowrap">
+                        <span
+                          className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${getActionColor(log.action)}`}
                         >
-                          {timeAgo(log.created_at)}
-                        </td>
-                        <td className="px-3 py-1.5 whitespace-nowrap">
-                          <span className={`inline-block border rounded-full px-2 py-0.5 text-xs font-medium ${getActionColor(log.action)}`}>
-                            {ACTION_LABELS[log.action] || log.action}
-                          </span>
-                          {isAuditLogGroup(log) ? (
-                            <span
-                              className="ml-2 text-[11px] text-zinc-500"
-                              title={`Grouped from ${log.group_count.toLocaleString()} chunks`}
-                            >
-                              \u00d7{log.group_count.toLocaleString()}
-                            </span>
-                          ) : null}
-                        </td>
-                        <td className="px-3 py-1.5 text-xs text-zinc-300 max-w-[180px] truncate" title={log.actor}>
-                          {log.actor}
-                        </td>
-                        <td className="px-3 py-1.5 text-xs text-zinc-400 max-w-[160px] truncate" title={log.event_name ?? undefined}>
-                          {log.event_name || "\u2014"}
-                        </td>
-                        <td className="px-3 py-1.5 text-xs text-zinc-400 max-w-[180px] truncate" title={log.target_email ?? undefined}>
-                          {log.target_email || "\u2014"}
-                        </td>
-                        <td className="px-3 py-1.5">
-                          <span className={`inline-block border rounded-full px-2 py-0.5 text-xs font-medium ${getSourceColor(log.source)}`}>
-                            {log.source === "admin" ? "Admin" : "Web"}
-                          </span>
-                        </td>
-                        <td className="px-3 py-1.5 max-w-[260px]">
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              toggleExpandedItem(log.id);
-                            }}
-                            className="flex w-full items-center justify-between gap-2 rounded-lg border border-zinc-800 bg-zinc-950/40 px-2.5 py-1 text-left transition-colors hover:border-zinc-700 hover:bg-zinc-900/70"
-                            title={summary}
+                          {ACTION_LABELS[log.action] || log.action}
+                        </span>
+                        {isAuditLogGroup(log) ? (
+                          <span
+                            className="ml-2 text-[11px] tabular-nums text-zinc-500"
+                            title={`Grouped from ${log.group_count.toLocaleString()} chunks`}
                           >
-                            <span className="min-w-0 flex-1 truncate text-xs text-zinc-400">
-                              {summary}
-                            </span>
-                            <svg
-                              className={`h-3.5 w-3.5 shrink-0 text-zinc-500 transition-transform ${
-                                isExpanded ? "rotate-180" : ""
-                              }`}
-                              fill="none"
-                              stroke="currentColor"
-                              viewBox="0 0 24 24"
-                            >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d="M19 9l-7 7-7-7"
-                              />
-                            </svg>
-                          </button>
-                        </td>
-                      </tr>
-                      {isExpanded ? (
-                        <tr className="border-t border-zinc-800/50 bg-zinc-950/40">
-                          <td colSpan={7} className="px-3 py-3">
-                            <ExpandedDetails log={log} />
-                          </td>
-                        </tr>
-                      ) : null}
-                    </Fragment>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+                            \u00d7{log.group_count.toLocaleString()}
+                          </span>
+                        ) : null}
+                      </TD>
+                      <TD
+                        className="px-3 py-1.5 text-xs text-zinc-300 max-w-[180px] truncate"
+                        title={log.actor}
+                      >
+                        {log.actor}
+                      </TD>
+                      <TD
+                        className="px-3 py-1.5 text-xs text-zinc-400 max-w-[160px] truncate"
+                        title={log.event_name ?? undefined}
+                      >
+                        {log.event_name || "\u2014"}
+                      </TD>
+                      <TD
+                        className="px-3 py-1.5 text-xs text-zinc-400 max-w-[180px] truncate"
+                        title={log.target_email ?? undefined}
+                      >
+                        {log.target_email || "\u2014"}
+                      </TD>
+                      <TD className="px-3 py-1.5">
+                        <StatusPill
+                          color={log.source === "admin" ? "rose" : "sky"}
+                        >
+                          {log.source === "admin" ? "Admin" : "Web"}
+                        </StatusPill>
+                      </TD>
+                      <TD className="px-3 py-1.5 max-w-[260px]">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleExpandedItem(log.id);
+                          }}
+                          className="flex w-full items-center justify-between gap-2 rounded-lg bg-white/5 px-2.5 py-1 text-left ring-1 ring-inset ring-white/10 transition-colors hover:bg-white/10"
+                          title={summary}
+                        >
+                          <span className="min-w-0 flex-1 truncate text-xs text-zinc-400">
+                            {summary}
+                          </span>
+                          <svg
+                            className={`h-3.5 w-3.5 shrink-0 text-zinc-500 transition-transform ${
+                              isExpanded ? "rotate-180" : ""
+                            }`}
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M19 9l-7 7-7-7"
+                            />
+                          </svg>
+                        </button>
+                      </TD>
+                    </TR>
+                    {isExpanded ? (
+                      <TR className="bg-zinc-950/40">
+                        <TD colSpan={7} className="px-3 py-3">
+                          <ExpandedDetails log={log} />
+                        </TD>
+                      </TR>
+                    ) : null}
+                  </Fragment>
+                );
+              })
+            )}
+          </TBody>
+        </Table>
+      </TableScroll>
 
       {/* Bottom pagination */}
       {totalPages > 1 && (
-        <div className="flex justify-end mt-4">
+        <div className="flex justify-end">
           <div className="flex items-center gap-2">
-            <button
+            <Button
+              variant="secondary"
               onClick={() => setPage((p) => Math.max(0, p - 1))}
               disabled={page === 0}
-              className="px-3 py-1.5 bg-zinc-800 border border-zinc-700 text-zinc-300 rounded-lg text-sm hover:bg-zinc-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              className="px-3 py-1.5 disabled:cursor-not-allowed"
             >
               Previous
-            </button>
-            <span className="text-zinc-500 text-sm">
+            </Button>
+            <span className="text-zinc-500 text-sm tabular-nums">
               {page + 1} / {totalPages}
             </span>
-            <button
+            <Button
+              variant="secondary"
               onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
               disabled={page >= totalPages - 1}
-              className="px-3 py-1.5 bg-zinc-800 border border-zinc-700 text-zinc-300 rounded-lg text-sm hover:bg-zinc-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              className="px-3 py-1.5 disabled:cursor-not-allowed"
             >
               Next
-            </button>
+            </Button>
           </div>
         </div>
       )}

@@ -10,6 +10,21 @@ import {
   getSkipBreakdownSegments,
   runChunkedSend,
 } from "@/app/lib/bulkSend";
+import {
+  Alert,
+  Button,
+  EmptyState,
+  Input,
+  PageHeader,
+  StatusPill,
+  Table,
+  TableScroll,
+  THead,
+  TBody,
+  TR,
+  TH,
+  TD,
+} from "@/app/components/ui";
 
 type Notification = {
   id: string;
@@ -58,7 +73,12 @@ function formatAffiliationLabel(affiliation: string): string {
     .join(" ");
 }
 
-const MEMBER_OVERRIDE_AFFILIATIONS = ["student", "faculty", "staff", "affiliate"];
+const MEMBER_OVERRIDE_AFFILIATIONS = [
+  "student",
+  "faculty",
+  "staff",
+  "affiliate",
+];
 
 function getDisplayAffiliations(affiliations: string[]): string[] {
   if (affiliations.some((a) => MEMBER_OVERRIDE_AFFILIATIONS.includes(a))) {
@@ -106,7 +126,7 @@ async function fetchNotificationsForEvent(
   if (!response.ok) {
     let errorMessage = "Failed to fetch notifications";
     try {
-      const errorData = await response.json() as NotifyResponse;
+      const errorData = (await response.json()) as NotifyResponse;
       errorMessage = errorData.error || errorMessage;
     } catch {
       errorMessage = `HTTP ${response.status}: ${response.statusText}`;
@@ -128,15 +148,21 @@ export default function AdminNotifyClient() {
   const notifications = data?.notifications ?? [];
   const eventData = data?.eventData ?? null;
   const [searchTerm, setSearchTerm] = useState("");
-  const [affiliationFilter, setAffiliationFilter] = useState<string | null>(null);
+  const [affiliationFilter, setAffiliationFilter] = useState<string | null>(
+    null,
+  );
 
   // Send email modal state
   const [showSendModal, setShowSendModal] = useState(false);
-  const [sendEmailSingleEmail, setSendEmailSingleEmail] = useState<string | null>(null);
+  const [sendEmailSingleEmail, setSendEmailSingleEmail] = useState<
+    string | null
+  >(null);
   const [sendVariant, setSendVariant] = useState<"now" | "in" | "claim">("now");
   const [sendApproxTime, setSendApproxTime] = useState("");
   const [isSendingNotify, setIsSendingNotify] = useState(false);
-  const [sendState, setSendState] = useState<BulkSendProgressState | null>(null);
+  const [sendState, setSendState] = useState<BulkSendProgressState | null>(
+    null,
+  );
   const [notifySuccess, setNotifySuccess] = useState<string | null>(null);
   const [notifyError, setNotifyError] = useState<string | null>(null);
 
@@ -148,7 +174,9 @@ export default function AdminNotifyClient() {
     setSendEmailSingleEmail(singleEmail ?? null);
     setSendVariant(eventData?.ticketingOpen ? "claim" : "now");
     setSendApproxTime(
-      eventData?.ticketing_date ? approxDurationUntil(eventData.ticketing_date) : "",
+      eventData?.ticketing_date
+        ? approxDurationUntil(eventData.ticketing_date)
+        : "",
     );
     setNotifySuccess(null);
     setNotifyError(null);
@@ -170,17 +198,18 @@ export default function AdminNotifyClient() {
     }
     const eventName = eventData?.name || "this event";
 
-    const recipientEmails = [...new Set(
-      (
-        sendEmailSingleEmail
+    const recipientEmails = [
+      ...new Set(
+        (sendEmailSingleEmail
           ? [sendEmailSingleEmail]
           : sendVariant === "claim"
             ? notifications
-              .filter((notification) => !notification.hasTicket)
-              .map((notification) => notification.email)
+                .filter((notification) => !notification.hasTicket)
+                .map((notification) => notification.email)
             : notifications.map((notification) => notification.email)
-      ).map((email) => email.toLowerCase()),
-    )];
+        ).map((email) => email.toLowerCase()),
+      ),
+    ];
 
     if (recipientEmails.length === 0) {
       setNotifyError(
@@ -191,33 +220,30 @@ export default function AdminNotifyClient() {
       return;
     }
 
-    const variantLabel = sendVariant === "claim"
-      ? "Claim your ticket"
-      : sendVariant === "now"
-        ? "Tickets available now"
-        : `Tickets available in ${sendApproxTime.trim()}`;
-    const recipientDescription = sendEmailSingleEmail
-      ? (
-        <>
-          Send <span className="font-medium text-white">{variantLabel}</span>{" "}
-          to{" "}
-          <span className="font-medium text-white">{sendEmailSingleEmail}</span>{" "}
-          for <span className="font-medium text-white">{eventName}</span>.
-        </>
-      )
-      : (
-        <>
-          Send <span className="font-medium text-white">{variantLabel}</span>{" "}
-          to{" "}
-          <span className="font-medium text-white">
-            {recipientEmails.length.toLocaleString()}
-          </span>{" "}
-          {sendVariant === "claim"
-            ? "people without tickets"
-            : "people on the list"}{" "}
-          for <span className="font-medium text-white">{eventName}</span>.
-        </>
-      );
+    const variantLabel =
+      sendVariant === "claim"
+        ? "Claim your ticket"
+        : sendVariant === "now"
+          ? "Tickets available now"
+          : `Tickets available in ${sendApproxTime.trim()}`;
+    const recipientDescription = sendEmailSingleEmail ? (
+      <>
+        Send <span className="font-medium text-white">{variantLabel}</span> to{" "}
+        <span className="font-medium text-white">{sendEmailSingleEmail}</span>{" "}
+        for <span className="font-medium text-white">{eventName}</span>.
+      </>
+    ) : (
+      <>
+        Send <span className="font-medium text-white">{variantLabel}</span> to{" "}
+        <span className="font-medium text-white">
+          {recipientEmails.length.toLocaleString()}
+        </span>{" "}
+        {sendVariant === "claim"
+          ? "people without tickets"
+          : "people on the list"}{" "}
+        for <span className="font-medium text-white">{eventName}</span>.
+      </>
+    );
     const shouldSend = await confirmAction({
       title: "Send notification email?",
       description: recipientDescription,
@@ -260,10 +286,14 @@ export default function AdminNotifyClient() {
         if ((data.failed ?? 0) > 0) {
           setNotifyError("Failed to send email.");
         } else if ((data.skippedHasTicket ?? 0) > 0) {
-          setNotifySuccess("Email skipped because this person already has a ticket.");
+          setNotifySuccess(
+            "Email skipped because this person already has a ticket.",
+          );
           setTimeout(closeSendEmailModal, 1500);
         } else if ((data.skippedOptedOut ?? 0) > 0) {
-          setNotifySuccess("Email skipped because this person opted out of these emails.");
+          setNotifySuccess(
+            "Email skipped because this person opted out of these emails.",
+          );
           setTimeout(closeSendEmailModal, 1500);
         } else if ((data.suppressed ?? 0) > 0) {
           setNotifySuccess("Email skipped because this address is suppressed.");
@@ -311,15 +341,16 @@ export default function AdminNotifyClient() {
         });
 
         const skipSegments = getSkipBreakdownSegments(finalState);
-        const skippedMsg = skipSegments.length > 0
-          ? `, ${skipSegments.join(", ")}`
-          : "";
+        const skippedMsg =
+          skipSegments.length > 0 ? `, ${skipSegments.join(", ")}` : "";
         setNotifySuccess(
           `Emails sent: ${finalState.sent} sent, ${finalState.failed} failed${skippedMsg}.`,
         );
       }
     } catch (err) {
-      setNotifyError(err instanceof Error ? err.message : "Failed to send emails");
+      setNotifyError(
+        err instanceof Error ? err.message : "Failed to send emails",
+      );
     } finally {
       setIsSendingNotify(false);
     }
@@ -351,7 +382,8 @@ export default function AdminNotifyClient() {
       if (affiliationFilter === "missing") {
         if (displayAffiliations.length > 0) return false;
       } else {
-        if (!displayAffiliations.some((a) => a === affiliationFilter)) return false;
+        if (!displayAffiliations.some((a) => a === affiliationFilter))
+          return false;
       }
     }
     if (searchTerm) {
@@ -359,11 +391,13 @@ export default function AdminNotifyClient() {
       if (
         !(n.displayName?.toLowerCase().includes(lower) ?? false) &&
         !n.email.toLowerCase().includes(lower) &&
-        !displayAffiliations.some((affiliation) =>
-          formatAffiliationLabel(affiliation).toLowerCase().includes(lower) ||
-          affiliation.toLowerCase().includes(lower),
+        !displayAffiliations.some(
+          (affiliation) =>
+            formatAffiliationLabel(affiliation).toLowerCase().includes(lower) ||
+            affiliation.toLowerCase().includes(lower),
         )
-      ) return false;
+      )
+        return false;
     }
     return true;
   });
@@ -372,7 +406,9 @@ export default function AdminNotifyClient() {
   let missingAffiliationCount = 0;
 
   for (const notification of notifications) {
-    const displayAffiliations = getDisplayAffiliations(notification.affiliations);
+    const displayAffiliations = getDisplayAffiliations(
+      notification.affiliations,
+    );
     if (displayAffiliations.length === 0) {
       missingAffiliationCount += 1;
       continue;
@@ -386,18 +422,21 @@ export default function AdminNotifyClient() {
     }
   }
 
-  const preferredAffiliationStats = AFFILIATION_STAT_ORDER
-    .filter((affiliation) => (affiliationCounts.get(affiliation) ?? 0) > 0)
-    .map((affiliation) => ({
-      key: affiliation,
-      label: formatAffiliationLabel(affiliation),
-      value: affiliationCounts.get(affiliation) ?? 0,
-    }));
+  const preferredAffiliationStats = AFFILIATION_STAT_ORDER.filter(
+    (affiliation) => (affiliationCounts.get(affiliation) ?? 0) > 0,
+  ).map((affiliation) => ({
+    key: affiliation,
+    label: formatAffiliationLabel(affiliation),
+    value: affiliationCounts.get(affiliation) ?? 0,
+  }));
 
   const additionalAffiliationStats = [...affiliationCounts.entries()]
-    .filter(([affiliation]) => !AFFILIATION_STAT_ORDER.includes(
-      affiliation as (typeof AFFILIATION_STAT_ORDER)[number],
-    ))
+    .filter(
+      ([affiliation]) =>
+        !AFFILIATION_STAT_ORDER.includes(
+          affiliation as (typeof AFFILIATION_STAT_ORDER)[number],
+        ),
+    )
     .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
     .map(([affiliation, value]) => ({
       key: affiliation,
@@ -408,13 +447,13 @@ export default function AdminNotifyClient() {
   const statCards = [
     {
       key: "total",
-      label: "Total Signups",
+      label: "Total signups",
       value: notifications.length,
       tone: "text-blue-400",
     },
     {
       key: "missing",
-      label: "Missing Affiliation",
+      label: "Missing affiliation",
       value: missingAffiliationCount,
       tone: "text-amber-400",
     },
@@ -422,12 +461,10 @@ export default function AdminNotifyClient() {
 
   return (
     <div className="px-4 sm:px-6 py-8">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-white font-serif mb-2">
-            Notification Signups
-          </h1>
-          <p className="text-zinc-400">
+      <PageHeader
+        title="Notification signups"
+        subtitle={
+          <>
             View users who signed up for event notifications.
             {selectedEventId && notifications.length > 0 && (
               <span className="text-zinc-600">
@@ -436,62 +473,31 @@ export default function AdminNotifyClient() {
                 {notifications.length === 1 ? "" : "s"}
               </span>
             )}
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
-          {selectedEventId && notifications.length > 0 && (
-            <>
-              <button
-                onClick={() => openSendEmailModal()}
-                disabled={Boolean(sendState?.active)}
-                className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-medium bg-gradient-to-r from-emerald-500 to-teal-500 text-white hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                </svg>
-                Send Email
-              </button>
-              <button
-                onClick={exportToCSV}
-                className="flex items-center gap-2 px-5 py-2.5 bg-zinc-800 text-zinc-300 rounded-xl font-medium hover:bg-zinc-700 transition-colors"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                </svg>
-                Export CSV
-              </button>
-            </>
-          )}
-          <button
-            onClick={refetch}
-            disabled={isLoading}
-            className="flex items-center gap-2 px-5 py-2.5 bg-zinc-800 text-white rounded-xl font-medium hover:bg-zinc-700 transition-colors disabled:opacity-50"
-          >
-            <svg
-              className={`w-5 h-5 ${isLoading ? "animate-spin" : ""}`}
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
+          </>
+        }
+        className="mb-8"
+      >
+        {selectedEventId && notifications.length > 0 && (
+          <>
+            <Button
+              variant="primary"
+              onClick={() => openSendEmailModal()}
+              disabled={Boolean(sendState?.active)}
             >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-              />
-            </svg>
-            Refresh
-          </button>
-        </div>
-      </div>
+              Send email
+            </Button>
+            <Button onClick={exportToCSV}>Export CSV</Button>
+          </>
+        )}
+        <Button onClick={refetch} disabled={isLoading}>
+          Refresh
+        </Button>
+      </PageHeader>
 
       {error && (
-        <div className="mb-6 p-4 bg-rose-500/10 border border-rose-500/30 rounded-xl flex items-center gap-3">
-          <svg className="w-5 h-5 text-rose-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-          <p className="text-rose-400 text-sm">{error}</p>
-        </div>
+        <Alert tone="error" className="mb-6">
+          {error}
+        </Alert>
       )}
 
       {sendState && (
@@ -504,45 +510,33 @@ export default function AdminNotifyClient() {
       )}
 
       {!selectedEventId ? (
-        <div className="text-center py-16 bg-zinc-900/50 rounded-2xl border border-zinc-800">
-          <div className="w-16 h-16 bg-zinc-800 rounded-full flex items-center justify-center mx-auto mb-4">
-            <svg className="w-8 h-8 text-zinc-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-            </svg>
-          </div>
-          <p className="text-zinc-400 text-lg mb-2">No event selected</p>
-          <p className="text-zinc-600 text-sm">
-            Select an event from the sidebar to view its notification signups
-          </p>
-        </div>
+        <EmptyState
+          title="No event selected"
+          hint="Select an event from the sidebar to view its notification signups"
+        />
       ) : isLoading ? (
-        <div className="text-center py-16 bg-zinc-900/50 rounded-2xl border border-zinc-800">
-          <div className="w-16 h-16 bg-zinc-800 rounded-full flex items-center justify-center mx-auto mb-4">
-            <div className="w-8 h-8 border-2 border-zinc-600 border-t-zinc-400 rounded-full animate-spin" />
+        <div className="rounded-2xl border border-dashed border-white/10 px-6 py-16 text-center">
+          <div className="mx-auto mb-4 flex size-16 items-center justify-center rounded-full bg-white/5">
+            <div className="size-8 animate-spin rounded-full border-2 border-zinc-600 border-t-zinc-400" />
           </div>
-          <p className="text-zinc-400">Loading notifications...</p>
+          <p className="text-sm font-medium text-zinc-300">
+            Loading notifications...
+          </p>
         </div>
       ) : notifications.length === 0 ? (
-        <div className="text-center py-16 bg-zinc-900/50 rounded-2xl border border-zinc-800">
-          <div className="w-16 h-16 bg-zinc-800 rounded-full flex items-center justify-center mx-auto mb-4">
-            <svg className="w-8 h-8 text-zinc-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-            </svg>
-          </div>
-          <p className="text-zinc-400 text-lg mb-2">No notification signups</p>
-          <p className="text-zinc-600 text-sm">
-            No signups for {selectedEvent?.name || "this event"} yet
-          </p>
-        </div>
+        <EmptyState
+          title="No notification signups"
+          hint={`No signups for ${selectedEvent?.name || "this event"} yet`}
+        />
       ) : (
-        <div className="bg-zinc-900 rounded-2xl border border-zinc-800 overflow-hidden">
-          <div className="p-6 border-b border-zinc-800">
+        <div className="overflow-hidden rounded-2xl border border-white/10 bg-zinc-900/60">
+          <div className="p-6 border-b border-white/10">
             <div className="flex flex-col gap-5">
               <div className="grid gap-3 sm:grid-cols-2">
                 {statCards.map((stat) => (
                   <div
                     key={stat.key}
-                    className="rounded-xl border border-zinc-800 bg-zinc-900 px-3.5 py-3"
+                    className="rounded-lg bg-white/5 px-3.5 py-3 ring-1 ring-inset ring-white/10"
                   >
                     <p className="truncate text-xs font-medium tracking-wide text-zinc-400">
                       {stat.label}
@@ -557,21 +551,30 @@ export default function AdminNotifyClient() {
               </div>
               <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                 <div className="flex flex-wrap items-center gap-2">
-                  {[...preferredAffiliationStats, ...additionalAffiliationStats].map((stat) => {
+                  {[
+                    ...preferredAffiliationStats,
+                    ...additionalAffiliationStats,
+                  ].map((stat) => {
                     const isActive = affiliationFilter === stat.key;
                     return (
                       <button
                         key={stat.key}
                         type="button"
-                        onClick={() => setAffiliationFilter(isActive ? null : stat.key)}
-                        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
+                        onClick={() =>
+                          setAffiliationFilter(isActive ? null : stat.key)
+                        }
+                        className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset transition-colors ${
                           isActive
-                            ? "bg-rose-500/20 text-rose-400 border border-rose-500/40"
-                            : "bg-zinc-800 text-zinc-300 border border-zinc-700 hover:border-zinc-500"
+                            ? "bg-rose-500/15 text-rose-300 ring-rose-500/25"
+                            : "bg-white/5 text-zinc-300 ring-white/10 hover:bg-white/10"
                         }`}
                       >
                         {stat.label}
-                        <span className={isActive ? "text-rose-400/70" : "text-zinc-500"}>
+                        <span
+                          className={
+                            isActive ? "text-rose-300/70" : "text-zinc-500"
+                          }
+                        >
                           {stat.value}
                         </span>
                       </button>
@@ -580,15 +583,25 @@ export default function AdminNotifyClient() {
                   {missingAffiliationCount > 0 && (
                     <button
                       type="button"
-                      onClick={() => setAffiliationFilter(affiliationFilter === "missing" ? null : "missing")}
-                      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
+                      onClick={() =>
+                        setAffiliationFilter(
+                          affiliationFilter === "missing" ? null : "missing",
+                        )
+                      }
+                      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset transition-colors ${
                         affiliationFilter === "missing"
-                          ? "bg-rose-500/20 text-rose-400 border border-rose-500/40"
-                          : "bg-zinc-800 text-zinc-300 border border-zinc-700 hover:border-zinc-500"
+                          ? "bg-rose-500/15 text-rose-300 ring-rose-500/25"
+                          : "bg-white/5 text-zinc-300 ring-white/10 hover:bg-white/10"
                       }`}
                     >
                       Missing
-                      <span className={affiliationFilter === "missing" ? "text-rose-400/70" : "text-zinc-500"}>
+                      <span
+                        className={
+                          affiliationFilter === "missing"
+                            ? "text-rose-300/70"
+                            : "text-zinc-500"
+                        }
+                      >
                         {missingAffiliationCount}
                       </span>
                     </button>
@@ -599,8 +612,18 @@ export default function AdminNotifyClient() {
                       onClick={() => setAffiliationFilter(null)}
                       className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium text-zinc-500 hover:text-zinc-300 transition-colors"
                     >
-                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      <svg
+                        className="w-3 h-3"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M6 18L18 6M6 6l12 12"
+                        />
                       </svg>
                       Clear
                     </button>
@@ -613,102 +636,103 @@ export default function AdminNotifyClient() {
                     stroke="currentColor"
                     viewBox="0 0 24 24"
                   >
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                    />
                   </svg>
-                  <input
+                  <Input
                     type="text"
                     placeholder="Search name, email, or affiliation..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
-                    className="w-full lg:w-72 rounded-xl border border-zinc-800 bg-zinc-900 py-2.5 pr-3 pl-9 text-sm text-white placeholder-zinc-500 focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 focus:outline-none"
+                    className="w-full pr-3 pl-9 lg:w-72"
                   />
                 </div>
               </div>
             </div>
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-zinc-800 bg-zinc-800/50">
-                  <th className="text-left px-6 py-3 text-xs font-medium text-zinc-400 uppercase tracking-wider">
-                    Name
-                  </th>
-                  <th className="text-left px-6 py-3 text-xs font-medium text-zinc-400 uppercase tracking-wider">
-                    Email
-                  </th>
-                  <th className="text-left px-6 py-3 text-xs font-medium text-zinc-400 uppercase tracking-wider">
-                    Affiliation
-                  </th>
+          <TableScroll>
+            <Table>
+              <THead>
+                <TR className="border-b border-white/10">
+                  <TH className="px-6 py-3">Name</TH>
+                  <TH className="px-6 py-3">Email</TH>
+                  <TH className="px-6 py-3">Affiliation</TH>
                   {eventData?.ticketingOpen && (
-                    <th className="text-left px-6 py-3 text-xs font-medium text-zinc-400 uppercase tracking-wider">
-                      Ticket
-                    </th>
+                    <TH className="px-6 py-3">Ticket</TH>
                   )}
-                  <th className="text-left px-6 py-3 text-xs font-medium text-zinc-400 uppercase tracking-wider">
-                    Signed Up
-                  </th>
-                  <th className="text-right px-6 py-3 text-xs font-medium text-zinc-400 uppercase tracking-wider w-20">
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-zinc-800">
+                  <TH className="px-6 py-3">Signed up</TH>
+                  <TH className="w-20 px-6 py-3 text-right">Actions</TH>
+                </TR>
+              </THead>
+              <TBody>
                 {filtered.map((notification) => (
-                  <tr
+                  <TR
                     key={notification.id}
-                    className="hover:bg-zinc-800/30 transition-colors"
+                    className="hover:bg-white/5 transition-colors"
                   >
-                    <td className="px-6 py-4 whitespace-nowrap text-white font-medium">
-                      {notification.displayName || <span className="text-zinc-600">—</span>}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-white font-medium">
+                    <TD className="px-6 py-4 whitespace-nowrap font-medium">
+                      {notification.displayName || (
+                        <span className="text-zinc-600">—</span>
+                      )}
+                    </TD>
+                    <TD className="px-6 py-4 whitespace-nowrap font-medium">
                       {notification.email}
-                    </td>
-                    <td className="px-6 py-4 text-sm text-zinc-300">
+                    </TD>
+                    <TD className="px-6 py-4 text-zinc-300">
                       {(() => {
-                        const displayAffiliations = getDisplayAffiliations(notification.affiliations);
+                        const displayAffiliations = getDisplayAffiliations(
+                          notification.affiliations,
+                        );
                         return displayAffiliations.length > 0 ? (
-                        <div className="flex flex-wrap gap-2">
-                          {displayAffiliations.map((affiliation) => (
-                            <span
-                              key={`${notification.id}-${affiliation}`}
-                              className="inline-flex items-center rounded-full border border-zinc-700 bg-zinc-800 px-2.5 py-1 text-xs font-medium text-zinc-200"
-                            >
-                              {formatAffiliationLabel(affiliation)}
-                            </span>
-                          ))}
-                        </div>
-                      ) : notification.hasProfile ? (
-                        <span className="text-zinc-500">No affiliation provided</span>
-                      ) : (
-                        <span className="text-zinc-500">
-                          Unavailable for backfilled signup
-                        </span>
-                      );
-                      })()}
-                    </td>
-                    {eventData?.ticketingOpen && (
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        {notification.hasTicket ? (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
-                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                            </svg>
-                            Has ticket
+                          <div className="flex flex-wrap gap-2">
+                            {displayAffiliations.map((affiliation) => (
+                              <span
+                                key={`${notification.id}-${affiliation}`}
+                                className="inline-flex items-center rounded-full bg-white/5 px-2.5 py-1 text-xs font-medium text-zinc-200 ring-1 ring-inset ring-white/10"
+                              >
+                                {formatAffiliationLabel(affiliation)}
+                              </span>
+                            ))}
+                          </div>
+                        ) : notification.hasProfile ? (
+                          <span className="text-zinc-500">
+                            No affiliation provided
                           </span>
                         ) : (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-500/20 text-amber-400 border border-amber-500/30">
-                            No ticket
+                          <span className="text-zinc-500">
+                            Unavailable for backfilled signup
                           </span>
+                        );
+                      })()}
+                    </TD>
+                    {eventData?.ticketingOpen && (
+                      <TD className="px-6 py-4 whitespace-nowrap">
+                        {notification.hasTicket ? (
+                          <StatusPill color="emerald" dot>
+                            Has ticket
+                          </StatusPill>
+                        ) : (
+                          <StatusPill color="amber" dot>
+                            No ticket
+                          </StatusPill>
                         )}
-                      </td>
+                      </TD>
                     )}
-                    <td className="px-6 py-4 whitespace-nowrap text-zinc-400 text-sm">
-                      {new Date(notification.created_at).toLocaleString("en-US", { timeZone: "America/Los_Angeles" })}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-right">
-                      {!(eventData?.ticketingOpen && notification.hasTicket) && (
+                    <TD className="px-6 py-4 whitespace-nowrap text-zinc-400">
+                      {new Date(notification.created_at).toLocaleString(
+                        "en-US",
+                        { timeZone: "America/Los_Angeles" },
+                      )}
+                    </TD>
+                    <TD className="px-6 py-4 whitespace-nowrap text-right">
+                      {!(
+                        eventData?.ticketingOpen && notification.hasTicket
+                      ) && (
                         <button
                           type="button"
                           onClick={() => openSendEmailModal(notification.email)}
@@ -716,144 +740,157 @@ export default function AdminNotifyClient() {
                           className="text-blue-400 hover:text-blue-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                           title="Send email to this person"
                         >
-                          <svg className="w-5 h-5 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                          <svg
+                            className="w-5 h-5 inline"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
+                            />
                           </svg>
                         </button>
                       )}
-                    </td>
-                  </tr>
+                    </TD>
+                  </TR>
                 ))}
-              </tbody>
-            </table>
-          </div>
+              </TBody>
+            </Table>
+          </TableScroll>
         </div>
       )}
 
       {/* Send email modal */}
-      {showSendModal && (() => {
-        return (
-          <div
-            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60"
-            onClick={(e) => {
-              if (e.target === e.currentTarget) closeSendEmailModal();
-            }}
-          >
+      {showSendModal &&
+        (() => {
+          return (
             <div
-              className="bg-zinc-900 border border-zinc-800 rounded-2xl shadow-2xl max-w-md w-full p-6"
-              onClick={(e) => e.stopPropagation()}
+              className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60"
+              onClick={(e) => {
+                if (e.target === e.currentTarget) closeSendEmailModal();
+              }}
             >
-              <h3 className="text-lg font-serif font-semibold text-white mb-1">
-                Send email
-              </h3>
-              <p className="text-zinc-500 text-sm mb-4">
-                {eventData?.name || "Event"}
-                {sendEmailSingleEmail ? (
-                  <> &rarr; {sendEmailSingleEmail}</>
-                ) : (
-                  <> &rarr; all {notifications.length} on list</>
-                )}
-              </p>
-              <div className="space-y-3 mb-4">
-                {eventData?.ticketingOpen && !sendEmailSingleEmail && (
-                  <label className="flex items-center gap-3 cursor-pointer">
-                    <input
-                      type="radio"
-                      name="variant"
-                      checked={sendVariant === "claim"}
-                      onChange={() => setSendVariant("claim")}
-                      className="rounded-full border-zinc-600 text-emerald-500 focus:ring-emerald-500"
-                    />
-                    <div>
-                      <span className="text-white">Claim your ticket</span>
-                      <p className="text-xs text-zinc-500 mt-0.5">
-                        Only sent to {notifications.filter((n) => !n.hasTicket).length} people without tickets
-                      </p>
-                    </div>
-                  </label>
-                )}
-                {eventData?.ticketingOpen && sendEmailSingleEmail && (
-                  <label className="flex items-center gap-3 cursor-pointer">
-                    <input
-                      type="radio"
-                      name="variant"
-                      checked={sendVariant === "claim"}
-                      onChange={() => setSendVariant("claim")}
-                      className="rounded-full border-zinc-600 text-emerald-500 focus:ring-emerald-500"
-                    />
-                    <span className="text-white">Claim your ticket</span>
-                  </label>
-                )}
-                <label className="flex items-center gap-3 cursor-pointer">
-                  <input
-                    type="radio"
-                    name="variant"
-                    checked={sendVariant === "now"}
-                    onChange={() => setSendVariant("now")}
-                    className="rounded-full border-zinc-600 text-emerald-500 focus:ring-emerald-500"
-                  />
-                  <span className="text-white">Tickets available now</span>
-                </label>
-                <label className="flex items-center gap-3 cursor-pointer">
-                  <input
-                    type="radio"
-                    name="variant"
-                    checked={sendVariant === "in"}
-                    onChange={() => setSendVariant("in")}
-                    className="rounded-full border-zinc-600 text-emerald-500 focus:ring-emerald-500"
-                  />
-                  <span className="text-white">
-                    Tickets available in (approx time)
-                  </span>
-                </label>
-                {sendVariant === "in" && (
-                  <input
-                    type="text"
-                    value={sendApproxTime}
-                    onChange={(e) => setSendApproxTime(e.target.value)}
-                    placeholder="e.g. 2 hours, or Mon Feb 17 at 10am PT"
-                    className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500/50 text-sm ml-6"
-                  />
-                )}
-              </div>
-              {notifyError && (
-                <p className="text-rose-400 text-sm mb-3">{notifyError}</p>
-              )}
-              {notifySuccess && (
-                <p className="text-emerald-400 text-sm mb-3">{notifySuccess}</p>
-              )}
-              <div className="flex gap-3 justify-end">
-                <button
-                  type="button"
-                  onClick={closeSendEmailModal}
-                  disabled={isSendingNotify}
-                  className="px-4 py-2 rounded-lg border border-zinc-600 text-zinc-300 hover:bg-zinc-800 disabled:opacity-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={handleSendNotifyEmails}
-                  disabled={
-                    isSendingNotify ||
-                    (sendVariant === "in" && !sendApproxTime.trim())
-                  }
-                  className="px-4 py-2 rounded-lg bg-gradient-to-r from-emerald-500 to-teal-500 text-white hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                >
-                  {isSendingNotify ? (
-                    <>
-                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                      Sending…
-                    </>
+              <div
+                className="w-full max-w-md rounded-2xl border border-white/10 bg-zinc-900 p-6 shadow-2xl"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <h3 className="text-lg font-serif font-semibold text-white mb-1">
+                  Send email
+                </h3>
+                <p className="text-zinc-500 text-sm mb-4">
+                  {eventData?.name || "Event"}
+                  {sendEmailSingleEmail ? (
+                    <> &rarr; {sendEmailSingleEmail}</>
                   ) : (
-                    "Send"
+                    <> &rarr; all {notifications.length} on list</>
                   )}
-                </button>
+                </p>
+                <div className="space-y-3 mb-4">
+                  {eventData?.ticketingOpen && !sendEmailSingleEmail && (
+                    <label className="flex items-center gap-3 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="variant"
+                        checked={sendVariant === "claim"}
+                        onChange={() => setSendVariant("claim")}
+                        className="size-5 shrink-0 accent-rose-500 sm:size-4"
+                      />
+                      <div>
+                        <span className="text-white">Claim your ticket</span>
+                        <p className="text-xs text-zinc-500 mt-0.5">
+                          Only sent to{" "}
+                          {notifications.filter((n) => !n.hasTicket).length}{" "}
+                          people without tickets
+                        </p>
+                      </div>
+                    </label>
+                  )}
+                  {eventData?.ticketingOpen && sendEmailSingleEmail && (
+                    <label className="flex items-center gap-3 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="variant"
+                        checked={sendVariant === "claim"}
+                        onChange={() => setSendVariant("claim")}
+                        className="size-5 shrink-0 accent-rose-500 sm:size-4"
+                      />
+                      <span className="text-white">Claim your ticket</span>
+                    </label>
+                  )}
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="variant"
+                      checked={sendVariant === "now"}
+                      onChange={() => setSendVariant("now")}
+                      className="rounded-full border-zinc-600 text-emerald-500 focus:ring-emerald-500"
+                    />
+                    <span className="text-white">Tickets available now</span>
+                  </label>
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="variant"
+                      checked={sendVariant === "in"}
+                      onChange={() => setSendVariant("in")}
+                      className="rounded-full border-zinc-600 text-emerald-500 focus:ring-emerald-500"
+                    />
+                    <span className="text-white">
+                      Tickets available in (approx time)
+                    </span>
+                  </label>
+                  {sendVariant === "in" && (
+                    <Input
+                      type="text"
+                      value={sendApproxTime}
+                      onChange={(e) => setSendApproxTime(e.target.value)}
+                      placeholder="e.g. 2 hours, or Mon Feb 17 at 10am PT"
+                      className="ml-6"
+                    />
+                  )}
+                </div>
+                {notifyError && (
+                  <p className="text-rose-400 text-sm mb-3">{notifyError}</p>
+                )}
+                {notifySuccess && (
+                  <p className="text-emerald-400 text-sm mb-3">
+                    {notifySuccess}
+                  </p>
+                )}
+                <div className="flex gap-3 justify-end">
+                  <Button
+                    onClick={closeSendEmailModal}
+                    disabled={isSendingNotify}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    variant="primary"
+                    onClick={handleSendNotifyEmails}
+                    disabled={
+                      isSendingNotify ||
+                      (sendVariant === "in" && !sendApproxTime.trim())
+                    }
+                    className="flex items-center gap-2"
+                  >
+                    {isSendingNotify ? (
+                      <>
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        Sending…
+                      </>
+                    ) : (
+                      "Send"
+                    )}
+                  </Button>
+                </div>
               </div>
             </div>
-          </div>
-        );
-      })()}
+          );
+        })()}
       {confirmationDialog}
     </div>
   );
