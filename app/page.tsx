@@ -46,15 +46,6 @@ type Caps = {
   questions: boolean;
 };
 
-type AttentionItem = {
-  label: string;
-  value: number;
-  hint: string;
-  href: string;
-};
-type StatItem = { label: string; value: number; href: string };
-type QuickAction = { href: string; title: string; desc: string; icon: string };
-
 const dateFmt = new Intl.DateTimeFormat("en-US", {
   weekday: "long",
   month: "long",
@@ -73,6 +64,33 @@ function countdownLabel(start: Date): string {
   if (days === 0) return "Today";
   if (days === 1) return "Tomorrow";
   return `In ${days} days`;
+}
+
+type EventRow = Omit<UpcomingEvent, "isPast">;
+
+// Pick the event to feature: the soonest upcoming event the user may see,
+// falling back to the most recent past one. Kept out of the component body so
+// the time read stays out of render.
+function pickFeaturedEvent(
+  rows: EventRow[],
+  allowedIds: Set<string> | null,
+): UpcomingEvent | null {
+  const visible = allowedIds
+    ? rows.filter((e) => allowedIds.has(e.id))
+    : rows;
+  const dated = visible.filter((e) => e.startTimeDate);
+  const now = Date.now();
+  const next = [...dated]
+    .sort((a, b) => a.startTimeDate!.getTime() - b.startTimeDate!.getTime())
+    .find((e) => e.startTimeDate!.getTime() >= now);
+  const chosen = next ?? dated[0] ?? null; // dated[0] = most recent (desc order)
+  if (!chosen) return null;
+  return {
+    ...chosen,
+    isPast: chosen.startTimeDate
+      ? chosen.startTimeDate.getTime() < now
+      : false,
+  };
 }
 
 // ── Shared presentational fragments ──────────────────────────────────────────
@@ -257,25 +275,7 @@ export default async function AdminDashboard() {
       orderBy: desc(events.startTimeDate),
     });
 
-    const allowedIds = permittedEventIds(perms);
-    const visible = allowedIds
-      ? eventRows.filter((e) => allowedIds.has(e.id))
-      : eventRows;
-    const dated = visible.filter((e) => e.startTimeDate);
-    const now = Date.now();
-    const next = [...dated]
-      .sort((a, b) => a.startTimeDate!.getTime() - b.startTimeDate!.getTime())
-      .find((e) => e.startTimeDate!.getTime() >= now);
-    const chosen = next ?? dated[0] ?? null; // dated[0] = most recent (desc order)
-
-    if (chosen) {
-      upcoming = {
-        ...chosen,
-        isPast: chosen.startTimeDate
-          ? chosen.startTimeDate.getTime() < now
-          : false,
-      };
-    }
+    upcoming = pickFeaturedEvent(eventRows, permittedEventIds(perms));
   } catch (error) {
     console.error("Failed to load featured event for dashboard:", error);
   }
@@ -333,7 +333,7 @@ export default async function AdminDashboard() {
     questions: can("questions.manage"),
   };
 
-  const attentionItems: AttentionItem[] = [
+  const attentionItems = [
     {
       show: showSuggestions,
       label: "Pending suggestions",
@@ -348,11 +348,9 @@ export default async function AdminDashboard() {
       hint: upcoming?.name ?? "Upcoming event",
       href: "/waitlist",
     },
-  ]
-    .filter((i) => i.show)
-    .map(({ show: _show, ...rest }) => rest);
+  ].filter((i) => i.show);
 
-  const glanceStats: StatItem[] = [
+  const glanceStats = [
     { show: true, label: "Total events", value: totalEvents, href: "/events" },
     {
       show: showAudience,
@@ -360,11 +358,9 @@ export default async function AdminDashboard() {
       value: totalSubscribers,
       href: "/notify-analytics",
     },
-  ]
-    .filter((s) => s.show)
-    .map(({ show: _show, ...rest }) => rest);
+  ].filter((s) => s.show);
 
-  const quickActions: QuickAction[] = [
+  const quickActions = [
     {
       show: can("suggestions.manage"),
       href: "/suggest",
@@ -393,9 +389,7 @@ export default async function AdminDashboard() {
       desc: "Event notification lists",
       icon: "M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9",
     },
-  ]
-    .filter((a) => a.show)
-    .map(({ show: _show, ...rest }) => rest);
+  ].filter((a) => a.show);
 
   const greeting = firstName ? `Welcome back, ${firstName}` : "Dashboard";
   const heroLabel = upcoming?.isPast ? "Most recent event" : "Upcoming event";
