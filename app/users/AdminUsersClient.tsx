@@ -20,7 +20,11 @@ export type UnifiedUser = {
 
 export type Ban = { id: string; email: string; created_at: string };
 export type FeeWaiver = { id: string; email: string; created_at: string };
-export type EmailSuppression = { id: string; email: string; created_at: string };
+export type EmailSuppression = {
+  id: string;
+  email: string;
+  created_at: string;
+};
 
 export type EventOption = { id: string; name: string };
 
@@ -115,9 +119,7 @@ export default function AdminUsersClient({
   const allEvents = eventIds.size === 0;
   const anyEventScoped = useMemo(
     () =>
-      [...selectedPerms].some(
-        (k) => grantableByKey.get(k)?.scope === "event",
-      ),
+      [...selectedPerms].some((k) => grantableByKey.get(k)?.scope === "event"),
     [selectedPerms, grantableByKey],
   );
   // Permissions auto-included by the current selection (e.g. selecting Edit
@@ -187,10 +189,7 @@ export default function AdminUsersClient({
     setUsers((prev) =>
       prev.filter(
         (u) =>
-          u.email !== key ||
-          u.isAdmin ||
-          u.isScanner ||
-          u.grants.length > 0,
+          u.email !== key || u.isAdmin || u.isScanner || u.grants.length > 0,
       ),
     );
   }
@@ -240,7 +239,9 @@ export default function AdminUsersClient({
       const where = eventId
         ? (events.find((e) => e.id === eventId)?.name ?? "event")
         : "all events";
-      errors.push(`${email} · ${permission} (${where}): ${data.error || "Failed"}`);
+      errors.push(
+        `${email} · ${permission} (${where}): ${data.error || "Failed"}`,
+      );
       return false;
     }
     upsertUser(email, (u) =>
@@ -290,7 +291,13 @@ export default function AdminUsersClient({
         if (!g) continue;
         try {
           if (g.kind === "role") {
-            if (await addRole(email, key === "admin" ? "admin" : "scanner", errors))
+            if (
+              await addRole(
+                email,
+                key === "admin" ? "admin" : "scanner",
+                errors,
+              )
+            )
               granted++;
           } else if (g.scope === "global") {
             if (await grantPermission(email, key, null, errors)) granted++;
@@ -313,7 +320,10 @@ export default function AdminUsersClient({
     setIsSubmitting(false);
   }
 
-  async function handleRevokeRole(user: UnifiedUser, role: "admin" | "scanner") {
+  async function handleRevokeRole(
+    user: UnifiedUser,
+    role: "admin" | "scanner",
+  ) {
     if (!user.roleRowId) return;
     try {
       const res = await fetch("/api/users", {
@@ -424,7 +434,10 @@ export default function AdminUsersClient({
       else if (activeTab === "bans") setBans((p) => [...rows, ...p]);
       else setEmailSuppressions((p) => [...rows, ...p]);
 
-      const errs = (data.errors ?? []) as Array<{ email: string; error: string }>;
+      const errs = (data.errors ?? []) as Array<{
+        email: string;
+        error: string;
+      }>;
       if (errs.length > 0) {
         setError(errs.map((e) => `${e.email}: ${e.error}`).join("; "));
       }
@@ -453,7 +466,8 @@ export default function AdminUsersClient({
       }
       if (activeTab === "feeWaivers")
         setFeeWaivers((p) => p.filter((r) => r.id !== id));
-      else if (activeTab === "bans") setBans((p) => p.filter((r) => r.id !== id));
+      else if (activeTab === "bans")
+        setBans((p) => p.filter((r) => r.id !== id));
       else setEmailSuppressions((p) => p.filter((r) => r.id !== id));
       setSuccess("Removed");
     } catch {
@@ -487,7 +501,9 @@ export default function AdminUsersClient({
         {label}
         <span
           className={`rounded-full px-2 py-0.5 text-xs tabular-nums ${
-            isActive ? "bg-rose-500/15 text-rose-300" : "bg-white/5 text-zinc-400"
+            isActive
+              ? "bg-rose-500/15 text-rose-300"
+              : "bg-white/5 text-zinc-400"
           }`}
         >
           {count}
@@ -513,7 +529,11 @@ export default function AdminUsersClient({
         {tabBtn("users", "Users & permissions", users.length)}
         {tabBtn("feeWaivers", "Fee waiver", feeWaivers.length)}
         {tabBtn("bans", "Banned", bans.length)}
-        {tabBtn("emailSuppressions", "Email suppression", emailSuppressions.length)}
+        {tabBtn(
+          "emailSuppressions",
+          "Email suppression",
+          emailSuppressions.length,
+        )}
       </div>
 
       {error && (
@@ -616,7 +636,10 @@ export default function AdminUsersClient({
                                 <span>
                                   {g.label}
                                   {included && (
-                                    <span className="text-zinc-500"> · included</span>
+                                    <span className="text-zinc-500">
+                                      {" "}
+                                      · included
+                                    </span>
                                   )}
                                 </span>
                               </label>
@@ -711,7 +734,10 @@ export default function AdminUsersClient({
               className="divide-y divide-white/10 overflow-hidden rounded-2xl border border-white/10 bg-zinc-900/60"
             >
               {users.map((user) => (
-                <li key={user.email} className="flex items-start gap-4 p-4 sm:p-5">
+                <li
+                  key={user.email}
+                  className="flex items-start gap-4 p-4 sm:p-5"
+                >
                   <span
                     aria-hidden="true"
                     className="flex size-9 shrink-0 items-center justify-center rounded-full bg-white/10 text-sm font-medium text-zinc-300"
@@ -800,7 +826,9 @@ export default function AdminUsersClient({
 
           {simpleRows.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-white/10 px-6 py-16 text-center">
-              <p className="text-sm font-medium text-zinc-300">Nothing here yet</p>
+              <p className="text-sm font-medium text-zinc-300">
+                Nothing here yet
+              </p>
               <p className="mt-1 text-sm text-zinc-500">
                 Add an email above to populate this list.
               </p>

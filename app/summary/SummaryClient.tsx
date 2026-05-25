@@ -7,6 +7,7 @@ import {
   getDefaultTimelineZoomRange,
 } from "@/app/lib/utils";
 import ReactECharts from "echarts-for-react";
+import { Card, EmptyState, PageHeader } from "@/app/components/ui";
 
 // ── Types ────────────────────────────────────────────────────────────────
 
@@ -50,9 +51,22 @@ type SummaryResponse = {
   averageArrivalOffsetMs: number | null;
   peakInterval: { start: string; end: string; count: number } | null;
   scannerLeaderboard: ScannerEntry[];
-  earlyBirdFlake: { earlyFlakeRate: number; lateFlakeRate: number; earlyTotal: number; lateTotal: number } | null;
-  referralAttendance: { referralShowRate: number; organicShowRate: number; referralTotal: number; organicTotal: number } | null;
-  arrivalDistribution: { buckets: { label: string; count: number }[]; total: number } | null;
+  earlyBirdFlake: {
+    earlyFlakeRate: number;
+    lateFlakeRate: number;
+    earlyTotal: number;
+    lateTotal: number;
+  } | null;
+  referralAttendance: {
+    referralShowRate: number;
+    organicShowRate: number;
+    referralTotal: number;
+    organicTotal: number;
+  } | null;
+  arrivalDistribution: {
+    buckets: { label: string; count: number }[];
+    total: number;
+  } | null;
   feedbackStats: FeedbackStats;
 };
 
@@ -149,23 +163,65 @@ function formatTimestamp(value: string): string {
   });
 }
 
-function ProgressBar({ value, max, color = "#10b981" }: { value: number; max: number; color?: string }) {
+function ProgressBar({
+  value,
+  max,
+  color = "#10b981",
+}: {
+  value: number;
+  max: number;
+  color?: string;
+}) {
   const pct = max > 0 ? Math.min((value / max) * 100, 100) : 0;
   return (
     <div className="w-full bg-zinc-800 rounded-full h-2.5 overflow-hidden">
-      <div className="h-full rounded-full transition-all duration-500" style={{ width: `${pct}%`, backgroundColor: color }} />
+      <div
+        className="h-full rounded-full transition-all duration-500"
+        style={{ width: `${pct}%`, backgroundColor: color }}
+      />
     </div>
   );
 }
 
 const TYPE_CONFIG = [
-  { key: "STANDARD" as const, label: "Standard", color: "#3b82f6", bg: "bg-blue-500/10 border-blue-500/20", text: "text-blue-400" },
-  { key: "VIP" as const, label: "VIP", color: "#8b5cf6", bg: "bg-violet-500/10 border-violet-500/20", text: "text-violet-400" },
-  { key: "EXTERNAL" as const, label: "External", color: "#10b981", bg: "bg-emerald-500/10 border-emerald-500/20", text: "text-emerald-400" },
-  { key: "STANDBY" as const, label: "Standby", color: "#f59e0b", bg: "bg-amber-500/10 border-amber-500/20", text: "text-amber-400" },
+  {
+    key: "STANDARD" as const,
+    label: "Standard",
+    color: "#3b82f6",
+    bg: "bg-blue-500/10 border-blue-500/20",
+    text: "text-blue-400",
+  },
+  {
+    key: "VIP" as const,
+    label: "VIP",
+    color: "#8b5cf6",
+    bg: "bg-violet-500/10 border-violet-500/20",
+    text: "text-violet-400",
+  },
+  {
+    key: "EXTERNAL" as const,
+    label: "External",
+    color: "#10b981",
+    bg: "bg-emerald-500/10 border-emerald-500/20",
+    text: "text-emerald-400",
+  },
+  {
+    key: "STANDBY" as const,
+    label: "Standby",
+    color: "#f59e0b",
+    bg: "bg-amber-500/10 border-amber-500/20",
+    text: "text-amber-400",
+  },
 ];
 
-const ARRIVAL_COLORS = ["#8b5cf6", "#3b82f6", "#06b6d4", "#10b981", "#f59e0b", "#f43f5e"];
+const ARRIVAL_COLORS = [
+  "#8b5cf6",
+  "#3b82f6",
+  "#06b6d4",
+  "#10b981",
+  "#f59e0b",
+  "#f43f5e",
+];
 
 // ── Main Component ───────────────────────────────────────────────────────
 
@@ -173,7 +229,9 @@ function SummaryContent({ eventId }: { eventId: string }) {
   const [data, setData] = useState<SummaryResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [checkinZoomRange, setCheckinZoomRange] = useState<[number, number] | null>(null);
+  const [checkinZoomRange, setCheckinZoomRange] = useState<
+    [number, number] | null
+  >(null);
   const checkinChartRef = useRef<ReactECharts>(null);
   const checkinDebounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
@@ -233,8 +291,14 @@ function SummaryContent({ eventId }: { eventId: string }) {
     return data.ticketTimestamps.map((t) => new Date(t).getTime());
   }, [data]);
 
-  const eventStartMs = useMemo(() => toEpoch(data?.startTime), [data?.startTime]);
-  const doorsOpenMs = useMemo(() => toEpoch(data?.doorsOpen), [data?.doorsOpen]);
+  const eventStartMs = useMemo(
+    () => toEpoch(data?.startTime),
+    [data?.startTime],
+  );
+  const doorsOpenMs = useMemo(
+    () => toEpoch(data?.doorsOpen),
+    [data?.doorsOpen],
+  );
 
   const salesChartData = useMemo(() => {
     if (ticketEpochs.length === 0) return null;
@@ -261,7 +325,9 @@ function SummaryContent({ eventId }: { eventId: string }) {
       eventStartMs != null ? eventStartMs + 90 * MIN : anchorStart + 2 * HOUR,
       rangeStart + MIN,
     );
-    const intervalMs = pickCheckinInterval(Math.max(rangeEnd - rangeStart, MIN));
+    const intervalMs = pickCheckinInterval(
+      Math.max(rangeEnd - rangeStart, MIN),
+    );
     return {
       intervalMs,
       intervalLabel: intervalLabel(intervalMs),
@@ -339,19 +405,25 @@ function SummaryContent({ eventId }: { eventId: string }) {
     if (!salesChartData) return null;
 
     const salesBars = salesChartData.bucketed.map(([ts, count]) => [ts, count]);
-    const salesLine = salesChartData.bucketed.map(([ts, , cumulative]) => [ts, cumulative]);
-    const eventMarkers = eventStartMs != null
-      ? [{
-          xAxis: eventStartMs,
-          label: {
-            formatter: "Event Start",
-            color: "#e4e4e7",
-            fontSize: 10,
-            position: "insideEndTop",
-          },
-          lineStyle: { color: "#71717a", type: "dashed" as const },
-        }]
-      : [];
+    const salesLine = salesChartData.bucketed.map(([ts, , cumulative]) => [
+      ts,
+      cumulative,
+    ]);
+    const eventMarkers =
+      eventStartMs != null
+        ? [
+            {
+              xAxis: eventStartMs,
+              label: {
+                formatter: "Event Start",
+                color: "#e4e4e7",
+                fontSize: 10,
+                position: "insideEndTop",
+              },
+              lineStyle: { color: "#71717a", type: "dashed" as const },
+            },
+          ]
+        : [];
 
     return {
       backgroundColor: "transparent",
@@ -362,7 +434,10 @@ function SummaryContent({ eventId }: { eventId: string }) {
         borderColor: "#3f3f46",
         borderWidth: 1,
         textStyle: { color: "#fafafa", fontSize: 12 },
-        axisPointer: { type: "cross" as const, crossStyle: { color: "#71717a" } },
+        axisPointer: {
+          type: "cross" as const,
+          crossStyle: { color: "#71717a" },
+        },
       },
       legend: {
         data: ["Cumulative Sold", `Per ${salesChartData.intervalLabel}`],
@@ -386,17 +461,27 @@ function SummaryContent({ eventId }: { eventId: string }) {
         {
           type: "value" as const,
           name: "Cumulative",
-          nameTextStyle: { color: "#71717a", fontSize: 10, padding: [0, 0, 0, -24] },
+          nameTextStyle: {
+            color: "#71717a",
+            fontSize: 10,
+            padding: [0, 0, 0, -24],
+          },
           axisLabel: { color: "#71717a", fontSize: 10 },
           axisLine: { show: false },
           axisTick: { show: false },
-          splitLine: { lineStyle: { color: "#27272a", type: "dashed" as const } },
+          splitLine: {
+            lineStyle: { color: "#27272a", type: "dashed" as const },
+          },
           minInterval: 1,
         },
         {
           type: "value" as const,
           name: `Per ${salesChartData.intervalLabel}`,
-          nameTextStyle: { color: "#71717a", fontSize: 10, padding: [0, -24, 0, 0] },
+          nameTextStyle: {
+            color: "#71717a",
+            fontSize: 10,
+            padding: [0, -24, 0, 0],
+          },
           axisLabel: { color: "#71717a", fontSize: 10 },
           axisLine: { show: false },
           axisTick: { show: false },
@@ -410,7 +495,10 @@ function SummaryContent({ eventId }: { eventId: string }) {
           type: "bar" as const,
           yAxisIndex: 1,
           data: salesBars,
-          itemStyle: { color: "rgba(59,130,246,0.35)", borderRadius: [3, 3, 0, 0] },
+          itemStyle: {
+            color: "rgba(59,130,246,0.35)",
+            borderRadius: [3, 3, 0, 0],
+          },
           emphasis: { itemStyle: { color: "#60a5fa" } },
           barMaxWidth: 28,
           z: 1,
@@ -436,10 +524,13 @@ function SummaryContent({ eventId }: { eventId: string }) {
               ],
             },
           },
-          markLine: eventMarkers.length > 0 ? {
-            symbol: "none",
-            data: eventMarkers,
-          } : undefined,
+          markLine:
+            eventMarkers.length > 0
+              ? {
+                  symbol: "none",
+                  data: eventMarkers,
+                }
+              : undefined,
           z: 2,
         },
       ],
@@ -449,8 +540,14 @@ function SummaryContent({ eventId }: { eventId: string }) {
   const checkinChartOption = useMemo(() => {
     if (!checkinChartData) return null;
 
-    const checkinBars = checkinChartData.bucketed.map(([ts, count]) => [ts, count]);
-    const checkinLine = checkinChartData.bucketed.map(([ts, , cumulative]) => [ts, cumulative]);
+    const checkinBars = checkinChartData.bucketed.map(([ts, count]) => [
+      ts,
+      count,
+    ]);
+    const checkinLine = checkinChartData.bucketed.map(([ts, , cumulative]) => [
+      ts,
+      cumulative,
+    ]);
     const zoomProps = effectiveCheckinZoomRange
       ? {
           startValue: effectiveCheckinZoomRange[0],
@@ -458,31 +555,44 @@ function SummaryContent({ eventId }: { eventId: string }) {
         }
       : {};
     const markerLines = [
-      doorsOpenMs != null ? {
-        xAxis: doorsOpenMs,
+      doorsOpenMs != null
+        ? {
+            xAxis: doorsOpenMs,
+            label: {
+              formatter: "Doors",
+              color: "#e4e4e7",
+              fontSize: 10,
+              position: "insideEndTop",
+            },
+            lineStyle: { color: "#f59e0b", type: "dashed" as const },
+          }
+        : null,
+      eventStartMs != null
+        ? {
+            xAxis: eventStartMs,
+            label: {
+              formatter: "Start",
+              color: "#e4e4e7",
+              fontSize: 10,
+              position: "insideEndTop",
+            },
+            lineStyle: { color: "#71717a", type: "dashed" as const },
+          }
+        : null,
+    ].filter(
+      (
+        value,
+      ): value is {
+        xAxis: number;
         label: {
-          formatter: "Doors",
-          color: "#e4e4e7",
-          fontSize: 10,
-          position: "insideEndTop",
-        },
-        lineStyle: { color: "#f59e0b", type: "dashed" as const },
-      } : null,
-      eventStartMs != null ? {
-        xAxis: eventStartMs,
-        label: {
-          formatter: "Start",
-          color: "#e4e4e7",
-          fontSize: 10,
-          position: "insideEndTop",
-        },
-        lineStyle: { color: "#71717a", type: "dashed" as const },
-      } : null,
-    ].filter((value): value is {
-      xAxis: number;
-      label: { formatter: string; color: string; fontSize: number; position: string };
-      lineStyle: { color: string; type: "dashed" };
-    } => value !== null);
+          formatter: string;
+          color: string;
+          fontSize: number;
+          position: string;
+        };
+        lineStyle: { color: string; type: "dashed" };
+      } => value !== null,
+    );
 
     return {
       backgroundColor: "transparent",
@@ -493,7 +603,10 @@ function SummaryContent({ eventId }: { eventId: string }) {
         borderColor: "#3f3f46",
         borderWidth: 1,
         textStyle: { color: "#fafafa", fontSize: 12 },
-        axisPointer: { type: "cross" as const, crossStyle: { color: "#71717a" } },
+        axisPointer: {
+          type: "cross" as const,
+          crossStyle: { color: "#71717a" },
+        },
       },
       legend: {
         data: ["Cumulative Check-ins", `Per ${checkinChartData.intervalLabel}`],
@@ -517,17 +630,27 @@ function SummaryContent({ eventId }: { eventId: string }) {
         {
           type: "value" as const,
           name: "Cumulative",
-          nameTextStyle: { color: "#71717a", fontSize: 10, padding: [0, 0, 0, -24] },
+          nameTextStyle: {
+            color: "#71717a",
+            fontSize: 10,
+            padding: [0, 0, 0, -24],
+          },
           axisLabel: { color: "#71717a", fontSize: 10 },
           axisLine: { show: false },
           axisTick: { show: false },
-          splitLine: { lineStyle: { color: "#27272a", type: "dashed" as const } },
+          splitLine: {
+            lineStyle: { color: "#27272a", type: "dashed" as const },
+          },
           minInterval: 1,
         },
         {
           type: "value" as const,
           name: `Per ${checkinChartData.intervalLabel}`,
-          nameTextStyle: { color: "#71717a", fontSize: 10, padding: [0, -24, 0, 0] },
+          nameTextStyle: {
+            color: "#71717a",
+            fontSize: 10,
+            padding: [0, -24, 0, 0],
+          },
           axisLabel: { color: "#71717a", fontSize: 10 },
           axisLine: { show: false },
           axisTick: { show: false },
@@ -573,7 +696,10 @@ function SummaryContent({ eventId }: { eventId: string }) {
           type: "bar" as const,
           yAxisIndex: 1,
           data: checkinBars,
-          itemStyle: { color: "rgba(16,185,129,0.35)", borderRadius: [3, 3, 0, 0] },
+          itemStyle: {
+            color: "rgba(16,185,129,0.35)",
+            borderRadius: [3, 3, 0, 0],
+          },
           emphasis: { itemStyle: { color: "#34d399" } },
           barMaxWidth: 28,
           z: 1,
@@ -620,10 +746,13 @@ function SummaryContent({ eventId }: { eventId: string }) {
               ],
             },
           },
-          markLine: markerLines.length > 0 ? {
-            symbol: "none",
-            data: markerLines,
-          } : undefined,
+          markLine:
+            markerLines.length > 0
+              ? {
+                  symbol: "none",
+                  data: markerLines,
+                }
+              : undefined,
           z: 2,
         },
       ],
@@ -654,8 +783,18 @@ function SummaryContent({ eventId }: { eventId: string }) {
     return (
       <div className="flex-1 flex items-center justify-center py-20">
         <div className="text-center">
-          <svg className="w-10 h-10 text-rose-400 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          <svg
+            className="w-10 h-10 text-rose-400 mx-auto mb-2"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+            />
           </svg>
           <p className="text-rose-400 text-sm">{error}</p>
         </div>
@@ -667,8 +806,18 @@ function SummaryContent({ eventId }: { eventId: string }) {
     return (
       <div className="flex-1 flex items-center justify-center py-20">
         <div className="text-center">
-          <svg className="w-10 h-10 text-zinc-600 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+          <svg
+            className="w-10 h-10 text-zinc-600 mx-auto mb-2"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+            />
           </svg>
           <p className="text-zinc-400 text-sm">No ticket data for this event</p>
         </div>
@@ -677,20 +826,41 @@ function SummaryContent({ eventId }: { eventId: string }) {
   }
 
   const {
-    totalTickets, scannedCount, unscannedCount, flakeRate, byType,
-    waitlistCount, averageArrivalOffsetMs, peakInterval, capacity, standbyEnabled,
-    scannerLeaderboard, earlyBirdFlake, referralAttendance, arrivalDistribution,
+    totalTickets,
+    scannedCount,
+    unscannedCount,
+    flakeRate,
+    byType,
+    waitlistCount,
+    averageArrivalOffsetMs,
+    peakInterval,
+    capacity,
+    standbyEnabled,
+    scannerLeaderboard,
+    earlyBirdFlake,
+    referralAttendance,
+    arrivalDistribution,
     feedbackStats,
   } = data;
 
-  const attendanceRate = totalTickets > 0 ? (scannedCount / totalTickets) * 100 : 0;
+  const attendanceRate =
+    totalTickets > 0 ? (scannedCount / totalTickets) * 100 : 0;
   const capacityFill = capacity > 0 ? (scannedCount / capacity) * 100 : 0;
 
   // VIP vs Standard show-up comparison
-  const vipShowUp = byType.VIP.total > 0 ? (byType.VIP.scanned / byType.VIP.total) * 100 : null;
-  const stdShowUp = byType.STANDARD.total > 0 ? (byType.STANDARD.scanned / byType.STANDARD.total) * 100 : null;
-  const standbyConversion = byType.STANDBY.total > 0 ? (byType.STANDBY.scanned / byType.STANDBY.total) * 100 : null;
-  const visibleTypeCards = TYPE_CONFIG.filter(({ key }) => byType[key].total > 0);
+  const vipShowUp =
+    byType.VIP.total > 0 ? (byType.VIP.scanned / byType.VIP.total) * 100 : null;
+  const stdShowUp =
+    byType.STANDARD.total > 0
+      ? (byType.STANDARD.scanned / byType.STANDARD.total) * 100
+      : null;
+  const standbyConversion =
+    byType.STANDBY.total > 0
+      ? (byType.STANDBY.scanned / byType.STANDBY.total) * 100
+      : null;
+  const visibleTypeCards = TYPE_CONFIG.filter(
+    ({ key }) => byType[key].total > 0,
+  );
   const summaryBigNumberCardCount = 4;
   const summaryTypeCardCount = visibleTypeCards.length;
   const summaryInsightCardCount = [
@@ -711,99 +881,165 @@ function SummaryContent({ eventId }: { eventId: string }) {
         style={getAnalyticsCardGridStyle(summaryBigNumberCardCount)}
       >
         {/* Attendance */}
-        <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
-          <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-2">Attendance</p>
-          <p className={`text-3xl font-bold ${attendanceRate >= 75 ? "text-emerald-400" : attendanceRate >= 50 ? "text-blue-400" : "text-amber-400"}`}>
+        <Card className="p-5">
+          <p className="text-xs font-semibold tracking-wide text-zinc-500 mb-2">
+            Attendance
+          </p>
+          <p
+            className={`text-3xl font-bold ${attendanceRate >= 75 ? "text-emerald-400" : attendanceRate >= 50 ? "text-blue-400" : "text-amber-400"}`}
+          >
             {attendanceRate.toFixed(1)}%
           </p>
-          <p className="text-sm text-zinc-400 mt-1">{scannedCount} / {totalTickets} showed up</p>
+          <p className="text-sm text-zinc-400 mt-1">
+            {scannedCount} / {totalTickets} showed up
+          </p>
           {capacity > 0 && (
-            <p className="text-xs text-zinc-500 mt-0.5">{capacityFill.toFixed(1)}% of {capacity} capacity</p>
+            <p className="text-xs text-zinc-500 mt-0.5">
+              {capacityFill.toFixed(1)}% of {capacity} capacity
+            </p>
           )}
           <div className="mt-3">
-            <ProgressBar value={scannedCount} max={totalTickets} color={attendanceRate >= 75 ? "#10b981" : attendanceRate >= 50 ? "#3b82f6" : "#f59e0b"} />
+            <ProgressBar
+              value={scannedCount}
+              max={totalTickets}
+              color={
+                attendanceRate >= 75
+                  ? "#10b981"
+                  : attendanceRate >= 50
+                    ? "#3b82f6"
+                    : "#f59e0b"
+              }
+            />
           </div>
-        </div>
+        </Card>
 
         {/* Flake rate */}
-        <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
-          <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-2">Flake Rate</p>
-          <p className={`text-3xl font-bold ${flakeRate <= 15 ? "text-emerald-400" : flakeRate <= 30 ? "text-amber-400" : "text-rose-400"}`}>
+        <Card className="p-5">
+          <p className="text-xs font-semibold tracking-wide text-zinc-500 mb-2">
+            Flake rate
+          </p>
+          <p
+            className={`text-3xl font-bold ${flakeRate <= 15 ? "text-emerald-400" : flakeRate <= 30 ? "text-amber-400" : "text-rose-400"}`}
+          >
             {flakeRate.toFixed(1)}%
           </p>
-          <p className="text-sm text-zinc-400 mt-1">{unscannedCount} no-shows</p>
+          <p className="text-sm text-zinc-400 mt-1">
+            {unscannedCount} no-shows
+          </p>
           <div className="mt-3">
-            <ProgressBar value={unscannedCount} max={totalTickets} color={flakeRate <= 15 ? "#10b981" : flakeRate <= 30 ? "#f59e0b" : "#f43f5e"} />
+            <ProgressBar
+              value={unscannedCount}
+              max={totalTickets}
+              color={
+                flakeRate <= 15
+                  ? "#10b981"
+                  : flakeRate <= 30
+                    ? "#f59e0b"
+                    : "#f43f5e"
+              }
+            />
           </div>
-        </div>
+        </Card>
 
         {/* Avg arrival */}
-        <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
-          <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-2">Avg Arrival</p>
+        <Card className="p-5">
+          <p className="text-xs font-semibold tracking-wide text-zinc-500 mb-2">
+            Avg arrival
+          </p>
           {averageArrivalOffsetMs != null ? (
             <>
-              <p className="text-3xl font-bold text-blue-400">{formatDuration(averageArrivalOffsetMs)}</p>
+              <p className="text-3xl font-bold text-blue-400">
+                {formatDuration(averageArrivalOffsetMs)}
+              </p>
               <p className="text-sm text-zinc-400 mt-1">after doors open</p>
             </>
           ) : (
             <p className="text-xl text-zinc-600">N/A</p>
           )}
-        </div>
+        </Card>
 
         {/* Peak check-in */}
-        <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
-          <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-2">Peak Window</p>
+        <Card className="p-5">
+          <p className="text-xs font-semibold tracking-wide text-zinc-500 mb-2">
+            Peak window
+          </p>
           {peakInterval ? (
             <>
-              <p className="text-3xl font-bold text-violet-400">{peakInterval.count}</p>
+              <p className="text-3xl font-bold text-violet-400">
+                {peakInterval.count}
+              </p>
               <p className="text-sm text-zinc-400 mt-1">check-ins in 15 min</p>
-              <p className="text-xs text-zinc-500 mt-0.5">{formatTimeRange(peakInterval.start, peakInterval.end)}</p>
+              <p className="text-xs text-zinc-500 mt-0.5">
+                {formatTimeRange(peakInterval.start, peakInterval.end)}
+              </p>
             </>
           ) : (
             <p className="text-xl text-zinc-600">N/A</p>
           )}
-        </div>
-
+        </Card>
       </div>
 
       <div
         className="grid grid-cols-2 gap-4 analytics-card-grid"
         style={getAnalyticsCardGridStyle(summaryFeedbackCardCount)}
       >
-        <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
-          <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-2">Feedback NPS</p>
+        <Card className="p-5">
+          <p className="text-xs font-semibold tracking-wide text-zinc-500 mb-2">
+            Feedback NPS
+          </p>
           {feedbackStats.nps != null ? (
             <>
-              <p className={`text-3xl font-bold ${feedbackStats.nps >= 40 ? "text-emerald-400" : feedbackStats.nps >= 0 ? "text-blue-400" : "text-rose-400"}`}>
+              <p
+                className={`text-3xl font-bold ${feedbackStats.nps >= 40 ? "text-emerald-400" : feedbackStats.nps >= 0 ? "text-blue-400" : "text-rose-400"}`}
+              >
                 {Math.round(feedbackStats.nps)}
               </p>
               <p className="text-sm text-zinc-400 mt-1">
-                {feedbackStats.promoterCount} promoters &middot; {feedbackStats.detractorCount} detractors
+                {feedbackStats.promoterCount} promoters &middot;{" "}
+                {feedbackStats.detractorCount} detractors
               </p>
             </>
           ) : (
             <>
               <p className="text-3xl font-bold text-zinc-600">N/A</p>
-              <p className="text-sm text-zinc-400 mt-1">No feedback responses yet</p>
+              <p className="text-sm text-zinc-400 mt-1">
+                No feedback responses yet
+              </p>
             </>
           )}
-        </div>
+        </Card>
 
-        <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
-          <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-2">Feedback Response Rate</p>
-          <p className={`text-3xl font-bold ${feedbackStats.responseRate >= 35 ? "text-emerald-400" : feedbackStats.responseRate >= 15 ? "text-amber-400" : "text-zinc-300"}`}>
+        <Card className="p-5">
+          <p className="text-xs font-semibold tracking-wide text-zinc-500 mb-2">
+            Feedback response rate
+          </p>
+          <p
+            className={`text-3xl font-bold ${feedbackStats.responseRate >= 35 ? "text-emerald-400" : feedbackStats.responseRate >= 15 ? "text-amber-400" : "text-zinc-300"}`}
+          >
             {feedbackStats.responseRate.toFixed(1)}%
           </p>
           <p className="text-sm text-zinc-400 mt-1">
             {feedbackStats.responseCount} of {scannedCount} checked-in attendees
           </p>
           <div className="mt-3">
-            <ProgressBar value={feedbackStats.responseCount} max={Math.max(scannedCount, 1)} color={feedbackStats.responseRate >= 35 ? "#10b981" : feedbackStats.responseRate >= 15 ? "#f59e0b" : "#71717a"} />
+            <ProgressBar
+              value={feedbackStats.responseCount}
+              max={Math.max(scannedCount, 1)}
+              color={
+                feedbackStats.responseRate >= 35
+                  ? "#10b981"
+                  : feedbackStats.responseRate >= 15
+                    ? "#f59e0b"
+                    : "#71717a"
+              }
+            />
           </div>
-        </div>
+        </Card>
 
-        <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
-          <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-2">Average Score</p>
+        <Card className="p-5">
+          <p className="text-xs font-semibold tracking-wide text-zinc-500 mb-2">
+            Average score
+          </p>
           {feedbackStats.averageScore != null ? (
             <>
               <p className="text-3xl font-bold text-cyan-400">
@@ -817,25 +1053,33 @@ function SummaryContent({ eventId }: { eventId: string }) {
           ) : (
             <>
               <p className="text-3xl font-bold text-zinc-600">N/A</p>
-              <p className="text-sm text-zinc-400 mt-1">Waiting on first response</p>
+              <p className="text-sm text-zinc-400 mt-1">
+                Waiting on first response
+              </p>
             </>
           )}
-        </div>
+        </Card>
 
-        <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
-          <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-2">Written Comments</p>
-          <p className="text-3xl font-bold text-violet-400">{feedbackStats.commentCount}</p>
+        <Card className="p-5">
+          <p className="text-xs font-semibold tracking-wide text-zinc-500 mb-2">
+            Written comments
+          </p>
+          <p className="text-3xl font-bold text-violet-400">
+            {feedbackStats.commentCount}
+          </p>
           <p className="text-sm text-zinc-400 mt-1">
             {feedbackStats.responseCount > 0
               ? `${((feedbackStats.commentCount / feedbackStats.responseCount) * 100).toFixed(0)}% of responses included notes`
               : "No comments yet"}
           </p>
-        </div>
+        </Card>
       </div>
 
       {/* ── Per-type flake breakdown ── */}
-      <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
-        <h3 className="text-sm font-semibold text-zinc-300 mb-4">Attendance by Ticket Type</h3>
+      <Card className="p-5">
+        <h3 className="text-sm font-semibold text-zinc-300 mb-4">
+          Attendance by ticket type
+        </h3>
         <div
           className="grid grid-cols-2 gap-4 analytics-card-grid"
           style={getAnalyticsCardGridStyle(summaryTypeCardCount)}
@@ -845,31 +1089,49 @@ function SummaryContent({ eventId }: { eventId: string }) {
             const showRate = t.total > 0 ? (t.scanned / t.total) * 100 : 0;
             const flaked = t.total - t.scanned;
             return (
-              <div key={key} className={`rounded-xl border p-4 ${bg}`}>
+              <div key={key} className={`rounded-lg border p-4 ${bg}`}>
                 <div className="flex items-center justify-between mb-2">
-                  <span className={`text-xs font-semibold uppercase tracking-wider ${text}`}>{label}</span>
-                  <span className={`text-lg font-bold ${text}`}>{showRate.toFixed(0)}%</span>
+                  <span
+                    className={`text-xs font-semibold tracking-wide ${text}`}
+                  >
+                    {label}
+                  </span>
+                  <span className={`text-lg font-bold ${text}`}>
+                    {showRate.toFixed(0)}%
+                  </span>
                 </div>
-                <p className="text-sm text-zinc-300 mb-1">{t.scanned} / {t.total} attended</p>
-                <p className="text-xs text-zinc-500 mb-2">{flaked} flaked ({t.flakeRate.toFixed(0)}%)</p>
+                <p className="text-sm text-zinc-300 mb-1">
+                  {t.scanned} / {t.total} attended
+                </p>
+                <p className="text-xs text-zinc-500 mb-2">
+                  {flaked} flaked ({t.flakeRate.toFixed(0)}%)
+                </p>
                 <ProgressBar value={t.scanned} max={t.total} color={color} />
               </div>
             );
           })}
         </div>
-      </div>
+      </Card>
 
       {/* ── Arrival Distribution ── */}
       {arrivalDistribution && arrivalDistribution.total > 0 && (
-        <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
-          <h3 className="text-sm font-semibold text-zinc-300 mb-4">Arrival Distribution</h3>
+        <Card className="p-5">
+          <h3 className="text-sm font-semibold text-zinc-300 mb-4">
+            Arrival distribution
+          </h3>
           <ReactECharts
             option={{
               backgroundColor: "transparent",
               animation: true,
               animationDuration: 600,
               animationEasing: "cubicOut",
-              grid: { top: 16, right: 16, bottom: 24, left: 16, containLabel: true },
+              grid: {
+                top: 16,
+                right: 16,
+                bottom: 24,
+                left: 16,
+                containLabel: true,
+              },
               xAxis: {
                 type: "category",
                 data: arrivalDistribution.buckets.map((b) => b.label),
@@ -893,9 +1155,10 @@ function SummaryContent({ eventId }: { eventId: string }) {
                 textStyle: { color: "#fafafa", fontSize: 12 },
                 formatter: (params: { name: string; value: number }[]) => {
                   const p = params[0];
-                  const pct = arrivalDistribution.total > 0
-                    ? ((p.value / arrivalDistribution.total) * 100).toFixed(0)
-                    : "0";
+                  const pct =
+                    arrivalDistribution.total > 0
+                      ? ((p.value / arrivalDistribution.total) * 100).toFixed(0)
+                      : "0";
                   return `<b>${p.name}</b><br/>${p.value} (${pct}%)`;
                 },
               },
@@ -908,10 +1171,20 @@ function SummaryContent({ eventId }: { eventId: string }) {
                     itemStyle: {
                       color: {
                         type: "linear",
-                        x: 0, y: 0, x2: 0, y2: 1,
+                        x: 0,
+                        y: 0,
+                        x2: 0,
+                        y2: 1,
                         colorStops: [
-                          { offset: 0, color: ARRIVAL_COLORS[i % ARRIVAL_COLORS.length] },
-                          { offset: 1, color: ARRIVAL_COLORS[i % ARRIVAL_COLORS.length] + "33" },
+                          {
+                            offset: 0,
+                            color: ARRIVAL_COLORS[i % ARRIVAL_COLORS.length],
+                          },
+                          {
+                            offset: 1,
+                            color:
+                              ARRIVAL_COLORS[i % ARRIVAL_COLORS.length] + "33",
+                          },
                         ],
                       },
                       borderRadius: [8, 8, 0, 0],
@@ -931,7 +1204,7 @@ function SummaryContent({ eventId }: { eventId: string }) {
             style={{ height: 200 }}
             opts={{ renderer: "canvas" }}
           />
-        </div>
+        </Card>
       )}
 
       {/* ── Insights row ── */}
@@ -940,102 +1213,152 @@ function SummaryContent({ eventId }: { eventId: string }) {
         style={getAnalyticsCardGridStyle(summaryInsightCardCount)}
       >
         {vipShowUp != null && stdShowUp != null && (
-          <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
-            <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-2">VIP vs Standard</p>
+          <Card className="p-4">
+            <p className="text-xs font-semibold tracking-wide text-zinc-500 mb-2">
+              VIP vs standard
+            </p>
             <div className="flex items-end gap-3">
               <div>
                 <p className="text-xs text-violet-400 mb-0.5">VIP</p>
-                <p className="text-xl font-bold text-violet-400">{vipShowUp.toFixed(0)}%</p>
+                <p className="text-xl font-bold text-violet-400">
+                  {vipShowUp.toFixed(0)}%
+                </p>
               </div>
               <div className="text-zinc-600 text-sm pb-0.5">vs</div>
               <div>
                 <p className="text-xs text-blue-400 mb-0.5">Standard</p>
-                <p className="text-xl font-bold text-blue-400">{stdShowUp.toFixed(0)}%</p>
+                <p className="text-xl font-bold text-blue-400">
+                  {stdShowUp.toFixed(0)}%
+                </p>
               </div>
             </div>
-          </div>
+          </Card>
         )}
 
         {standbyEnabled && standbyConversion != null && (
-          <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
-            <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-2">Standby Conversion</p>
-            <p className="text-xl font-bold text-amber-400">{standbyConversion.toFixed(0)}%</p>
-            <p className="text-xs text-zinc-500 mt-1">{byType.STANDBY.scanned} / {byType.STANDBY.total} admitted</p>
-          </div>
+          <Card className="p-4">
+            <p className="text-xs font-semibold tracking-wide text-zinc-500 mb-2">
+              Standby conversion
+            </p>
+            <p className="text-xl font-bold text-amber-400">
+              {standbyConversion.toFixed(0)}%
+            </p>
+            <p className="text-xs text-zinc-500 mt-1">
+              {byType.STANDBY.scanned} / {byType.STANDBY.total} admitted
+            </p>
+          </Card>
         )}
 
         {/* Early-bird flake */}
         {earlyBirdFlake && (
-          <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
-            <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-2">Early vs Late Buyers</p>
+          <Card className="p-4">
+            <p className="text-xs font-semibold tracking-wide text-zinc-500 mb-2">
+              Early vs late buyers
+            </p>
             <div className="flex items-end gap-3">
               <div>
-                <p className="text-xs text-emerald-400 mb-0.5">First 24h ({earlyBirdFlake.earlyTotal})</p>
-                <p className="text-xl font-bold text-emerald-400">{earlyBirdFlake.earlyFlakeRate.toFixed(0)}%</p>
+                <p className="text-xs text-emerald-400 mb-0.5">
+                  First 24h ({earlyBirdFlake.earlyTotal})
+                </p>
+                <p className="text-xl font-bold text-emerald-400">
+                  {earlyBirdFlake.earlyFlakeRate.toFixed(0)}%
+                </p>
               </div>
               <div className="text-zinc-600 text-sm pb-0.5">vs</div>
               <div>
-                <p className="text-xs text-rose-400 mb-0.5">Last 24h ({earlyBirdFlake.lateTotal})</p>
-                <p className="text-xl font-bold text-rose-400">{earlyBirdFlake.lateFlakeRate.toFixed(0)}%</p>
+                <p className="text-xs text-rose-400 mb-0.5">
+                  Last 24h ({earlyBirdFlake.lateTotal})
+                </p>
+                <p className="text-xl font-bold text-rose-400">
+                  {earlyBirdFlake.lateFlakeRate.toFixed(0)}%
+                </p>
               </div>
             </div>
-            <p className="text-[10px] text-zinc-600 mt-1">flake rate: early buyers vs last-minute</p>
-          </div>
+            <p className="text-[10px] text-zinc-600 mt-1">
+              flake rate: early buyers vs last-minute
+            </p>
+          </Card>
         )}
 
         {/* Referral attendance */}
         {referralAttendance && (
-          <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
-            <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-2">Referral Attendance</p>
+          <Card className="p-4">
+            <p className="text-xs font-semibold tracking-wide text-zinc-500 mb-2">
+              Referral attendance
+            </p>
             <div className="flex items-end gap-3">
               <div>
-                <p className="text-xs text-cyan-400 mb-0.5">Referral ({referralAttendance.referralTotal})</p>
-                <p className="text-xl font-bold text-cyan-400">{referralAttendance.referralShowRate.toFixed(0)}%</p>
+                <p className="text-xs text-cyan-400 mb-0.5">
+                  Referral ({referralAttendance.referralTotal})
+                </p>
+                <p className="text-xl font-bold text-cyan-400">
+                  {referralAttendance.referralShowRate.toFixed(0)}%
+                </p>
               </div>
               <div className="text-zinc-600 text-sm pb-0.5">vs</div>
               <div>
-                <p className="text-xs text-zinc-400 mb-0.5">Organic ({referralAttendance.organicTotal})</p>
-                <p className="text-xl font-bold text-zinc-300">{referralAttendance.organicShowRate.toFixed(0)}%</p>
+                <p className="text-xs text-zinc-400 mb-0.5">
+                  Organic ({referralAttendance.organicTotal})
+                </p>
+                <p className="text-xl font-bold text-zinc-300">
+                  {referralAttendance.organicShowRate.toFixed(0)}%
+                </p>
               </div>
             </div>
-            <p className="text-[10px] text-zinc-600 mt-1">show-up rate comparison</p>
-          </div>
+            <p className="text-[10px] text-zinc-600 mt-1">
+              show-up rate comparison
+            </p>
+          </Card>
         )}
 
         {waitlistCount > 0 && (
-          <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
-            <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-2">Waitlist Size</p>
+          <Card className="p-4">
+            <p className="text-xs font-semibold tracking-wide text-zinc-500 mb-2">
+              Waitlist size
+            </p>
             <p className="text-xl font-bold text-rose-400">{waitlistCount}</p>
             <p className="text-xs text-zinc-500 mt-1">people who missed out</p>
-          </div>
+          </Card>
         )}
 
-        <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
-          <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-2">Tickets Sold</p>
+        <Card className="p-4">
+          <p className="text-xs font-semibold tracking-wide text-zinc-500 mb-2">
+            Tickets sold
+          </p>
           <p className="text-xl font-bold text-blue-400">{totalTickets}</p>
           {capacity > 0 && (
-            <p className="text-xs text-zinc-500 mt-1">{((totalTickets / capacity) * 100).toFixed(0)}% of capacity</p>
+            <p className="text-xs text-zinc-500 mt-1">
+              {((totalTickets / capacity) * 100).toFixed(0)}% of capacity
+            </p>
           )}
-        </div>
+        </Card>
       </div>
 
       {feedbackStats.recentComments.length > 0 && (
-        <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
+        <Card className="p-5">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-sm font-semibold text-zinc-300">Recent Feedback Comments</h3>
+            <h3 className="text-sm font-semibold text-zinc-300">
+              Recent feedback comments
+            </h3>
             <span className="text-xs text-zinc-500">
-              {feedbackStats.commentCount} total comment{feedbackStats.commentCount !== 1 ? "s" : ""}
+              {feedbackStats.commentCount} total comment
+              {feedbackStats.commentCount !== 1 ? "s" : ""}
             </span>
           </div>
           <div className="space-y-3">
             {feedbackStats.recentComments.map((entry) => (
-              <div key={entry.id} className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
+              <div
+                key={entry.id}
+                className="rounded-lg border border-white/10 bg-zinc-950/60 p-4"
+              >
                 <div className="flex flex-wrap items-center gap-2 mb-2">
                   <span className="inline-flex items-center rounded-full bg-violet-500/10 px-2.5 py-1 text-xs font-semibold text-violet-300">
                     {entry.score}/10
                   </span>
                   <span className="text-sm font-medium text-white">
-                    {entry.attendeeName || entry.attendeeEmail || "Anonymous attendee"}
+                    {entry.attendeeName ||
+                      entry.attendeeEmail ||
+                      "Anonymous attendee"}
                   </span>
                   <span className="text-xs text-zinc-500">
                     {formatTimestamp(entry.updatedAt)}
@@ -1047,30 +1370,48 @@ function SummaryContent({ eventId }: { eventId: string }) {
               </div>
             ))}
           </div>
-        </div>
+        </Card>
       )}
 
       {/* ── Scanner Performance ── */}
       {scannerLeaderboard.length > 0 && (
-        <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
+        <Card className="p-5">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-sm font-semibold text-zinc-300">Scanner Performance</h3>
+            <h3 className="text-sm font-semibold text-zinc-300">
+              Scanner performance
+            </h3>
             <div className="flex items-center gap-4 text-xs text-zinc-500">
-              <span>{scannerLeaderboard.length} scanner{scannerLeaderboard.length !== 1 ? "s" : ""}</span>
-              <span>{scannedCount > 0 ? Math.round(scannedCount / scannerLeaderboard.length) : 0} avg scans</span>
+              <span>
+                {scannerLeaderboard.length} scanner
+                {scannerLeaderboard.length !== 1 ? "s" : ""}
+              </span>
+              <span>
+                {scannedCount > 0
+                  ? Math.round(scannedCount / scannerLeaderboard.length)
+                  : 0}{" "}
+                avg scans
+              </span>
             </div>
           </div>
           <div className="space-y-3">
             {scannerLeaderboard.map((scanner, i) => {
-              const pct = scannedCount > 0 ? (scanner.count / scannedCount) * 100 : 0;
+              const pct =
+                scannedCount > 0 ? (scanner.count / scannedCount) * 100 : 0;
               return (
-                <div key={scanner.email || scanner.name} className="flex items-center gap-3">
-                  <span className={`text-sm font-bold w-6 text-right ${i < 3 ? ["text-amber-400", "text-zinc-300", "text-amber-600"][i] : "text-zinc-500"}`}>
+                <div
+                  key={scanner.email || scanner.name}
+                  className="flex items-center gap-3"
+                >
+                  <span
+                    className={`text-sm font-bold w-6 text-right ${i < 3 ? ["text-amber-400", "text-zinc-300", "text-amber-600"][i] : "text-zinc-500"}`}
+                  >
                     #{i + 1}
                   </span>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between mb-1">
-                      <span className="text-sm text-white truncate">{scanner.name}</span>
+                      <span className="text-sm text-white truncate">
+                        {scanner.name}
+                      </span>
                       <span className="text-xs text-zinc-400 shrink-0 ml-2">
                         {scanner.count} ({pct.toFixed(0)}%)
                       </span>
@@ -1080,7 +1421,14 @@ function SummaryContent({ eventId }: { eventId: string }) {
                         className="h-full rounded-full transition-all duration-500"
                         style={{
                           width: `${(scanner.count / scannerLeaderboard[0].count) * 100}%`,
-                          backgroundColor: i === 0 ? "#f59e0b" : i === 1 ? "#a1a1aa" : i === 2 ? "#b45309" : "#3b82f6",
+                          backgroundColor:
+                            i === 0
+                              ? "#f59e0b"
+                              : i === 1
+                                ? "#a1a1aa"
+                                : i === 2
+                                  ? "#b45309"
+                                  : "#3b82f6",
                         }}
                       />
                     </div>
@@ -1089,31 +1437,37 @@ function SummaryContent({ eventId }: { eventId: string }) {
               );
             })}
           </div>
-        </div>
+        </Card>
       )}
 
       {/* ── Booking and Check-in timelines ── */}
       {(salesChartOption || checkinChartOption) && (
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
           {salesChartOption && (
-            <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
-              <h3 className="text-sm font-semibold text-zinc-300 mb-1">Ticket Sales Timeline</h3>
+            <Card className="p-5">
+              <h3 className="text-sm font-semibold text-zinc-300 mb-1">
+                Ticket sales timeline
+              </h3>
               <p className="text-[10px] text-zinc-600 mb-3">
-                Booking pace over the full sales window, separate from event-day arrivals.
+                Booking pace over the full sales window, separate from event-day
+                arrivals.
               </p>
               <ReactECharts
                 option={salesChartOption}
                 style={{ height: 320 }}
                 opts={{ renderer: "canvas" }}
               />
-            </div>
+            </Card>
           )}
 
           {checkinChartOption && (
-            <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
-              <h3 className="text-sm font-semibold text-zinc-300 mb-1">Check-in Timeline</h3>
+            <Card className="p-5">
+              <h3 className="text-sm font-semibold text-zinc-300 mb-1">
+                Check-in timeline
+              </h3>
               <p className="text-[10px] text-zinc-600 mb-3">
-                Event-day scan activity around doors open and start time. Scroll to zoom and drag to pan.
+                Event-day scan activity around doors open and start time. Scroll
+                to zoom and drag to pan.
               </p>
               <ReactECharts
                 ref={checkinChartRef}
@@ -1122,7 +1476,7 @@ function SummaryContent({ eventId }: { eventId: string }) {
                 opts={{ renderer: "canvas" }}
                 onEvents={checkinOnEvents}
               />
-            </div>
+            </Card>
           )}
         </div>
       )}
@@ -1137,26 +1491,19 @@ export default function SummaryClient() {
   const currentEvent = events.find((e) => e.id === selectedEventId);
 
   return (
-    <div className="px-4 sm:px-6 py-8">
-      <div className="mb-8">
-        <h1 className="text-2xl sm:text-3xl font-bold text-white font-serif mb-2">
-          Summary
-        </h1>
-        {currentEvent && (
-          <p className="text-zinc-400">{currentEvent.name || "Unnamed Event"}</p>
-        )}
-      </div>
+    <div className="px-4 sm:px-6 py-8 space-y-6">
+      <PageHeader
+        title="Summary"
+        subtitle={
+          currentEvent ? currentEvent.name || "Unnamed Event" : undefined
+        }
+      />
 
       {!selectedEventId ? (
-        <div className="text-center py-16 bg-zinc-900/50 rounded-2xl border border-zinc-800">
-          <div className="w-16 h-16 bg-zinc-800 rounded-full flex items-center justify-center mx-auto mb-4">
-            <svg className="w-8 h-8 text-zinc-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
-            </svg>
-          </div>
-          <p className="text-zinc-400 text-lg mb-2">No event selected</p>
-          <p className="text-zinc-600 text-sm">Select an event from the sidebar to view summary data</p>
-        </div>
+        <EmptyState
+          title="No event selected"
+          hint="Select an event from the sidebar to view summary data"
+        />
       ) : (
         <SummaryContent eventId={selectedEventId} />
       )}

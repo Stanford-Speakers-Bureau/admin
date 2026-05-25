@@ -8,6 +8,14 @@ import { useConfirmationDialog } from "@/app/components/ConfirmationDialog";
 import { PACIFIC_TIMEZONE } from "@/app/lib/constants";
 import { useEventContext } from "@/app/EventContext";
 import type { TicketingRole } from "@/app/lib/ticketingRoles";
+import {
+  Alert,
+  EmptyState,
+  Input,
+  PageHeader,
+  StatusPill,
+  type SemanticColor,
+} from "@/app/components/ui";
 
 export type Event = {
   id: string;
@@ -55,7 +63,7 @@ export type Event = {
 
 type EventStatus = {
   label: string;
-  color: string;
+  color: SemanticColor;
 };
 
 function formatShortDate(dateString: string | null): {
@@ -99,23 +107,23 @@ function getEventStatus(event: Event): EventStatus {
       : null;
 
   if (eventEnd && now >= eventEnd) {
-    return { label: "Event Over", color: "text-zinc-500" };
+    return { label: "Event Over", color: "zinc" };
   }
 
   if (event.live) {
-    return { label: "Happening Now", color: "text-emerald-400" };
+    return { label: "Happening Now", color: "emerald" };
   }
 
   if (eventStart && now >= eventStart) {
-    return { label: "Event Started", color: "text-emerald-400" };
+    return { label: "Event Started", color: "emerald" };
   }
 
   if (event.standby_enabled) {
-    return { label: "Standby Line Open", color: "text-amber-400" };
+    return { label: "Standby Line Open", color: "amber" };
   }
 
   if (isMystery) {
-    return { label: "Mystery Speaker", color: "text-purple-400" };
+    return { label: "Mystery Speaker", color: "violet" };
   }
 
   const maxPublic = Math.max(0, event.capacity - (event.reserved || 0));
@@ -123,7 +131,7 @@ function getEventStatus(event: Event): EventStatus {
     event.capacity > 0 && (event.tickets_sold || 0) >= maxPublic;
 
   if (isSoldOut) {
-    return { label: "Sold Out", color: "text-orange-400" };
+    return { label: "Sold Out", color: "rose" };
   }
 
   const ticketingDate = event.ticketing_date
@@ -131,7 +139,7 @@ function getEventStatus(event: Event): EventStatus {
     : null;
   if (ticketingDate && now < ticketingDate) {
     if (event.hide_ticketing_date) {
-      return { label: "Tickets Drop (Hidden)", color: "text-blue-400" };
+      return { label: "Tickets Drop (Hidden)", color: "blue" };
     }
     const formatted = new Intl.DateTimeFormat("en-US", {
       month: "short",
@@ -141,10 +149,10 @@ function getEventStatus(event: Event): EventStatus {
       hour12: true,
       timeZone: PACIFIC_TIMEZONE,
     }).format(ticketingDate);
-    return { label: `Tickets Drop ${formatted}`, color: "text-blue-400" };
+    return { label: `Tickets Drop ${formatted}`, color: "blue" };
   }
 
-  return { label: "Tickets Available", color: "text-emerald-400" };
+  return { label: "Tickets Available", color: "emerald" };
 }
 
 type EventThumbnailProps = {
@@ -195,19 +203,17 @@ function EventThumbnail({ event }: EventThumbnailProps) {
 function StatusBadge({ event }: { event: Event }) {
   const status = getEventStatus(event);
   return (
-    <span
-      className={`inline-flex items-center gap-1.5 rounded-full bg-white/5 px-2 py-1 text-xs font-medium whitespace-nowrap ${status.color}`}
-    >
-      <span className="size-1.5 rounded-full bg-current" aria-hidden="true" />
+    <StatusPill color={status.color} dot className="whitespace-nowrap">
       {status.label}
-    </span>
+    </StatusPill>
   );
 }
 
 function CapacityMeter({ event }: { event: Event }) {
   const sold = event.tickets_sold ?? 0;
   const capacity = event.capacity || 0;
-  const pct = capacity > 0 ? Math.min(100, Math.round((sold / capacity) * 100)) : 0;
+  const pct =
+    capacity > 0 ? Math.min(100, Math.round((sold / capacity) * 100)) : 0;
   const isFull = capacity > 0 && sold >= capacity;
 
   return (
@@ -298,157 +304,54 @@ export default function AdminEventsClient({
 
   return (
     <div className="px-4 sm:px-6 py-8">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-white font-serif mb-2">
-            Event Management
-          </h1>
-          <p className="text-zinc-400">
+      <PageHeader
+        className="mb-6"
+        title="Event management"
+        subtitle={
+          <>
             View and manage speaker events.
             {events.length > 0 && (
-              <span className="text-zinc-600">
-                {" "}
-                · {events.length} total
-              </span>
+              <span className="text-zinc-600"> · {events.length} total</span>
             )}
-          </p>
-        </div>
+          </>
+        }
+      >
         <Link
           href="/events/edit?create=1"
-          className="flex items-center justify-center gap-2 px-4 py-2.5 bg-gradient-to-r from-emerald-500 to-teal-500 text-white rounded-xl font-medium hover:opacity-90 transition-opacity"
+          className="rounded-lg bg-rose-500 px-3 py-2 text-sm font-semibold text-white hover:bg-rose-400 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose-500"
         >
-          <svg
-            className="w-5 h-5"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M12 6v6m0 0v6m0-6h6m-6 0H6"
-            />
-          </svg>
-          Create Event
+          Create event
         </Link>
-      </div>
+      </PageHeader>
 
       {error && (
-        <div className="mb-6 p-4 bg-rose-500/10 border border-rose-500/30 rounded-xl flex items-center gap-3">
-          <svg
-            className="w-5 h-5 text-rose-400 shrink-0"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-            />
-          </svg>
-          <p className="text-rose-400 text-sm">{error}</p>
-          <button
-            onClick={() => setError(null)}
-            className="ml-auto text-rose-400 hover:text-rose-300"
-          >
-            <svg
-              className="w-4 h-4"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M6 18L18 6M6 6l12 12"
-              />
-            </svg>
-          </button>
-        </div>
+        <Alert className="mb-6" tone="error" onDismiss={() => setError(null)}>
+          {error}
+        </Alert>
       )}
 
       {success && (
-        <div className="mb-6 p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-xl flex items-center gap-3">
-          <svg
-            className="w-5 h-5 text-emerald-400 shrink-0"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M5 13l4 4L19 7"
-            />
-          </svg>
-          <p className="text-emerald-400 text-sm">{success}</p>
-          <button
-            onClick={() => setSuccess(null)}
-            className="ml-auto text-emerald-400 hover:text-emerald-300"
-          >
-            <svg
-              className="w-4 h-4"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M6 18L18 6M6 6l12 12"
-              />
-            </svg>
-          </button>
-        </div>
+        <Alert
+          className="mb-6"
+          tone="success"
+          onDismiss={() => setSuccess(null)}
+        >
+          {success}
+        </Alert>
       )}
 
       {events.length === 0 ? (
-        <div className="text-center py-16 bg-zinc-900/50 rounded-2xl border border-zinc-800">
-          <div className="w-16 h-16 bg-zinc-800 rounded-full flex items-center justify-center mx-auto mb-4">
-            <svg
-              className="w-8 h-8 text-zinc-600"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
-              />
-            </svg>
-          </div>
-          <p className="text-zinc-400 text-lg mb-2">No events yet</p>
-          <p className="text-zinc-600 text-sm mb-6">
-            Create your first speaker event to get started.
-          </p>
+        <EmptyState
+          title="No events yet"
+          hint="Create your first speaker event to get started."
+        >
           <Link
             href="/events/edit?create=1"
-            className="inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-emerald-500 to-teal-500 text-white rounded-xl font-medium hover:opacity-90 transition-opacity"
+            className="rounded-lg bg-rose-500 px-3 py-2 text-sm font-semibold text-white hover:bg-rose-400 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose-500"
           >
-            <svg
-              className="w-5 h-5"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M12 6v6m0 0v6m0-6h6m-6 0H6"
-              />
-            </svg>
-            Create Event
+            Create event
           </Link>
-        </div>
+        </EmptyState>
       ) : (
         <>
           <div className="mb-4 relative max-w-sm">
@@ -465,27 +368,24 @@ export default function AdminEventsClient({
                 d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
               />
             </svg>
-            <input
+            <Input
               type="text"
+              aria-label="Search events"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search by name or venue…"
-              className="w-full rounded-xl border border-zinc-800 bg-zinc-900/50 py-2 pr-3 pl-9 text-sm text-white placeholder:text-zinc-500 focus:border-zinc-600 focus:outline-none"
+              className="pr-3 pl-9"
             />
           </div>
 
           {filteredEvents.length === 0 ? (
-            <div className="rounded-2xl border border-zinc-800 bg-zinc-900/50 py-16 text-center">
-              <p className="text-zinc-400">
-                No events match &ldquo;{query}&rdquo;.
-              </p>
-            </div>
+            <EmptyState title={<>No events match &ldquo;{query}&rdquo;.</>} />
           ) : (
             <div className="-mx-4 -my-2 overflow-x-auto sm:-mx-6">
               <div className="inline-block min-w-full px-4 py-2 align-middle sm:px-6">
                 <table className="w-full">
                   <thead>
-                    <tr className="border-b border-zinc-800 text-left text-xs font-medium text-zinc-500">
+                    <tr className="border-b border-white/10 text-left text-sm font-medium text-zinc-400">
                       <th className="py-3 pr-4 font-medium whitespace-nowrap">
                         Event
                       </th>
@@ -511,7 +411,7 @@ export default function AdminEventsClient({
                       return (
                         <tr
                           key={event.id}
-                          className="group border-b border-zinc-800/70 transition-colors hover:bg-zinc-900/60"
+                          className="group border-b border-white/10 transition-colors hover:bg-white/[0.02]"
                         >
                           <td className="py-3 pr-4">
                             <button
@@ -521,12 +421,12 @@ export default function AdminEventsClient({
                               <EventThumbnail event={event} />
                               <div className="min-w-0">
                                 <div className="flex items-center gap-2">
-                                  <span className="truncate font-medium text-white group-hover:text-emerald-400 transition-colors">
+                                  <span className="truncate font-medium text-white group-hover:text-rose-400 transition-colors">
                                     {event.name || "Mystery Speaker"}
                                   </span>
                                   {event.live && (
-                                    <span className="inline-flex items-center gap-1 rounded-full bg-red-500/15 py-0.5 pr-2 pl-1.5 text-xs font-medium text-red-400">
-                                      <span className="size-1.5 animate-pulse rounded-full bg-red-400" />
+                                    <span className="inline-flex items-center gap-1 rounded-full bg-rose-500/15 py-0.5 pr-2 pl-1.5 text-xs font-medium text-rose-300 ring-1 ring-inset ring-rose-500/25">
+                                      <span className="size-1.5 animate-pulse rounded-full bg-rose-400" />
                                       LIVE
                                     </span>
                                   )}
@@ -542,7 +442,9 @@ export default function AdminEventsClient({
                           <td className="px-4 py-3 whitespace-nowrap">
                             <div className="text-sm text-zinc-300">{date}</div>
                             {time && (
-                              <div className="text-xs text-zinc-500">{time}</div>
+                              <div className="text-xs text-zinc-500">
+                                {time}
+                              </div>
                             )}
                           </td>
                           <td className="px-4 py-3">
@@ -555,7 +457,7 @@ export default function AdminEventsClient({
                             <div className="flex items-center justify-end gap-1">
                               <button
                                 onClick={() => handleSelectAndEdit(event)}
-                                className="rounded-lg p-2 text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-white"
+                                className="rounded-md p-2 text-zinc-400 transition-colors hover:bg-white/5 hover:text-white"
                                 title="Edit event"
                               >
                                 <svg
@@ -574,7 +476,7 @@ export default function AdminEventsClient({
                               </button>
                               <button
                                 onClick={() => handleDelete(event.id)}
-                                className="rounded-lg p-2 text-zinc-500 transition-colors hover:bg-rose-500/10 hover:text-rose-400"
+                                className="rounded-md p-2 text-zinc-500 transition-colors hover:bg-white/5 hover:text-rose-400"
                                 title="Delete event"
                               >
                                 <svg

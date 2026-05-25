@@ -1,6 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 
 type ConfirmationTone = "primary" | "danger";
 
@@ -26,10 +32,12 @@ export type ConfirmationOptions = {
   tone?: ConfirmationTone;
 };
 
+// The confirm button is the single primary action of the dialog, so a filled
+// rose button is canonical for both tones (design.md §5). The leading icon ring
+// carries the success/danger distinction.
 const TONE_STYLES: Record<ConfirmationTone, string> = {
-  primary:
-    "bg-gradient-to-r from-emerald-500 to-teal-500 text-white hover:opacity-90",
-  danger: "bg-rose-600 text-white hover:bg-rose-700",
+  primary: "bg-rose-500 text-white hover:bg-rose-400",
+  danger: "bg-rose-500 text-white hover:bg-rose-400",
 };
 
 function renderDescription(description: ReactNode) {
@@ -85,7 +93,7 @@ export function ConfirmationDialog({
       role="presentation"
     >
       <div
-        className="w-full max-w-md rounded-2xl border border-zinc-800 bg-zinc-900 p-6 shadow-2xl"
+        className="w-full max-w-md rounded-2xl border border-white/10 bg-zinc-900 p-6 shadow-2xl"
         onClick={(event) => event.stopPropagation()}
         role="dialog"
         aria-modal="true"
@@ -148,7 +156,7 @@ export function ConfirmationDialog({
             onClick={onCancel}
             disabled={isConfirming}
             autoFocus
-            className="rounded-lg border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-300 transition-colors hover:bg-zinc-800 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+            className="rounded-lg bg-white/5 px-4 py-2 text-sm font-medium text-zinc-200 ring-1 ring-inset ring-white/10 transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {cancelLabel}
           </button>

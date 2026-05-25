@@ -43,13 +43,11 @@ export default function MarkdownEditor({
       // If already wrapped, unwrap
       const before = value.substring(0, start);
       const after = value.substring(end);
-      if (
-        before.endsWith(prefix) &&
-        after.startsWith(suffix) &&
-        selected
-      ) {
+      if (before.endsWith(prefix) && after.startsWith(suffix) && selected) {
         const newValue =
-          before.slice(0, -prefix.length) + selected + after.slice(suffix.length);
+          before.slice(0, -prefix.length) +
+          selected +
+          after.slice(suffix.length);
         onChange(newValue);
         requestAnimationFrame(() => {
           ta.selectionStart = start - prefix.length;
@@ -114,7 +112,9 @@ export default function MarkdownEditor({
           >
             {label}
           </label>
-        ) : <span />}
+        ) : (
+          <span />
+        )}
         <button
           type="button"
           onClick={() => setShowPreview(!showPreview)}
@@ -124,23 +124,32 @@ export default function MarkdownEditor({
         </button>
       </div>
       {showPreview ? (
-        <div className="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white min-h-[calc(1.5rem*var(--rows)+1.5rem)]" style={{ "--rows": rows } as React.CSSProperties}>
+        <div
+          className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-lg text-white min-h-[calc(1.5rem*var(--rows)+1.5rem)]"
+          style={{ "--rows": rows } as React.CSSProperties}
+        >
           {value ? (
-            <div className="prose prose-sm prose-invert prose-p:text-zinc-300 prose-p:leading-relaxed prose-a:text-emerald-400 prose-a:underline prose-strong:text-white prose-em:text-zinc-200 max-w-none">
-              <ReactMarkdown rehypePlugins={[rehypeRaw, [rehypeSanitize, sanitizeSchema]]}>{value}</ReactMarkdown>
+            <div className="prose prose-sm prose-invert prose-p:text-zinc-300 prose-p:leading-relaxed prose-a:text-rose-400 prose-a:underline prose-strong:text-white prose-em:text-zinc-200 max-w-none">
+              <ReactMarkdown
+                rehypePlugins={[rehypeRaw, [rehypeSanitize, sanitizeSchema]]}
+              >
+                {value}
+              </ReactMarkdown>
             </div>
           ) : (
-            <p className="text-zinc-500">{placeholder || "Nothing to preview"}</p>
+            <p className="text-zinc-500">
+              {placeholder || "Nothing to preview"}
+            </p>
           )}
         </div>
       ) : (
         <>
-          <div className="flex items-center gap-0.5 bg-zinc-800 border border-zinc-700 border-b-0 rounded-t-xl px-2 py-1.5">
+          <div className="flex items-center gap-0.5 bg-white/5 border border-white/10 border-b-0 rounded-t-lg px-2 py-1.5">
             <button
               type="button"
               onClick={() => wrapSelection("**", "**", "bold")}
               title="Bold"
-              className="w-7 h-7 flex items-center justify-center rounded-md text-zinc-400 hover:text-white hover:bg-zinc-700 transition-colors"
+              className="w-7 h-7 flex items-center justify-center rounded-md text-zinc-400 hover:text-white hover:bg-white/10 transition-colors"
             >
               <span className="font-bold text-xs">B</span>
             </button>
@@ -148,7 +157,7 @@ export default function MarkdownEditor({
               type="button"
               onClick={() => wrapSelection("*", "*", "italic")}
               title="Italic"
-              className="w-7 h-7 flex items-center justify-center rounded-md text-zinc-400 hover:text-white hover:bg-zinc-700 transition-colors"
+              className="w-7 h-7 flex items-center justify-center rounded-md text-zinc-400 hover:text-white hover:bg-white/10 transition-colors"
             >
               <span className="italic text-xs">I</span>
             </button>
@@ -156,7 +165,7 @@ export default function MarkdownEditor({
               type="button"
               onClick={() => wrapSelection("<u>", "</u>", "underline")}
               title="Underline"
-              className="w-7 h-7 flex items-center justify-center rounded-md text-zinc-400 hover:text-white hover:bg-zinc-700 transition-colors"
+              className="w-7 h-7 flex items-center justify-center rounded-md text-zinc-400 hover:text-white hover:bg-white/10 transition-colors"
             >
               <span className="underline text-xs">U</span>
             </button>
@@ -164,10 +173,20 @@ export default function MarkdownEditor({
               type="button"
               onClick={insertLink}
               title="Link"
-              className="w-7 h-7 flex items-center justify-center rounded-md text-zinc-400 hover:text-white hover:bg-zinc-700 transition-colors"
+              className="w-7 h-7 flex items-center justify-center rounded-md text-zinc-400 hover:text-white hover:bg-white/10 transition-colors"
             >
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4M14 4h6m0 0v6m0-6L10 14" />
+              <svg
+                className="w-3.5 h-3.5"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={2}
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M10 6H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4M14 4h6m0 0v6m0-6L10 14"
+                />
               </svg>
             </button>
           </div>
@@ -179,7 +198,7 @@ export default function MarkdownEditor({
             onChange={(e) => onChange(e.target.value)}
             placeholder={placeholder}
             rows={rows}
-            className="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-b-xl text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 resize-none font-mono text-sm"
+            className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-b-lg text-white placeholder-zinc-500 focus:outline-none focus:border-rose-500/50 focus:ring-1 focus:ring-rose-500/50 resize-none font-mono text-sm"
           />
         </>
       )}

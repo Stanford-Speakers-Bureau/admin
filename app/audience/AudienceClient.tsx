@@ -5,12 +5,17 @@ import BulkSendProgress from "@/app/components/BulkSendProgress";
 import { useConfirmationDialog } from "@/app/components/ConfirmationDialog";
 import { useEventContext } from "@/app/EventContext";
 import { useEventScopedFetch } from "@/app/lib/useEventScopedFetch";
-import {
-  BulkSendProgressState,
-  runChunkedSend,
-} from "@/app/lib/bulkSend";
+import { BulkSendProgressState, runChunkedSend } from "@/app/lib/bulkSend";
 import { formatDate, formatDateShort } from "@/app/lib/formatting";
 import { getAnalyticsCardGridStyle } from "@/app/lib/utils";
+import {
+  Button,
+  Input,
+  Label,
+  PageHeader,
+  StatusPill,
+  type SemanticColor,
+} from "@/app/components/ui";
 
 type AudienceEventSummary = {
   id: string;
@@ -105,12 +110,14 @@ const AFFILIATION_ORDER: Affiliation[] = [
 
 function getInitials(user: AudienceUser): string {
   const source = user.displayName || user.email;
-  return source
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase() ?? "")
-    .join("") || "?";
+  return (
+    source
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0]?.toUpperCase() ?? "")
+      .join("") || "?"
+  );
 }
 
 function formatAffiliationLabel(affiliation: Affiliation): string {
@@ -118,20 +125,20 @@ function formatAffiliationLabel(affiliation: Affiliation): string {
   return affiliation.charAt(0).toUpperCase() + affiliation.slice(1);
 }
 
-function affiliationClasses(affiliation: Affiliation): string {
+function affiliationColor(affiliation: Affiliation): SemanticColor {
   switch (affiliation) {
     case "student":
-      return "border-blue-500/30 bg-blue-500/10 text-blue-300";
+      return "blue";
     case "faculty":
-      return "border-violet-500/30 bg-violet-500/10 text-violet-300";
+      return "violet";
     case "affiliate":
-      return "border-cyan-500/30 bg-cyan-500/10 text-cyan-300";
+      return "sky";
     case "staff":
-      return "border-emerald-500/30 bg-emerald-500/10 text-emerald-300";
+      return "emerald";
     case "member":
-      return "border-amber-500/30 bg-amber-500/10 text-amber-300";
+      return "amber";
     case "missing":
-      return "border-zinc-700 bg-zinc-800/80 text-zinc-400";
+      return "zinc";
   }
 }
 
@@ -151,17 +158,11 @@ function toggleSelection<T extends string>(
   return orderedOptions.filter((option) => next.has(option));
 }
 
-function AffiliationPill({
-  affiliation,
-}: {
-  affiliation: Affiliation;
-}) {
+function AffiliationPill({ affiliation }: { affiliation: Affiliation }) {
   return (
-    <span
-      className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium ${affiliationClasses(affiliation)}`}
-    >
+    <StatusPill color={affiliationColor(affiliation)}>
       {formatAffiliationLabel(affiliation)}
-    </span>
+    </StatusPill>
   );
 }
 
@@ -211,12 +212,12 @@ function FilterDropdown({
       <button
         type="button"
         onClick={onToggle}
-        className="inline-flex w-full items-center gap-2 rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-2 text-sm font-medium text-zinc-200 transition-colors hover:border-zinc-500 hover:bg-zinc-800/80"
+        className="inline-flex w-full items-center gap-2 rounded-lg bg-white/5 px-3 py-2 text-sm font-medium text-zinc-200 ring-1 ring-inset ring-white/10 transition-colors hover:bg-white/10"
         aria-expanded={isOpen}
         aria-haspopup="menu"
       >
         <svg
-          className="h-4 w-4 text-zinc-400"
+          className="size-4 shrink-0 text-zinc-400"
           fill="none"
           stroke="currentColor"
           viewBox="0 0 24 24"
@@ -231,7 +232,7 @@ function FilterDropdown({
         <span>{title}</span>
         <span className="max-w-40 truncate text-zinc-400">{summary}</span>
         <svg
-          className={`ml-auto h-4 w-4 text-zinc-500 transition-transform ${
+          className={`ml-auto size-4 shrink-0 text-zinc-500 transition-transform ${
             isOpen ? "rotate-180" : ""
           }`}
           fill="none"
@@ -248,7 +249,7 @@ function FilterDropdown({
       </button>
 
       {isOpen && (
-        <div className="absolute left-0 top-full z-20 mt-2 w-80 rounded-2xl border border-zinc-800 bg-zinc-950/95 p-3 shadow-2xl backdrop-blur">
+        <div className="absolute left-0 top-full z-20 mt-2 w-80 rounded-2xl border border-white/10 bg-zinc-950/95 p-3 shadow-2xl backdrop-blur">
           <div className="mb-3 px-1">
             <p className="text-sm font-semibold text-white">{title}</p>
             <p className="text-xs text-zinc-500">
@@ -259,14 +260,14 @@ function FilterDropdown({
             <button
               type="button"
               onClick={onSelectAll}
-              className="rounded-lg border border-zinc-700 px-2.5 py-1.5 text-xs font-medium text-zinc-300 transition-colors hover:border-zinc-500 hover:text-white"
+              className="rounded-md px-2.5 py-1.5 text-xs font-medium text-zinc-400 hover:bg-white/5 hover:text-white"
             >
               Select all
             </button>
             <button
               type="button"
               onClick={onClear}
-              className="rounded-lg border border-zinc-700 px-2.5 py-1.5 text-xs font-medium text-zinc-300 transition-colors hover:border-zinc-500 hover:text-white"
+              className="rounded-md px-2.5 py-1.5 text-xs font-medium text-zinc-400 hover:bg-white/5 hover:text-white"
             >
               Clear
             </button>
@@ -278,10 +279,10 @@ function FilterDropdown({
               return (
                 <label
                   key={option.value}
-                  className={`flex cursor-pointer items-center justify-between gap-3 rounded-xl border px-3 py-2 text-sm transition-colors ${
+                  className={`flex cursor-pointer items-center justify-between gap-3 rounded-lg px-3 py-2 text-sm transition-colors ring-1 ring-inset ${
                     checked
-                      ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-100"
-                      : "border-zinc-800 bg-zinc-900/60 text-zinc-300 hover:border-zinc-700"
+                      ? "bg-rose-500/10 text-white ring-rose-500/25"
+                      : "bg-white/5 text-zinc-300 ring-white/10 hover:bg-white/10"
                   }`}
                 >
                   <span className="flex items-center gap-3">
@@ -289,12 +290,14 @@ function FilterDropdown({
                       type="checkbox"
                       checked={checked}
                       onChange={() => onToggleValue(option.value)}
-                      className="h-4 w-4 rounded border-zinc-600 bg-zinc-900 text-emerald-500 focus:ring-emerald-500/40"
+                      className="size-5 shrink-0 rounded accent-rose-500 sm:size-4"
                     />
                     <span>{option.label}</span>
                   </span>
                   {option.count != null && (
-                    <span className="text-xs text-zinc-500">{option.count}</span>
+                    <span className="text-xs tabular-nums text-zinc-500">
+                      {option.count}
+                    </span>
                   )}
                 </label>
               );
@@ -314,54 +317,46 @@ function EventBadge({
   tone: "amber" | "blue" | "emerald" | "violet";
 }) {
   const toneClasses = {
-    amber: "border-amber-500/30 bg-amber-500/10 text-amber-300",
-    blue: "border-blue-500/30 bg-blue-500/10 text-blue-300",
-    emerald: "border-emerald-500/30 bg-emerald-500/10 text-emerald-300",
-    violet: "border-violet-500/30 bg-violet-500/10 text-violet-300",
+    amber: "bg-amber-500/10 text-amber-300 ring-amber-500/25",
+    blue: "bg-blue-500/10 text-blue-300 ring-blue-500/25",
+    emerald: "bg-emerald-500/10 text-emerald-300 ring-emerald-500/25",
+    violet: "bg-violet-500/10 text-violet-300 ring-violet-500/25",
   };
 
   return (
     <div
-      className={`rounded-lg border px-3 py-2 text-xs ${toneClasses[tone]}`}
+      className={`rounded-lg px-3 py-2 text-xs ring-1 ring-inset ${toneClasses[tone]}`}
       title={event.name || "Unnamed event"}
     >
       <p className="font-medium truncate">{event.name || "Unnamed event"}</p>
-      <p className="mt-1 text-[11px] opacity-80">{formatDateShort(event.date)}</p>
+      <p className="mt-1 text-[11px] opacity-80">
+        {formatDateShort(event.date)}
+      </p>
     </div>
   );
 }
 
 function getCurrentEventStatus(user: AudienceUser): {
   label: "Notify" | "Waitlisted" | "Ticketed" | "Attended" | "None";
-  classes: string;
+  color: SemanticColor;
 } {
-  const activeClasses = {
-    amber: "border-amber-500/30 bg-amber-500/10 text-amber-300",
-    violet: "border-violet-500/30 bg-violet-500/10 text-violet-300",
-    blue: "border-blue-500/30 bg-blue-500/10 text-blue-300",
-    emerald: "border-emerald-500/30 bg-emerald-500/10 text-emerald-300",
-  };
-
   if (user.currentEventStatus.attended) {
-    return { label: "Attended", classes: activeClasses.emerald };
+    return { label: "Attended", color: "emerald" };
   }
 
   if (user.currentEventStatus.ticketed) {
-    return { label: "Ticketed", classes: activeClasses.blue };
+    return { label: "Ticketed", color: "blue" };
   }
 
   if (user.currentEventStatus.waitlisted) {
-    return { label: "Waitlisted", classes: activeClasses.violet };
+    return { label: "Waitlisted", color: "violet" };
   }
 
   if (user.currentEventStatus.onNotifyList) {
-    return { label: "Notify", classes: activeClasses.amber };
+    return { label: "Notify", color: "amber" };
   }
 
-  return {
-    label: "None",
-    classes: "border-zinc-700 bg-zinc-800/80 text-zinc-500",
-  };
+  return { label: "None", color: "zinc" };
 }
 
 function hasNoCurrentEventStatus(user: AudienceUser): boolean {
@@ -378,18 +373,17 @@ export default function AudienceClient() {
   const { confirm: confirmAction, confirmationDialog } =
     useConfirmationDialog();
   const filterDropdownRef = useRef<HTMLDivElement | null>(null);
-  const {
-    data,
-    isLoading,
-    error,
-  } = useEventScopedFetch<AudienceResponse>(selectedEventId, async (id, signal) => {
-    const response = await fetch(`/api/events/${id}/audience`, { signal });
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.error || "Failed to fetch audience data");
-    }
-    return (await response.json()) as AudienceResponse;
-  });
+  const { data, isLoading, error } = useEventScopedFetch<AudienceResponse>(
+    selectedEventId,
+    async (id, signal) => {
+      const response = await fetch(`/api/events/${id}/audience`, { signal });
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to fetch audience data");
+      }
+      return (await response.json()) as AudienceResponse;
+    },
+  );
   const [detailsByEmail, setDetailsByEmail] = useState<
     Record<string, AudienceUserDetails>
   >({});
@@ -398,21 +392,22 @@ export default function AudienceClient() {
     null,
   );
   const [search, setSearch] = useState("");
-  const [selectedStatuses, setSelectedStatuses] = useState<EventStatusOption[]>(
-    EVENT_STATUS_VALUES,
-  );
-  const [selectedAffiliations, setSelectedAffiliations] = useState<Affiliation[]>(
-    AFFILIATION_ORDER,
-  );
-  const [selectedActivity, setSelectedActivity] = useState<ActivityOption[]>(
-    ACTIVITY_VALUES,
-  );
+  const [selectedStatuses, setSelectedStatuses] =
+    useState<EventStatusOption[]>(EVENT_STATUS_VALUES);
+  const [selectedAffiliations, setSelectedAffiliations] =
+    useState<Affiliation[]>(AFFILIATION_ORDER);
+  const [selectedActivity, setSelectedActivity] =
+    useState<ActivityOption[]>(ACTIVITY_VALUES);
   const [expandedEmail, setExpandedEmail] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [showSendModal, setShowSendModal] = useState(false);
   const [includeNotifyListUsers, setIncludeNotifyListUsers] = useState(false);
-  const [sendState, setSendState] = useState<BulkSendProgressState | null>(null);
-  const [individualSending, setIndividualSending] = useState<string | null>(null);
+  const [sendState, setSendState] = useState<BulkSendProgressState | null>(
+    null,
+  );
+  const [individualSending, setIndividualSending] = useState<string | null>(
+    null,
+  );
   const [openFilterDropdown, setOpenFilterDropdown] =
     useState<FilterDropdownKey | null>(null);
 
@@ -478,10 +473,14 @@ export default function AudienceClient() {
         const matchesNoStatus = hasNoCurrentEventStatus(user);
 
         return (
-          (selectedStatusSet.has("notify") && user.currentEventStatus.onNotifyList) ||
-          (selectedStatusSet.has("waitlisted") && user.currentEventStatus.waitlisted) ||
-          (selectedStatusSet.has("ticketed") && user.currentEventStatus.ticketed) ||
-          (selectedStatusSet.has("attended") && user.currentEventStatus.attended) ||
+          (selectedStatusSet.has("notify") &&
+            user.currentEventStatus.onNotifyList) ||
+          (selectedStatusSet.has("waitlisted") &&
+            user.currentEventStatus.waitlisted) ||
+          (selectedStatusSet.has("ticketed") &&
+            user.currentEventStatus.ticketed) ||
+          (selectedStatusSet.has("attended") &&
+            user.currentEventStatus.attended) ||
           (selectedStatusSet.has("none") && matchesNoStatus)
         );
       });
@@ -489,7 +488,9 @@ export default function AudienceClient() {
 
     if (selectedAffiliations.length !== AFFILIATION_ORDER.length) {
       const selectedAffiliationSet = new Set(selectedAffiliations);
-      list = list.filter((user) => selectedAffiliationSet.has(user.affiliation));
+      list = list.filter((user) =>
+        selectedAffiliationSet.has(user.affiliation),
+      );
     }
 
     if (selectedActivity.length !== ACTIVITY_VALUES.length) {
@@ -523,13 +524,7 @@ export default function AudienceClient() {
     }
 
     return list;
-  }, [
-    data,
-    search,
-    selectedActivity,
-    selectedAffiliations,
-    selectedStatuses,
-  ]);
+  }, [data, search, selectedActivity, selectedAffiliations, selectedStatuses]);
 
   const hasActiveFilters =
     search.trim().length > 0 ||
@@ -553,25 +548,31 @@ export default function AudienceClient() {
           return {
             value: option.value,
             label: option.label,
-            count: data.users.filter((user) => user.currentEventStatus.onNotifyList).length,
+            count: data.users.filter(
+              (user) => user.currentEventStatus.onNotifyList,
+            ).length,
           };
         case "waitlisted":
           return {
             value: option.value,
             label: option.label,
-            count: data.users.filter((user) => user.currentEventStatus.waitlisted).length,
+            count: data.users.filter(
+              (user) => user.currentEventStatus.waitlisted,
+            ).length,
           };
         case "ticketed":
           return {
             value: option.value,
             label: option.label,
-            count: data.users.filter((user) => user.currentEventStatus.ticketed).length,
+            count: data.users.filter((user) => user.currentEventStatus.ticketed)
+              .length,
           };
         case "attended":
           return {
             value: option.value,
             label: option.label,
-            count: data.users.filter((user) => user.currentEventStatus.attended).length,
+            count: data.users.filter((user) => user.currentEventStatus.attended)
+              .length,
           };
         default:
           return {
@@ -645,11 +646,13 @@ export default function AudienceClient() {
 
   const nonNotifyEmails = useMemo(() => {
     if (!data) return [];
-    return [...new Set(
-      data.users
-        .filter((u) => !u.currentEventStatus.onNotifyList)
-        .map((u) => u.email.toLowerCase()),
-    )];
+    return [
+      ...new Set(
+        data.users
+          .filter((u) => !u.currentEventStatus.onNotifyList)
+          .map((u) => u.email.toLowerCase()),
+      ),
+    ];
   }, [data]);
 
   const allAudienceEmails = useMemo(() => {
@@ -659,11 +662,13 @@ export default function AudienceClient() {
 
   const notifyAudienceEmails = useMemo(() => {
     if (!data) return [];
-    return [...new Set(
-      data.users
-        .filter((user) => user.currentEventStatus.onNotifyList)
-        .map((user) => user.email.toLowerCase()),
-    )];
+    return [
+      ...new Set(
+        data.users
+          .filter((user) => user.currentEventStatus.onNotifyList)
+          .map((user) => user.email.toLowerCase()),
+      ),
+    ];
   }, [data]);
 
   const announcementRecipients = useMemo(
@@ -696,7 +701,9 @@ export default function AudienceClient() {
         const result = await res.json().catch(() => null);
 
         if (!res.ok) {
-          throw new Error(result?.error || "Failed to send announcement emails");
+          throw new Error(
+            result?.error || "Failed to send announcement emails",
+          );
         }
 
         return result;
@@ -792,13 +799,13 @@ export default function AudienceClient() {
 
   if (!selectedEventId) {
     return (
-      <div className="px-4 sm:px-6 py-8">
-        <h1 className="text-2xl sm:text-3xl font-bold text-white font-serif mb-8">
-          Event Audience
-        </h1>
-        <div className="text-center py-16 bg-zinc-900/50 rounded-2xl border border-zinc-800">
-          <p className="text-zinc-400 text-lg mb-2">Select an event to continue</p>
-          <p className="text-zinc-600 text-sm">
+      <div className="px-4 sm:px-6 py-8 space-y-8">
+        <PageHeader title="Event audience" />
+        <div className="rounded-2xl border border-dashed border-white/10 px-6 py-16 text-center">
+          <p className="text-sm font-medium text-zinc-300">
+            Select an event to continue
+          </p>
+          <p className="mt-1 text-sm text-zinc-500">
             The audience view follows the event selected in the sidebar.
           </p>
         </div>
@@ -808,13 +815,11 @@ export default function AudienceClient() {
 
   if (isLoading) {
     return (
-      <div className="px-4 sm:px-6 py-8">
-        <h1 className="text-2xl sm:text-3xl font-bold text-white font-serif mb-8">
-          Event Audience
-        </h1>
+      <div className="px-4 sm:px-6 py-8 space-y-8">
+        <PageHeader title="Event audience" />
         <div className="flex items-center justify-center py-20">
           <div className="flex items-center gap-3 text-zinc-400">
-            <div className="w-5 h-5 border-2 border-zinc-600 border-t-zinc-400 rounded-full animate-spin" />
+            <div className="size-5 rounded-full border-2 border-zinc-600 border-t-zinc-400 animate-spin" />
             <span className="text-sm">Loading audience data...</span>
           </div>
         </div>
@@ -824,10 +829,8 @@ export default function AudienceClient() {
 
   if (error) {
     return (
-      <div className="px-4 sm:px-6 py-8">
-        <h1 className="text-2xl sm:text-3xl font-bold text-white font-serif mb-8">
-          Event Audience
-        </h1>
+      <div className="px-4 sm:px-6 py-8 space-y-8">
+        <PageHeader title="Event audience" />
         <div className="flex items-center justify-center py-20">
           <div className="text-center">
             <svg
@@ -866,42 +869,53 @@ export default function AudienceClient() {
     { length: totalPages },
     (_, index) => index + 1,
   ).filter(
-    (page) => page === 1 || page === totalPages || Math.abs(page - clampedPage) <= 1,
+    (page) =>
+      page === 1 || page === totalPages || Math.abs(page - clampedPage) <= 1,
   );
   const usersWithoutHistory =
     data.stats.totalUsers - data.stats.usersWithAnyEventActivity;
 
   return (
     <div className="px-4 sm:px-6 py-8 space-y-6">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-white font-serif mb-1">
-            Event Audience
-          </h1>
-          <p className="text-zinc-400 text-sm">
+      <PageHeader
+        title="Event audience"
+        subtitle={
+          <>
             Known people and their event history for{" "}
             <span className="text-zinc-200 font-medium">
               {data.event.name || "Unnamed event"}
             </span>
             {data.event.date ? ` · ${formatDate(data.event.date)}` : ""}
-          </p>
-        </div>
+          </>
+        }
+      >
         {allAudienceEmails.length > 0 && (
-          <button
+          <Button
+            variant="primary"
             onClick={() => {
               setIncludeNotifyListUsers(false);
               setShowSendModal(true);
             }}
             disabled={sendState?.active}
-            className="shrink-0 flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 text-white text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
+            className="inline-flex items-center gap-2"
           >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" />
+            <svg
+              className="size-4 shrink-0"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={2}
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75"
+              />
             </svg>
-            Send Announcement
-          </button>
+            Send announcement
+          </Button>
         )}
-      </div>
+      </PageHeader>
 
       {/* Progress bar */}
       {sendState && (
@@ -914,24 +928,35 @@ export default function AudienceClient() {
       {/* Send Announcement Modal */}
       {showSendModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 max-w-md w-full mx-4 shadow-2xl">
-            <h2 className="text-lg font-serif font-bold text-white mb-2">Send Announcement</h2>
+          <div className="bg-zinc-900 border border-white/10 rounded-2xl p-6 max-w-md w-full mx-4 shadow-2xl">
+            <h2 className="text-lg font-serif font-semibold text-white mb-2">
+              Send announcement
+            </h2>
             <p className="text-sm text-zinc-400 mb-4">
-              Send an announcement email to <span className="text-white font-semibold">{announcementRecipients.length.toLocaleString()}</span> users
-              for{" "}
-              <span className="text-white font-medium">{data.event.name || "this event"}</span>.
+              Send an announcement email to{" "}
+              <span className="text-white font-semibold">
+                {announcementRecipients.length.toLocaleString()}
+              </span>{" "}
+              users for{" "}
+              <span className="text-white font-medium">
+                {data.event.name || "this event"}
+              </span>
+              .
             </p>
-            <label className={`mb-4 flex cursor-pointer items-start gap-3 rounded-xl border px-4 py-3 transition-colors ${
-              includeNotifyListUsers
-                ? "border-emerald-500/30 bg-emerald-500/10"
-                : "border-zinc-800 bg-zinc-950/40 hover:border-zinc-700"
-            }`}>
+            <label
+              className={`mb-4 flex cursor-pointer items-start gap-3 rounded-lg px-4 py-3 transition-colors ring-1 ring-inset ${
+                includeNotifyListUsers
+                  ? "bg-rose-500/10 ring-rose-500/25"
+                  : "bg-white/5 ring-white/10 hover:bg-white/10"
+              }`}
+            >
               <input
                 type="checkbox"
                 checked={includeNotifyListUsers}
                 onChange={(event) =>
-                  setIncludeNotifyListUsers(event.target.checked)}
-                className="mt-0.5 h-4 w-4 rounded border-zinc-600 bg-zinc-900 text-emerald-500 focus:ring-emerald-500/40"
+                  setIncludeNotifyListUsers(event.target.checked)
+                }
+                className="mt-0.5 size-5 shrink-0 rounded accent-rose-500 sm:size-4"
               />
               <span className="space-y-1">
                 <span className="block text-sm font-medium text-white">
@@ -945,43 +970,45 @@ export default function AudienceClient() {
               </span>
             </label>
             {announcementRecipients.length === 0 && (
-              <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 mb-4">
+              <div className="rounded-lg bg-amber-500/10 p-3 mb-4 ring-1 ring-inset ring-amber-500/25">
                 <p className="text-xs text-amber-300">
-                  Everyone in this audience is already on the notify list. Turn on the toggle above to send the announcement to all of them.
+                  Everyone in this audience is already on the notify list. Turn
+                  on the toggle above to send the announcement to all of them.
                 </p>
               </div>
             )}
             {announcementRecipients.length > 500 && (
-              <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 mb-4">
+              <div className="rounded-lg bg-amber-500/10 p-3 mb-4 ring-1 ring-inset ring-amber-500/25">
                 <p className="text-xs text-amber-300">
-                  Large batch — this will send in chunks of {CHUNK_SIZE} and may take a few minutes.
+                  Large batch — this will send in chunks of {CHUNK_SIZE} and may
+                  take a few minutes.
                 </p>
               </div>
             )}
             <div className="flex gap-3 justify-end">
-              <button
+              <Button
+                variant="ghost"
                 onClick={() => {
                   setShowSendModal(false);
                   setIncludeNotifyListUsers(false);
                 }}
-                className="px-4 py-2 text-sm font-medium text-zinc-400 hover:text-white transition-colors"
               >
                 Cancel
-              </button>
-              <button
+              </Button>
+              <Button
+                variant="primary"
                 onClick={sendAnnouncementToAll}
                 disabled={announcementRecipients.length === 0}
-                className="px-4 py-2 rounded-lg bg-gradient-to-r from-emerald-500 to-teal-500 text-white text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Send {announcementRecipients.length.toLocaleString()} Emails
-              </button>
+                Send {announcementRecipients.length.toLocaleString()} emails
+              </Button>
             </div>
           </div>
         </div>
       )}
 
       {data.warnings.length > 0 && (
-        <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4">
+        <div className="rounded-lg bg-amber-500/10 p-4 ring-1 ring-inset ring-amber-500/25">
           <p className="text-sm text-amber-300">{data.warnings[0]}</p>
         </div>
       )}
@@ -990,43 +1017,51 @@ export default function AudienceClient() {
         className="grid grid-cols-2 gap-3 analytics-card-grid"
         style={getAnalyticsCardGridStyle(4)}
       >
-        <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
+        <div className="rounded-2xl border border-white/10 bg-zinc-900/60 p-4">
           <p className="text-xs font-medium tracking-wide text-zinc-400 mb-1">
-            Total Users
+            Total users
           </p>
-          <p className="text-2xl font-bold text-white">{data.stats.totalUsers}</p>
+          <p className="text-2xl font-bold tabular-nums text-white">
+            {data.stats.totalUsers}
+          </p>
         </div>
-        <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
+        <div className="rounded-2xl border border-white/10 bg-zinc-900/60 p-4">
           <p className="text-xs font-medium tracking-wide text-zinc-400 mb-1">
-            Current Event Engaged
+            Current event engaged
           </p>
-          <p className="text-2xl font-bold text-blue-400">
+          <p className="text-2xl font-bold tabular-nums text-blue-400">
             {data.stats.currentEventEngagedUsers}
           </p>
-          <p className="text-[10px] text-zinc-600">Notify, waitlisted, ticketed, or attended</p>
-        </div>
-        <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
-          <p className="text-xs font-medium tracking-wide text-zinc-400 mb-1">
-            Signed Up for Notify
+          <p className="text-[10px] text-zinc-600">
+            Notify, waitlisted, ticketed, or attended
           </p>
-          <p className="text-2xl font-bold text-amber-400">
+        </div>
+        <div className="rounded-2xl border border-white/10 bg-zinc-900/60 p-4">
+          <p className="text-xs font-medium tracking-wide text-zinc-400 mb-1">
+            Signed up for notify
+          </p>
+          <p className="text-2xl font-bold tabular-nums text-amber-400">
             {data.stats.currentEventNotifyUsers}
           </p>
         </div>
-        <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
+        <div className="rounded-2xl border border-white/10 bg-zinc-900/60 p-4">
           <p className="text-xs font-medium tracking-wide text-zinc-400 mb-1">
-            No Event History
+            No event history
           </p>
-          <p className="text-2xl font-bold text-zinc-300">{usersWithoutHistory}</p>
-          <p className="text-[10px] text-zinc-600">No notify, waitlist, or ticket activity on file</p>
+          <p className="text-2xl font-bold tabular-nums text-zinc-300">
+            {usersWithoutHistory}
+          </p>
+          <p className="text-[10px] text-zinc-600">
+            No notify, waitlist, or ticket activity on file
+          </p>
         </div>
       </div>
 
-      <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
+      <div className="rounded-2xl border border-white/10 bg-zinc-900/60 p-4">
         <div className="flex items-center justify-between gap-3 mb-4">
           <div>
-            <h3 className="text-sm font-semibold text-zinc-300">
-              Affiliation Breakdown
+            <h3 className="text-sm font-semibold text-white">
+              Affiliation breakdown
             </h3>
             <p className="text-xs text-zinc-500">
               Breakdown across the current audience
@@ -1038,12 +1073,12 @@ export default function AudienceClient() {
             return (
               <div
                 key={affiliation}
-                className="rounded-xl border border-zinc-800 bg-zinc-950/30 p-4 text-left"
+                className="rounded-lg bg-white/5 p-4 text-left ring-1 ring-inset ring-white/10"
               >
                 <p className="text-xs font-medium tracking-wide text-zinc-400 mb-1">
                   {formatAffiliationLabel(affiliation)}
                 </p>
-                <p className="text-2xl font-bold text-white">
+                <p className="text-2xl font-bold tabular-nums text-white">
                   {data.stats.affiliationCounts[affiliation]}
                 </p>
               </div>
@@ -1054,35 +1089,32 @@ export default function AudienceClient() {
 
       <div
         ref={filterDropdownRef}
-        className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4"
+        className="rounded-2xl border border-white/10 bg-zinc-900/60 p-4"
       >
         <div className="flex items-center justify-between gap-3 mb-4">
           <div>
-            <h3 className="text-sm font-semibold text-zinc-300">Filters</h3>
+            <h3 className="text-sm font-semibold text-white">Filters</h3>
             <p className="text-xs text-zinc-500">
               Use dropdowns with checkboxes to narrow the audience
             </p>
           </div>
           {hasActiveFilters && (
-            <button
-              onClick={resetFilters}
-              className="text-xs text-zinc-400 hover:text-white transition-colors"
-            >
+            <Button variant="ghost" onClick={resetFilters} className="text-xs">
               Reset filters
-            </button>
+            </Button>
           )}
         </div>
         <div className="space-y-4">
           <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-2">
-              Search Users
-            </label>
-            <input
+            <Label htmlFor="audience-search" className="mb-2 block">
+              Search users
+            </Label>
+            <Input
+              id="audience-search"
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Name or email. Comma-separated works too."
-              className="w-full rounded-xl border border-zinc-800 bg-zinc-900 px-3 py-2.5 text-sm text-white placeholder-zinc-500 focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 focus:outline-none"
             />
           </div>
           <div className="grid grid-cols-1 xl:grid-cols-[repeat(3,minmax(0,240px))] gap-4">
@@ -1159,29 +1191,29 @@ export default function AudienceClient() {
         </div>
       </div>
 
-      <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 overflow-hidden">
+      <div className="rounded-2xl border border-white/10 bg-zinc-900/60 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-zinc-800">
-                <th className="text-left px-4 py-3 text-xs font-semibold text-zinc-500 uppercase tracking-wider">
+              <tr className="border-b border-white/10">
+                <th className="text-left px-4 py-3 text-xs font-medium tracking-wide text-zinc-400 whitespace-nowrap">
                   User
                 </th>
-                <th className="text-left px-3 py-3 text-xs font-semibold text-zinc-500 uppercase tracking-wider">
+                <th className="text-left px-3 py-3 text-xs font-medium tracking-wide text-zinc-400 whitespace-nowrap">
                   Affiliation
                 </th>
-                <th className="text-left px-3 py-3 text-xs font-semibold text-zinc-500 uppercase tracking-wider">
-                  Last Login
+                <th className="text-left px-3 py-3 text-xs font-medium tracking-wide text-zinc-400 whitespace-nowrap">
+                  Last login
                 </th>
-                <th className="text-left px-3 py-3 text-xs font-semibold text-zinc-500 uppercase tracking-wider">
-                  This Event
+                <th className="text-left px-3 py-3 text-xs font-medium tracking-wide text-zinc-400 whitespace-nowrap">
+                  This event
                 </th>
-                <th className="text-center px-3 py-3 text-xs font-semibold text-zinc-500 uppercase tracking-wider">
+                <th className="text-center px-3 py-3 text-xs font-medium tracking-wide text-zinc-400 whitespace-nowrap">
                   History
                 </th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-zinc-800/50">
+            <tbody className="divide-y divide-white/10">
               {paginatedUsers.map((user) => {
                 const isExpanded = expandedEmail === user.email;
                 const userDetails = detailsByEmail[user.email];
@@ -1191,7 +1223,10 @@ export default function AudienceClient() {
 
                 return (
                   <tr key={user.email}>
-                    <td className="px-4 py-3" colSpan={isExpanded ? 5 : undefined}>
+                    <td
+                      className="px-4 py-3"
+                      colSpan={isExpanded ? 5 : undefined}
+                    >
                       <button
                         onClick={() => {
                           const nextExpanded = isExpanded ? null : user.email;
@@ -1202,7 +1237,7 @@ export default function AudienceClient() {
                         }}
                         className="flex w-full items-start gap-3 text-left"
                       >
-                        <div className="w-10 h-10 rounded-full bg-zinc-800 flex items-center justify-center text-xs font-bold text-zinc-300 shrink-0">
+                        <div className="size-10 rounded-full bg-white/10 flex items-center justify-center text-xs font-medium text-zinc-300 shrink-0">
                           {getInitials(user)}
                         </div>
                         <div className="min-w-0 flex-1">
@@ -1212,38 +1247,44 @@ export default function AudienceClient() {
                             </p>
                             <AffiliationPill affiliation={user.affiliation} />
                           </div>
-                          <p className="text-xs text-zinc-500 truncate">{user.email}</p>
+                          <p className="text-xs text-zinc-500 truncate">
+                            {user.email}
+                          </p>
 
                           {isExpanded && (
                             <div className="mt-4 space-y-4">
                               {isLoadingDetails && !userDetails ? (
-                                <div className="rounded-xl border border-zinc-800 bg-zinc-950/40 p-4">
+                                <div className="rounded-lg bg-white/5 p-4 ring-1 ring-inset ring-white/10">
                                   <div className="flex items-center gap-3 text-zinc-400">
-                                    <div className="w-4 h-4 border-2 border-zinc-600 border-t-zinc-400 rounded-full animate-spin" />
+                                    <div className="size-4 rounded-full border-2 border-zinc-600 border-t-zinc-400 animate-spin" />
                                     <span className="text-sm">
                                       Loading event history...
                                     </span>
                                   </div>
                                 </div>
                               ) : detailError ? (
-                                <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-4">
-                                  <p className="text-sm text-rose-300">{detailError}</p>
+                                <div className="rounded-lg bg-rose-500/10 p-4 ring-1 ring-inset ring-rose-500/25">
+                                  <p className="text-sm text-rose-300">
+                                    {detailError}
+                                  </p>
                                 </div>
                               ) : userDetails ? (
                                 <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-4 gap-4">
-                                  <div className="rounded-xl border border-zinc-800 bg-zinc-950/40 p-4">
-                                    <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-2">
+                                  <div className="rounded-lg bg-white/5 p-4 ring-1 ring-inset ring-white/10">
+                                    <p className="text-xs font-medium tracking-wide text-zinc-400 mb-2">
                                       Notified
                                     </p>
                                     {userDetails.notifyEvents.length > 0 ? (
                                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                        {userDetails.notifyEvents.map((event) => (
-                                          <EventBadge
-                                            key={`notify-${event.id}`}
-                                            event={event}
-                                            tone="amber"
-                                          />
-                                        ))}
+                                        {userDetails.notifyEvents.map(
+                                          (event) => (
+                                            <EventBadge
+                                              key={`notify-${event.id}`}
+                                              event={event}
+                                              tone="amber"
+                                            />
+                                          ),
+                                        )}
                                       </div>
                                     ) : (
                                       <p className="text-xs text-zinc-500">
@@ -1251,19 +1292,21 @@ export default function AudienceClient() {
                                       </p>
                                     )}
                                   </div>
-                                  <div className="rounded-xl border border-zinc-800 bg-zinc-950/40 p-4">
-                                    <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-2">
+                                  <div className="rounded-lg bg-white/5 p-4 ring-1 ring-inset ring-white/10">
+                                    <p className="text-xs font-medium tracking-wide text-zinc-400 mb-2">
                                       Waitlisted
                                     </p>
                                     {userDetails.waitlistEvents.length > 0 ? (
                                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                        {userDetails.waitlistEvents.map((event) => (
-                                          <EventBadge
-                                            key={`waitlist-${event.id}`}
-                                            event={event}
-                                            tone="violet"
-                                          />
-                                        ))}
+                                        {userDetails.waitlistEvents.map(
+                                          (event) => (
+                                            <EventBadge
+                                              key={`waitlist-${event.id}`}
+                                              event={event}
+                                              tone="violet"
+                                            />
+                                          ),
+                                        )}
                                       </div>
                                     ) : (
                                       <p className="text-xs text-zinc-500">
@@ -1271,19 +1314,21 @@ export default function AudienceClient() {
                                       </p>
                                     )}
                                   </div>
-                                  <div className="rounded-xl border border-zinc-800 bg-zinc-950/40 p-4">
-                                    <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-2">
+                                  <div className="rounded-lg bg-white/5 p-4 ring-1 ring-inset ring-white/10">
+                                    <p className="text-xs font-medium tracking-wide text-zinc-400 mb-2">
                                       Ticketed
                                     </p>
                                     {userDetails.ticketedEvents.length > 0 ? (
                                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                        {userDetails.ticketedEvents.map((event) => (
-                                          <EventBadge
-                                            key={`ticketed-${event.id}`}
-                                            event={event}
-                                            tone="blue"
-                                          />
-                                        ))}
+                                        {userDetails.ticketedEvents.map(
+                                          (event) => (
+                                            <EventBadge
+                                              key={`ticketed-${event.id}`}
+                                              event={event}
+                                              tone="blue"
+                                            />
+                                          ),
+                                        )}
                                       </div>
                                     ) : (
                                       <p className="text-xs text-zinc-500">
@@ -1291,19 +1336,21 @@ export default function AudienceClient() {
                                       </p>
                                     )}
                                   </div>
-                                  <div className="rounded-xl border border-zinc-800 bg-zinc-950/40 p-4">
-                                    <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-2">
+                                  <div className="rounded-lg bg-white/5 p-4 ring-1 ring-inset ring-white/10">
+                                    <p className="text-xs font-medium tracking-wide text-zinc-400 mb-2">
                                       Attended
                                     </p>
                                     {userDetails.attendedEvents.length > 0 ? (
                                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                        {userDetails.attendedEvents.map((event) => (
-                                          <EventBadge
-                                            key={`attended-${event.id}`}
-                                            event={event}
-                                            tone="emerald"
-                                          />
-                                        ))}
+                                        {userDetails.attendedEvents.map(
+                                          (event) => (
+                                            <EventBadge
+                                              key={`attended-${event.id}`}
+                                              event={event}
+                                              tone="emerald"
+                                            />
+                                          ),
+                                        )}
                                       </div>
                                     ) : (
                                       <p className="text-xs text-zinc-500">
@@ -1324,28 +1371,44 @@ export default function AudienceClient() {
                           <AffiliationPill affiliation={user.affiliation} />
                         </td>
                         <td className="px-3 py-3 text-xs text-zinc-400 whitespace-nowrap">
-                          {user.lastLoginAt ? formatDate(user.lastLoginAt) : "Unknown"}
+                          {user.lastLoginAt
+                            ? formatDate(user.lastLoginAt)
+                            : "Unknown"}
                         </td>
                         <td className="px-3 py-3">
                           <div className="flex items-center gap-2">
-                            <span
-                              className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium ${currentEventStatus.classes}`}
-                            >
+                            <StatusPill color={currentEventStatus.color}>
                               {currentEventStatus.label}
-                            </span>
+                            </StatusPill>
                             {(hasNoCurrentEventStatus(user) ||
                               user.currentEventStatus.onNotifyList) && (
                               <button
-                                onClick={(e) => { e.stopPropagation(); sendAnnouncementToOne(user.email); }}
-                                disabled={individualSending === user.email || sendState?.active}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  sendAnnouncementToOne(user.email);
+                                }}
+                                disabled={
+                                  individualSending === user.email ||
+                                  sendState?.active
+                                }
                                 title="Send announcement email"
-                                className="p-1 rounded hover:bg-zinc-700 text-zinc-500 hover:text-zinc-300 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                                className="p-1 rounded-md hover:bg-white/5 text-zinc-500 hover:text-zinc-300 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                               >
                                 {individualSending === user.email ? (
-                                  <div className="w-3.5 h-3.5 border-2 border-zinc-600 border-t-zinc-400 rounded-full animate-spin" />
+                                  <div className="size-3.5 rounded-full border-2 border-zinc-600 border-t-zinc-400 animate-spin" />
                                 ) : (
-                                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" />
+                                  <svg
+                                    className="size-3.5"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth={2}
+                                    viewBox="0 0 24 24"
+                                  >
+                                    <path
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75"
+                                    />
                                   </svg>
                                 )}
                               </button>
@@ -1354,12 +1417,14 @@ export default function AudienceClient() {
                         </td>
                         <td className="px-3 py-3">
                           <div className="flex flex-col items-center gap-1">
-                            <span className="font-semibold text-white">
+                            <span className="font-semibold tabular-nums text-white">
                               {user.counts.totalHistoryEvents}
                             </span>
-                            <span className="text-[11px] text-zinc-500">
-                              {user.counts.notified} N / {user.counts.waitlisted} W / {user.counts.ticketed} T /{" "}
-                              {user.counts.attended} A
+                            <span className="text-[11px] tabular-nums text-zinc-500">
+                              {user.counts.notified} N /{" "}
+                              {user.counts.waitlisted} W /{" "}
+                              {user.counts.ticketed} T / {user.counts.attended}{" "}
+                              A
                             </span>
                           </div>
                         </td>
@@ -1373,22 +1438,26 @@ export default function AudienceClient() {
         </div>
 
         {filteredUsers.length > 0 && (
-          <div className="px-4 py-3 border-t border-zinc-800 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-xs text-zinc-500">
+          <div className="px-4 py-3 border-t border-white/10 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-xs tabular-nums text-zinc-500">
               Showing {pageStart + 1}-{pageEnd} of {filteredUsers.length} users
             </p>
             {totalPages > 1 && (
               <div className="flex items-center gap-1.5 flex-wrap sm:justify-end">
                 <button
-                  onClick={() => setCurrentPage((page) => Math.max(page - 1, 1))}
+                  type="button"
+                  onClick={() =>
+                    setCurrentPage((page) => Math.max(page - 1, 1))
+                  }
                   disabled={clampedPage === 1}
-                  className="px-2.5 py-1.5 rounded-lg border border-zinc-700 bg-zinc-800 text-zinc-300 text-xs font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-zinc-700 transition-colors"
+                  className="px-2.5 py-1.5 rounded-lg bg-white/5 text-zinc-300 text-xs font-medium ring-1 ring-inset ring-white/10 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/10 transition-colors"
                 >
                   Prev
                 </button>
                 {visiblePageNumbers.map((page, index) => {
                   const previousPage = visiblePageNumbers[index - 1];
-                  const needsGap = previousPage != null && page - previousPage > 1;
+                  const needsGap =
+                    previousPage != null && page - previousPage > 1;
 
                   return (
                     <div key={page} className="flex items-center gap-1.5">
@@ -1396,11 +1465,12 @@ export default function AudienceClient() {
                         <span className="px-1 text-xs text-zinc-600">…</span>
                       )}
                       <button
+                        type="button"
                         onClick={() => setCurrentPage(page)}
-                        className={`min-w-8 px-2.5 py-1.5 rounded-lg border text-xs font-medium transition-colors ${
+                        className={`min-w-8 px-2.5 py-1.5 rounded-lg text-xs font-medium tabular-nums ring-1 ring-inset transition-colors ${
                           clampedPage === page
-                            ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-300"
-                            : "border-zinc-700 bg-zinc-800 text-zinc-300 hover:bg-zinc-700"
+                            ? "bg-rose-500/15 text-rose-300 ring-rose-500/25"
+                            : "bg-white/5 text-zinc-300 ring-white/10 hover:bg-white/10"
                         }`}
                       >
                         {page}
@@ -1409,11 +1479,12 @@ export default function AudienceClient() {
                   );
                 })}
                 <button
+                  type="button"
                   onClick={() =>
                     setCurrentPage((page) => Math.min(page + 1, totalPages))
                   }
                   disabled={clampedPage === totalPages}
-                  className="px-2.5 py-1.5 rounded-lg border border-zinc-700 bg-zinc-800 text-zinc-300 text-xs font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-zinc-700 transition-colors"
+                  className="px-2.5 py-1.5 rounded-lg bg-white/5 text-zinc-300 text-xs font-medium ring-1 ring-inset ring-white/10 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/10 transition-colors"
                 >
                   Next
                 </button>

@@ -277,14 +277,20 @@ export default async function AdminLayout({ children }: AdminLayoutProps) {
       const loginUrl = `/api/auth/login?redirect_to=${encodeURIComponent("/")}`;
       return (
         <html>
-          <body className={`${inter.variable} ${hedvigLettersSerif.variable} antialiased`}>
+          <body
+            className={`${inter.variable} ${hedvigLettersSerif.variable} antialiased`}
+          >
             <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
               <div className="text-center">
-                <h1 className="text-2xl font-bold text-white mb-4 font-serif">Stanford Speakers Bureau</h1>
-                <p className="text-zinc-400 mb-6">Sign in with Stanford SSO to continue.</p>
+                <h1 className="text-2xl font-bold text-white mb-4 font-serif">
+                  Stanford Speakers Bureau
+                </h1>
+                <p className="text-zinc-400 mb-6">
+                  Sign in with Stanford SSO to continue.
+                </p>
                 <a
                   href={loginUrl}
-                  className="inline-flex items-center gap-2 px-6 py-3 bg-white text-zinc-900 rounded-xl font-medium hover:bg-zinc-100 transition-colors"
+                  className="inline-flex items-center gap-2 px-6 py-3 bg-white text-zinc-900 rounded-lg font-medium hover:bg-zinc-100 transition-colors"
                 >
                   <svg
                     className="w-5 h-5"
@@ -311,14 +317,23 @@ export default async function AdminLayout({ children }: AdminLayoutProps) {
     // User is authenticated but not an admin
     return (
       <html>
-        <body className={`${inter.variable} ${hedvigLettersSerif.variable} antialiased`}>
+        <body
+          className={`${inter.variable} ${hedvigLettersSerif.variable} antialiased`}
+        >
           <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
             <div className="text-center">
-              <h1 className="text-2xl font-bold text-white mb-4 font-serif">Access Denied</h1>
-              <p className="text-zinc-400 mb-6">Your account does not have admin access.</p>
+              <h1 className="text-2xl font-bold text-white mb-4 font-serif">
+                Access Denied
+              </h1>
+              <p className="text-zinc-400 mb-6">
+                Your account does not have admin access.
+              </p>
               <a
-                href={process.env.NEXT_PUBLIC_BASE_URL || "https://stanfordspeakersbureau.com"}
-                className="inline-flex items-center gap-2 px-6 py-3 bg-zinc-800 text-white rounded-xl font-medium hover:bg-zinc-700 transition-colors"
+                href={
+                  process.env.NEXT_PUBLIC_BASE_URL ||
+                  "https://stanfordspeakersbureau.com"
+                }
+                className="inline-flex items-center gap-2 px-6 py-3 bg-white/5 text-white rounded-lg font-medium ring-1 ring-inset ring-white/10 hover:bg-white/10 transition-colors"
               >
                 Go to Main Site
               </a>

@@ -29,24 +29,18 @@ async function getInitialData() {
       };
     }
 
-    const [
-      { rows, total },
-      optOuts,
-      stats,
-      nlOptOuts,
-      nlStats,
-      allEvents,
-    ] = await Promise.all([
-      listAnnounceMembers({ search: null, limit: INITIAL_LIMIT, offset: 0 }),
-      listAnnounceOptOuts(),
-      announceStats(),
-      listNewsletterOptOuts(),
-      newsletterStats(),
-      db.query.events.findMany({
-        columns: { id: true, name: true, startTimeDate: true },
-        orderBy: [desc(events.startTimeDate)],
-      }),
-    ]);
+    const [{ rows, total }, optOuts, stats, nlOptOuts, nlStats, allEvents] =
+      await Promise.all([
+        listAnnounceMembers({ search: null, limit: INITIAL_LIMIT, offset: 0 }),
+        listAnnounceOptOuts(),
+        announceStats(),
+        listNewsletterOptOuts(),
+        newsletterStats(),
+        db.query.events.findMany({
+          columns: { id: true, name: true, startTimeDate: true },
+          orderBy: [desc(events.startTimeDate)],
+        }),
+      ]);
 
     return {
       rows,

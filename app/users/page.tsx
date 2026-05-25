@@ -6,7 +6,11 @@ import AdminUsersClient, {
   type GrantChip,
   type UnifiedUser,
 } from "./AdminUsersClient";
-import { hasRoleName, parseRoleNames, verifyAdminRequest } from "@/app/lib/auth";
+import {
+  hasRoleName,
+  parseRoleNames,
+  verifyAdminRequest,
+} from "@/app/lib/auth";
 import { PERMISSION_DEFS, PERMISSION_IMPLIES } from "@/app/lib/permissions";
 import { db, desc } from "@ssb/db";
 import { connection } from "next/server";
@@ -36,7 +40,9 @@ async function getInitialData(): Promise<InitialData> {
 
     const [allRoles, grantRows, eventRows] = await Promise.all([
       db.query.roles.findMany({ orderBy: (t) => [desc(t.createdAt)] }),
-      db.query.permissionGrants.findMany({ orderBy: (t) => [desc(t.createdAt)] }),
+      db.query.permissionGrants.findMany({
+        orderBy: (t) => [desc(t.createdAt)],
+      }),
       db.query.events.findMany({
         columns: { id: true, name: true, startTimeDate: true },
         orderBy: (t, { desc: d }) => [d(t.startTimeDate)],

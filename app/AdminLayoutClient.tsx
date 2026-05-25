@@ -102,15 +102,19 @@ export default function AdminLayoutClient({
   return (
     <div className="min-h-screen bg-zinc-950">
       {/* Desktop Sidebar — lg+ full, md icons-only */}
-      <aside className="hidden md:flex fixed top-0 left-0 bottom-0 z-50 flex-col bg-zinc-900 border-r border-zinc-800 md:w-16 lg:w-64 transition-all">
+      <aside className="hidden md:flex fixed top-0 left-0 bottom-0 z-50 flex-col bg-zinc-900 border-r border-white/10 md:w-16 lg:w-64 transition-all">
         {/* Live event left stripe */}
         {hasLiveEvent && (
           <div className="absolute left-0 top-0 bottom-0 w-1 bg-red-500 z-10" />
         )}
 
         {/* Branding */}
-        <div className="h-16 flex items-center gap-3 px-4 border-b border-zinc-800 shrink-0">
-          <img src="/favicon.ico" alt="SSB" className="w-8 h-8 rounded shrink-0" />
+        <div className="h-16 flex items-center gap-3 px-4 border-b border-white/10 shrink-0">
+          <img
+            src="/favicon.ico"
+            alt="SSB"
+            className="w-8 h-8 rounded shrink-0"
+          />
           <span className="text-white font-bold text-lg font-serif hidden lg:block">
             SSB Admin
           </span>
@@ -126,10 +130,11 @@ export default function AdminLayoutClient({
                 href={navHref(item)}
                 prefetch={false}
                 title={item.label}
-                className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${active
+                className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                  active
                     ? "bg-rose-500/10 text-rose-400"
                     : "text-zinc-400 hover:text-white hover:bg-zinc-800"
-                  }`}
+                }`}
               >
                 <svg
                   className="w-5 h-5 shrink-0"
@@ -149,9 +154,9 @@ export default function AdminLayoutClient({
             );
           })}
 
-          <div className="my-3 border-t border-zinc-800" />
+          <div className="my-3 border-t border-white/10" />
 
-          <span className="hidden lg:block px-3 pb-1 text-xs font-semibold text-zinc-500 uppercase tracking-wider">
+          <span className="hidden lg:block px-3 pb-1 text-xs font-semibold text-zinc-500 tracking-wide">
             Events
           </span>
           {eventItems.map((item) => {
@@ -162,10 +167,11 @@ export default function AdminLayoutClient({
                 href={navHref(item)}
                 prefetch={false}
                 title={item.label}
-                className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${active
+                className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                  active
                     ? "bg-rose-500/10 text-rose-400"
                     : "text-zinc-400 hover:text-white hover:bg-zinc-800"
-                  }`}
+                }`}
               >
                 <svg
                   className="w-5 h-5 shrink-0"
@@ -185,9 +191,9 @@ export default function AdminLayoutClient({
             );
           })}
 
-          <div className="my-3 border-t border-zinc-800" />
+          <div className="my-3 border-t border-white/10" />
 
-          <span className="hidden lg:block px-3 pb-1 text-xs font-semibold text-zinc-500 uppercase tracking-wider">
+          <span className="hidden lg:block px-3 pb-1 text-xs font-semibold text-zinc-500 tracking-wide">
             Analytics
           </span>
           {analyticsItems.map((item) => {
@@ -198,10 +204,11 @@ export default function AdminLayoutClient({
                 href={navHref(item)}
                 prefetch={false}
                 title={item.label}
-                className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${active
+                className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                  active
                     ? "bg-rose-500/10 text-rose-400"
                     : "text-zinc-400 hover:text-white hover:bg-zinc-800"
-                  }`}
+                }`}
               >
                 <svg
                   className="w-5 h-5 shrink-0"
@@ -221,9 +228,9 @@ export default function AdminLayoutClient({
             );
           })}
 
-          <div className="my-3 border-t border-zinc-800" />
+          <div className="my-3 border-t border-white/10" />
 
-          <span className="hidden lg:block px-3 pb-1 text-xs font-semibold text-zinc-500 uppercase tracking-wider">
+          <span className="hidden lg:block px-3 pb-1 text-xs font-semibold text-zinc-500 tracking-wide">
             Admin
           </span>
           {adminItems.map((item) => {
@@ -234,10 +241,11 @@ export default function AdminLayoutClient({
                 href={navHref(item)}
                 prefetch={false}
                 title={item.label}
-                className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${active
+                className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                  active
                     ? "bg-rose-500/10 text-rose-400"
                     : "text-zinc-400 hover:text-white hover:bg-zinc-800"
-                  }`}
+                }`}
               >
                 <svg
                   className="w-5 h-5 shrink-0"
@@ -259,16 +267,16 @@ export default function AdminLayoutClient({
         </nav>
 
         {/* Event selector */}
-        <div className="px-2 py-3 border-t border-zinc-800">
+        <div className="px-2 py-3 border-t border-white/10">
           {/* Full dropdown on lg+ */}
           <div className="hidden lg:block">
-            <label className="block px-3 pb-1 text-xs font-semibold text-zinc-500 uppercase tracking-wider">
+            <label className="block px-3 pb-1 text-xs font-semibold text-zinc-500 tracking-wide">
               Event
             </label>
             <select
               value={displayedEventId}
               onChange={(e) => handleEventChange(e.target.value)}
-              className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-sm focus:outline-none focus:border-rose-500/50 focus:ring-1 focus:ring-rose-500/50"
+              className="w-full px-3 py-2 bg-white/5 rounded-lg text-white text-sm ring-1 ring-inset ring-white/10 focus:outline-none focus:ring-rose-500/50"
             >
               <option value="">Select event</option>
               {events.map((event) => (
@@ -297,12 +305,14 @@ export default function AdminLayoutClient({
             </div>
             {/* Tooltip-style dropdown on hover */}
             <div className="absolute left-full top-0 bottom-0 hidden group-hover:block z-50 pl-2">
-              <div className="bg-zinc-800 border border-zinc-700 rounded-lg shadow-xl p-2 min-w-[200px]">
-                <p className="px-2 pb-1 text-xs font-semibold text-zinc-500 uppercase">Event</p>
+              <div className="bg-zinc-800 ring-1 ring-inset ring-white/10 rounded-lg shadow-xl p-2 min-w-[200px]">
+                <p className="px-2 pb-1 text-xs font-semibold text-zinc-500 tracking-wide">
+                  Event
+                </p>
                 <select
                   value={displayedEventId}
                   onChange={(e) => handleEventChange(e.target.value)}
-                  className="w-full px-2 py-1.5 bg-zinc-900 border border-zinc-600 rounded text-white text-sm focus:outline-none"
+                  className="w-full px-2 py-1.5 bg-white/5 ring-1 ring-inset ring-white/10 rounded text-white text-sm focus:outline-none"
                 >
                   <option value="">Select event</option>
                   {events.map((event) => (
@@ -317,7 +327,7 @@ export default function AdminLayoutClient({
         </div>
 
         {/* Exit link */}
-        <div className="px-2 pb-4 border-t border-zinc-800 pt-3">
+        <div className="px-2 pb-4 border-t border-white/10 pt-3">
           <Link
             href="https://stanfordspeakersbureau.com"
             prefetch={false}
@@ -343,15 +353,25 @@ export default function AdminLayoutClient({
       </aside>
 
       {/* Mobile Event Selector */}
-      <div className="md:hidden fixed top-0 left-0 right-0 z-50 bg-zinc-900/95 backdrop-blur-xl border-b border-zinc-800">
+      <div className="md:hidden fixed top-0 left-0 right-0 z-50 bg-zinc-900/95 backdrop-blur-xl border-b border-white/10">
         <div className="flex items-center gap-2 px-3 py-2">
-          <svg className="w-4 h-4 text-zinc-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+          <svg
+            className="w-4 h-4 text-zinc-500 shrink-0"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
+            />
           </svg>
           <select
             value={displayedEventId}
             onChange={(e) => handleEventChange(e.target.value)}
-            className="flex-1 min-w-0 bg-zinc-800 border border-zinc-700 rounded-md px-2 py-1.5 text-white text-sm focus:outline-none focus:border-rose-500/50 truncate"
+            className="flex-1 min-w-0 bg-white/5 ring-1 ring-inset ring-white/10 rounded-md px-2 py-1.5 text-white text-sm focus:outline-none focus:ring-rose-500/50 truncate"
           >
             <option value="">Select event</option>
             {events.map((event) => (
@@ -364,7 +384,7 @@ export default function AdminLayoutClient({
       </div>
 
       {/* Mobile Bottom Navigation */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 h-16 bg-zinc-900/95 backdrop-blur-xl border-t border-zinc-800 z-50">
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 h-16 bg-zinc-900/95 backdrop-blur-xl border-t border-white/10 z-50">
         <div className="h-full flex items-center gap-1 px-2 overflow-x-auto scrollbar-hide">
           {navItems.map((item) => {
             const active = isNavActive(item);
@@ -373,8 +393,9 @@ export default function AdminLayoutClient({
                 key={item.href}
                 href={navHref(item)}
                 prefetch={false}
-                className={`flex flex-col items-center gap-1 px-3 py-2 rounded transition-all shrink-0 ${active ? "text-rose-400" : "text-zinc-500 hover:text-white"
-                  }`}
+                className={`flex flex-col items-center gap-1 px-3 py-2 rounded transition-all shrink-0 ${
+                  active ? "text-rose-400" : "text-zinc-500 hover:text-white"
+                }`}
               >
                 <svg
                   className="w-5 h-5"
@@ -442,8 +463,9 @@ export default function AdminLayoutClient({
 
       {/* Main Content */}
       <main
-        className={`pb-20 md:pb-8 min-h-screen pt-12 md:pt-0 md:ml-16 lg:ml-64 ${emailDisabled ? "md:pt-12" : ""
-          }`}
+        className={`pb-20 md:pb-8 min-h-screen pt-12 md:pt-0 md:ml-16 lg:ml-64 ${
+          emailDisabled ? "md:pt-12" : ""
+        }`}
       >
         {children}
       </main>

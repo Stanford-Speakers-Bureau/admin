@@ -41,7 +41,8 @@ async function getInitialEvents(): Promise<Event[]> {
 
     // Batch count queries — one query each instead of per-event
     const [ticketCounts, waitlistCounts, standbyCounts] = await Promise.all([
-      db.select({ eventId: tickets.eventId, count: dbCount() })
+      db
+        .select({ eventId: tickets.eventId, count: dbCount() })
         .from(tickets)
         .where(
           editableEventIds
@@ -52,7 +53,8 @@ async function getInitialEvents(): Promise<Event[]> {
             : ne(tickets.type, "STANDBY"),
         )
         .groupBy(tickets.eventId),
-      db.select({ eventId: waitlist.eventId, count: dbCount() })
+      db
+        .select({ eventId: waitlist.eventId, count: dbCount() })
         .from(waitlist)
         .where(
           editableEventIds
@@ -60,7 +62,8 @@ async function getInitialEvents(): Promise<Event[]> {
             : undefined,
         )
         .groupBy(waitlist.eventId),
-      db.select({ eventId: tickets.eventId, count: dbCount() })
+      db
+        .select({ eventId: tickets.eventId, count: dbCount() })
         .from(tickets)
         .where(
           editableEventIds
@@ -74,7 +77,9 @@ async function getInitialEvents(): Promise<Event[]> {
     ]);
 
     const ticketMap = new Map(ticketCounts.map((r) => [r.eventId, r.count]));
-    const waitlistMap = new Map(waitlistCounts.map((r) => [r.eventId, r.count]));
+    const waitlistMap = new Map(
+      waitlistCounts.map((r) => [r.eventId, r.count]),
+    );
     const standbyMap = new Map(standbyCounts.map((r) => [r.eventId, r.count]));
 
     const eventsWithImages = await Promise.all(

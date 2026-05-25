@@ -1,6 +1,12 @@
 "use client";
 
-import { createContext, useCallback, useContext, useMemo, useState } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useMemo,
+  useState,
+} from "react";
 import { getNextEventId } from "@/app/lib/eventUtils";
 import { sortByStartDate } from "@/app/lib/formatting";
 
@@ -42,10 +48,17 @@ export function EventProvider({
   defaultEventId: string;
   children: React.ReactNode;
 }) {
-  const [requestedSelectedEventId, setRequestedSelectedEventId] = useState(defaultEventId);
-  const [eventPatches, setEventPatches] = useState<Record<string, Partial<EventOption>>>({});
-  const [createdEvents, setCreatedEvents] = useState<Record<string, EventOption>>({});
-  const [removedEventIds, setRemovedEventIds] = useState<Record<string, true>>({});
+  const [requestedSelectedEventId, setRequestedSelectedEventId] =
+    useState(defaultEventId);
+  const [eventPatches, setEventPatches] = useState<
+    Record<string, Partial<EventOption>>
+  >({});
+  const [createdEvents, setCreatedEvents] = useState<
+    Record<string, EventOption>
+  >({});
+  const [removedEventIds, setRemovedEventIds] = useState<Record<string, true>>(
+    {},
+  );
 
   const events = useMemo(() => {
     const nextEvents = new Map<string, EventOption>();
@@ -156,6 +169,7 @@ export function EventProvider({
 
 export function useEventContext() {
   const ctx = useContext(EventContext);
-  if (!ctx) throw new Error("useEventContext must be used within EventProvider");
+  if (!ctx)
+    throw new Error("useEventContext must be used within EventProvider");
   return ctx;
 }

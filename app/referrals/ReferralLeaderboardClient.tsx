@@ -3,6 +3,14 @@
 import { useEffect, useState } from "react";
 import { HIGH_PERFORMER_CHECKIN_THRESHOLD } from "@/app/lib/constants";
 import { useEventContext } from "@/app/EventContext";
+import {
+  Alert,
+  Button,
+  Card,
+  EmptyState,
+  PageHeader,
+  Toggle,
+} from "@/app/components/ui";
 
 type ReferralEntry = {
   referral_code: string;
@@ -111,7 +119,9 @@ export default function ReferralLeaderboardClient() {
       }
       setReferralsEnabled(newValue);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to toggle referrals");
+      setError(
+        err instanceof Error ? err.message : "Failed to toggle referrals",
+      );
     } finally {
       setIsToggling(false);
     }
@@ -119,120 +129,44 @@ export default function ReferralLeaderboardClient() {
 
   return (
     <div className="px-4 sm:px-6 py-8">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-white font-serif mb-2">
-            Referral Leaderboard
-          </h1>
-          <p className="text-zinc-400">Top referrers for this event</p>
-        </div>
-        <div className="flex items-center gap-3">
-          {selectedEventId && (
-            <button
-              onClick={handleToggleReferrals}
-              disabled={isToggling || isLoading}
-              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-medium transition-colors text-sm disabled:opacity-50 ${
-                referralsEnabled
-                  ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/30"
-                  : "bg-zinc-800 text-zinc-400 border border-zinc-700 hover:bg-zinc-700"
-              }`}
-            >
-              <div
-                className={`w-8 h-4 rounded-full relative transition-colors ${
-                  referralsEnabled ? "bg-emerald-500" : "bg-zinc-600"
-                }`}
-              >
-                <div
-                  className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-transform ${
-                    referralsEnabled ? "translate-x-4" : "translate-x-0.5"
-                  }`}
-                />
-              </div>
-              {referralsEnabled ? "Referrals On" : "Referrals Off"}
-            </button>
-          )}
-          <button
-            onClick={handleRefresh}
-            disabled={isLoading}
-            className="px-4 py-3 bg-zinc-800 hover:bg-zinc-700 disabled:opacity-50 disabled:cursor-not-allowed border border-zinc-700 rounded-xl text-white font-medium transition-colors flex items-center gap-2"
-          >
-            <svg
-              className={`w-5 h-5 ${isLoading ? "animate-spin" : ""}`}
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-              />
-            </svg>
-            Refresh
-          </button>
-        </div>
-      </div>
+      <PageHeader
+        className="mb-8"
+        title="Referral Leaderboard"
+        subtitle="Top referrers for this event"
+      >
+        {selectedEventId && (
+          <Toggle
+            checked={referralsEnabled}
+            disabled={isToggling || isLoading}
+            onChange={handleToggleReferrals}
+            label={referralsEnabled ? "Referrals On" : "Referrals Off"}
+          />
+        )}
+        <Button onClick={handleRefresh} disabled={isLoading}>
+          Refresh
+        </Button>
+      </PageHeader>
 
       {error && (
-        <div className="mb-6 p-4 bg-rose-500/10 border border-rose-500/30 rounded-xl">
-          <p className="text-rose-400 text-sm">{error}</p>
-        </div>
+        <Alert tone="error" className="mb-6">
+          {error}
+        </Alert>
       )}
 
       {!selectedEventId ? (
-        <div className="text-center py-16 bg-zinc-900/50 rounded-2xl border border-zinc-800">
-          <div className="w-16 h-16 bg-zinc-800 rounded-full flex items-center justify-center mx-auto mb-4">
-            <svg
-              className="w-8 h-8 text-zinc-600"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"
-              />
-            </svg>
-          </div>
-          <p className="text-zinc-400 text-lg mb-2">No event selected</p>
-          <p className="text-zinc-600 text-sm">
-            Select an event from the sidebar to view referrals
-          </p>
-        </div>
+        <EmptyState
+          title="No event selected"
+          hint="Select an event from the sidebar to view referrals"
+        />
       ) : isLoading ? (
-        <div className="text-center py-16 bg-zinc-900/50 rounded-2xl border border-zinc-800">
-          <div className="w-16 h-16 bg-zinc-800 rounded-full flex items-center justify-center mx-auto mb-4">
-            <div className="w-8 h-8 border-2 border-zinc-600 border-t-zinc-400 rounded-full animate-spin" />
-          </div>
-          <p className="text-zinc-400">Loading leaderboard...</p>
-        </div>
+        <EmptyState title="Loading leaderboard…" />
       ) : leaderboard.length === 0 ? (
-        <div className="text-center py-16 bg-zinc-900/50 rounded-2xl border border-zinc-800">
-          <div className="w-16 h-16 bg-zinc-800 rounded-full flex items-center justify-center mx-auto mb-4">
-            <svg
-              className="w-8 h-8 text-zinc-600"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"
-              />
-            </svg>
-          </div>
-          <p className="text-zinc-400 text-lg mb-2">No referrals yet</p>
-          <p className="text-zinc-600 text-sm">
-            No referrals for this event
-          </p>
-        </div>
+        <EmptyState
+          title="No referrals yet"
+          hint="No referrals for this event"
+        />
       ) : (
-        <div className="bg-zinc-900 rounded-2xl border border-zinc-800 p-6">
+        <Card>
           <div className="space-y-2">
             {leaderboard.map((referral, index) => {
               const isHighPerformer =
@@ -242,8 +176,8 @@ export default function ReferralLeaderboardClient() {
                   key={referral.referral_code}
                   className={`flex items-center gap-4 p-4 rounded-lg transition-colors ${
                     isHighPerformer
-                      ? "bg-emerald-500/20 border border-emerald-500/30 hover:bg-emerald-500/25"
-                      : "bg-zinc-800/50 hover:bg-zinc-800"
+                      ? "bg-emerald-500/15 ring-1 ring-inset ring-emerald-500/25 hover:bg-emerald-500/20"
+                      : "bg-white/5 ring-1 ring-inset ring-white/10 hover:bg-white/10"
                   }`}
                 >
                   <div
@@ -280,7 +214,7 @@ export default function ReferralLeaderboardClient() {
               );
             })}
           </div>
-        </div>
+        </Card>
       )}
     </div>
   );

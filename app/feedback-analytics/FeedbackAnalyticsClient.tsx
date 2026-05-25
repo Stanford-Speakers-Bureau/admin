@@ -3,10 +3,15 @@
 import { useEffect, useMemo, useState } from "react";
 import ReactECharts from "echarts-for-react";
 import { useEventContext } from "@/app/EventContext";
+import { runChunkedSend, type BulkSendProgressState } from "@/app/lib/bulkSend";
 import {
-  runChunkedSend,
-  type BulkSendProgressState,
-} from "@/app/lib/bulkSend";
+  PageHeader,
+  Button,
+  Card,
+  EmptyState,
+  Alert,
+  SegmentedControl,
+} from "@/app/components/ui";
 
 type FeedbackRow = {
   ticketId: string;
@@ -117,18 +122,17 @@ export default function FeedbackAnalyticsClient() {
   const [data, setData] = useState<AnalyticsResponse | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [scoreFilter, setScoreFilter] = useState<"all" | "promoters" | "passives" | "detractors">(
-    "all",
-  );
+  const [scoreFilter, setScoreFilter] = useState<
+    "all" | "promoters" | "passives" | "detractors"
+  >("all");
   const [commentOnly, setCommentOnly] = useState(false);
   const [anonymous, setAnonymous] = useState(true);
   const [search, setSearch] = useState("");
   const [selectedTicketIds, setSelectedTicketIds] = useState<Set<string>>(
     new Set(),
   );
-  const [sendProgress, setSendProgress] = useState<BulkSendProgressState | null>(
-    null,
-  );
+  const [sendProgress, setSendProgress] =
+    useState<BulkSendProgressState | null>(null);
   const [sendError, setSendError] = useState<string | null>(null);
   const [sendResult, setSendResult] = useState<string | null>(null);
 
@@ -251,7 +255,8 @@ export default function FeedbackAnalyticsClient() {
             color: "#d4d4d8",
             fontSize: 11,
             fontWeight: 600,
-            formatter: (p: { value: number }) => (p.value > 0 ? String(p.value) : ""),
+            formatter: (p: { value: number }) =>
+              p.value > 0 ? String(p.value) : "",
           },
         },
       ],
@@ -319,11 +324,7 @@ export default function FeedbackAnalyticsClient() {
     doc.setFont("helvetica", "normal");
     doc.setFontSize(10);
     doc.setTextColor(120, 120, 120);
-    doc.text(
-      "Feedback Report",
-      margin + logoSize + 14,
-      y + 34,
-    );
+    doc.text("Feedback Report", margin + logoSize + 14, y + 34);
 
     doc.setFont("helvetica", "normal");
     doc.setFontSize(9);
@@ -366,7 +367,10 @@ export default function FeedbackAnalyticsClient() {
     });
     y += 4;
 
-    const dateLine = formatEventDateRange(data.eventStartTime, data.eventEndTime);
+    const dateLine = formatEventDateRange(
+      data.eventStartTime,
+      data.eventEndTime,
+    );
     if (dateLine) {
       doc.setFont("helvetica", "normal");
       doc.setFontSize(11);
@@ -461,7 +465,8 @@ export default function FeedbackAnalyticsClient() {
 
     data.scoreDistribution.forEach((count, idx) => {
       const score = idx + 1;
-      const barH = count > 0 ? Math.max(2, (count / maxCount) * (chartH - 24)) : 0;
+      const barH =
+        count > 0 ? Math.max(2, (count / maxCount) * (chartH - 24)) : 0;
       const bx = margin + idx * (barW + barGap);
       const by = chartTop + chartH - barH;
       if (score >= 9) doc.setFillColor(16, 185, 129);
@@ -488,22 +493,22 @@ export default function FeedbackAnalyticsClient() {
       rows: FeedbackRow[];
       color: [number, number, number];
     }> = [
-        {
-          title: "Promoters (9–10)",
-          rows: data.feedback.filter((r) => r.score >= 9),
-          color: [16, 185, 129],
-        },
-        {
-          title: "Passives (7–8)",
-          rows: data.feedback.filter((r) => r.score === 7 || r.score === 8),
-          color: [245, 158, 11],
-        },
-        {
-          title: "Detractors (1–6)",
-          rows: data.feedback.filter((r) => r.score <= 6),
-          color: [244, 63, 94],
-        },
-      ];
+      {
+        title: "Promoters (9–10)",
+        rows: data.feedback.filter((r) => r.score >= 9),
+        color: [16, 185, 129],
+      },
+      {
+        title: "Passives (7–8)",
+        rows: data.feedback.filter((r) => r.score === 7 || r.score === 8),
+        color: [245, 158, 11],
+      },
+      {
+        title: "Detractors (1–6)",
+        rows: data.feedback.filter((r) => r.score <= 6),
+        color: [244, 63, 94],
+      },
+    ];
 
     for (const section of sections) {
       ensureSpace(60);
@@ -538,8 +543,13 @@ export default function FeedbackAnalyticsClient() {
       const sorted = [...section.rows].sort((a, b) => b.score - a.score);
       for (const row of sorted) {
         const hasComment = Boolean(row.comment?.trim());
-        const commentText = hasComment ? row.comment!.trim() : "No comment provided.";
-        const lines = doc.splitTextToSize(commentText, contentW - 54) as string[];
+        const commentText = hasComment
+          ? row.comment!.trim()
+          : "No comment provided.";
+        const lines = doc.splitTextToSize(
+          commentText,
+          contentW - 54,
+        ) as string[];
         const blockH = Math.max(34, lines.length * 13 + 14);
         ensureSpace(blockH + 8);
 
@@ -608,7 +618,10 @@ export default function FeedbackAnalyticsClient() {
           const res = await fetch(`/api/feedback/analytics/send`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ eventId: selectedEventId, ticketIds: chunk }),
+            body: JSON.stringify({
+              eventId: selectedEventId,
+              ticketIds: chunk,
+            }),
           });
           if (!res.ok) {
             const err = await res.json().catch(() => ({}));
@@ -627,9 +640,9 @@ export default function FeedbackAnalyticsClient() {
         },
       });
       setSendResult(
-        `Sent ${finalState.sent}/${finalState.total}${finalState.failed > 0
-          ? `, ${finalState.failed} failed`
-          : ""}${finalState.skipped > 0 ? `, ${finalState.skipped} skipped` : ""}.`,
+        `Sent ${finalState.sent}/${finalState.total}${
+          finalState.failed > 0 ? `, ${finalState.failed} failed` : ""
+        }${finalState.skipped > 0 ? `, ${finalState.skipped} skipped` : ""}.`,
       );
       setSelectedTicketIds(new Set());
       if (selectedEventId) {
@@ -638,43 +651,37 @@ export default function FeedbackAnalyticsClient() {
         })
           .then((r) => r.json())
           .then((fresh) => setData(fresh))
-          .catch(() => { });
+          .catch(() => {});
       }
     } catch (err) {
       setSendError(
         err instanceof Error ? err.message : "Failed to send feedback prompts",
       );
     } finally {
-      setSendProgress((prev) => (prev ? { ...prev, active: false, done: true } : prev));
+      setSendProgress((prev) =>
+        prev ? { ...prev, active: false, done: true } : prev,
+      );
     }
   }
 
   if (!selectedEventId) {
     return (
-      <div className="px-4 sm:px-6 py-8">
-        <div className="mb-8">
-          <h1 className="text-2xl sm:text-3xl font-bold text-white font-serif mb-2">
-            Feedback Analytics
-          </h1>
-        </div>
-        <div className="text-center py-16 bg-zinc-900/50 rounded-2xl border border-zinc-800">
-          <p className="text-zinc-400 text-sm">Select an event to view feedback.</p>
-        </div>
+      <div className="px-4 sm:px-6 py-8 space-y-6">
+        <PageHeader title="Feedback analytics" />
+        <EmptyState title="Select an event to view feedback." />
       </div>
     );
   }
 
   if (isLoading && !data) {
     return (
-      <div className="px-4 sm:px-6 py-8">
-        <div className="mb-8">
-          <h1 className="text-2xl sm:text-3xl font-bold text-white font-serif mb-2">
-            Feedback Analytics
-          </h1>
-          {currentEvent && (
-            <p className="text-zinc-400">{currentEvent.name || "Unnamed Event"}</p>
-          )}
-        </div>
+      <div className="px-4 sm:px-6 py-8 space-y-6">
+        <PageHeader
+          title="Feedback analytics"
+          subtitle={
+            currentEvent ? currentEvent.name || "Unnamed Event" : undefined
+          }
+        />
         <div className="flex items-center justify-center py-20">
           <div className="h-6 w-6 animate-spin rounded-full border-2 border-zinc-700 border-t-zinc-200" />
         </div>
@@ -684,15 +691,9 @@ export default function FeedbackAnalyticsClient() {
 
   if (error) {
     return (
-      <div className="px-4 sm:px-6 py-8">
-        <div className="mb-8">
-          <h1 className="text-2xl sm:text-3xl font-bold text-white font-serif mb-2">
-            Feedback Analytics
-          </h1>
-        </div>
-        <div className="px-4 py-3 bg-rose-500/10 border border-rose-500/30 rounded-xl text-rose-300 text-sm">
-          {error}
-        </div>
+      <div className="px-4 sm:px-6 py-8 space-y-6">
+        <PageHeader title="Feedback analytics" />
+        <Alert tone="error">{error}</Alert>
       </div>
     );
   }
@@ -701,85 +702,92 @@ export default function FeedbackAnalyticsClient() {
 
   const progressSentPct =
     sendProgress && sendProgress.total > 0
-      ? ((sendProgress.sent + sendProgress.failed + sendProgress.skipped)
-        / sendProgress.total) * 100
+      ? ((sendProgress.sent + sendProgress.failed + sendProgress.skipped) /
+          sendProgress.total) *
+        100
       : 0;
 
   return (
     <div className="px-4 sm:px-6 py-8">
-      <div className="mb-8 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-white font-serif mb-2">
-            Feedback Analytics
-          </h1>
-          {currentEvent && (
-            <p className="text-zinc-400">{currentEvent.name || "Unnamed Event"}</p>
-          )}
-        </div>
-        <button
-          type="button"
+      <PageHeader
+        title="Feedback analytics"
+        subtitle={
+          currentEvent ? currentEvent.name || "Unnamed Event" : undefined
+        }
+        className="mb-8"
+      >
+        <Button
+          variant="primary"
           onClick={handleDownloadPdf}
           disabled={!data || data.totalResponses === 0}
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold bg-[#A80D0C] text-white hover:bg-[#C11211] disabled:opacity-50 disabled:cursor-not-allowed self-start"
         >
-          Download PDF Report
-        </button>
-      </div>
+          Download PDF report
+        </Button>
+      </PageHeader>
 
       <div className="space-y-5">
         {/* Stat Cards */}
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 px-4 py-3">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
+          <Card className="px-4 py-3">
+            <p className="text-xs font-medium tracking-wide text-zinc-400">
               Responses
             </p>
-            <p className="mt-2 text-2xl font-bold text-blue-400">
+            <p className="mt-2 text-2xl font-bold text-blue-400 tabular-nums">
               {data.totalResponses}
             </p>
             <p className="text-xs text-zinc-500 mt-1">
               {data.totalResponses === 1 ? "response" : "responses"} collected
             </p>
-          </div>
-          <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 px-4 py-3">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
-              Average Score
+          </Card>
+          <Card className="px-4 py-3">
+            <p className="text-xs font-medium tracking-wide text-zinc-400">
+              Average score
             </p>
-            <p className="mt-2 text-2xl font-bold text-violet-400">
+            <p className="mt-2 text-2xl font-bold text-violet-400 tabular-nums">
               {data.totalResponses > 0 ? data.averageScore.toFixed(2) : "—"}
-              <span className="text-base text-zinc-500 font-semibold"> / 10</span>
+              <span className="text-base text-zinc-500 font-semibold">
+                {" "}
+                / 10
+              </span>
             </p>
             <p className="text-xs text-zinc-500 mt-1">
               {data.totalResponses > 0
                 ? `Across ${data.totalResponses} responses`
                 : "No responses yet"}
             </p>
-          </div>
-          <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 px-4 py-3">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
+          </Card>
+          <Card className="px-4 py-3">
+            <p className="text-xs font-medium tracking-wide text-zinc-400">
               NPS
             </p>
             <p
-              className={`mt-2 text-2xl font-bold ${data.npsScore >= 50
-                ? "text-emerald-400"
-                : data.npsScore >= 0
-                  ? "text-amber-400"
-                  : "text-rose-400"
-                }`}
+              className={`mt-2 text-2xl font-bold tabular-nums ${
+                data.npsScore >= 50
+                  ? "text-emerald-400"
+                  : data.npsScore >= 0
+                    ? "text-amber-400"
+                    : "text-rose-400"
+              }`}
             >
               {data.totalResponses > 0 ? data.npsScore.toFixed(0) : "—"}
             </p>
             <p className="text-xs text-zinc-500 mt-1">
-              {data.promoters} promoters · {data.passives} passives · {data.detractors} detractors
+              {data.promoters} promoters · {data.passives} passives ·{" "}
+              {data.detractors} detractors
             </p>
-          </div>
+          </Card>
         </div>
 
         {/* Score Distribution */}
-        <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
+        <Card className="p-5">
           <div className="flex items-baseline justify-between mb-4">
-            <h3 className="text-sm font-semibold text-white">Score Distribution</h3>
+            <h3 className="text-sm font-semibold text-white">
+              Score distribution
+            </h3>
             <p className="text-[11px] text-zinc-500">
-              % of {distributionScale} response{distributionScale === 1 ? "" : "s"} · 1 = not likely · 10 = extremely likely
+              % of {distributionScale} response
+              {distributionScale === 1 ? "" : "s"} · 1 = not likely · 10 =
+              extremely likely
             </p>
           </div>
           <div className="h-56">
@@ -790,30 +798,28 @@ export default function FeedbackAnalyticsClient() {
               notMerge
             />
           </div>
-        </div>
+        </Card>
 
         {/* Controls */}
-        <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <Card className="p-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex flex-wrap items-center gap-2">
-            {(["all", "promoters", "passives", "detractors"] as const).map((key) => (
-              <button
-                key={key}
-                type="button"
-                onClick={() => setScoreFilter(key)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${scoreFilter === key
-                  ? "bg-white text-zinc-900 border-white"
-                  : "bg-zinc-800/60 text-zinc-300 border-zinc-700 hover:border-zinc-600"
-                  }`}
-              >
-                {key[0].toUpperCase() + key.slice(1)}
-              </button>
-            ))}
+            <SegmentedControl
+              aria-label="Filter by score"
+              value={scoreFilter}
+              onChange={setScoreFilter}
+              options={[
+                { value: "all", label: "All" },
+                { value: "promoters", label: "Promoters" },
+                { value: "passives", label: "Passives" },
+                { value: "detractors", label: "Detractors" },
+              ]}
+            />
             <label className="flex items-center gap-2 text-xs text-zinc-300 ml-2">
               <input
                 type="checkbox"
                 checked={commentOnly}
                 onChange={(e) => setCommentOnly(e.target.checked)}
-                className="rounded border-zinc-600 bg-zinc-800"
+                className="size-5 sm:size-4 rounded accent-rose-500"
               />
               Has comment
             </label>
@@ -822,25 +828,28 @@ export default function FeedbackAnalyticsClient() {
                 type="checkbox"
                 checked={anonymous}
                 onChange={(e) => setAnonymous(e.target.checked)}
-                className="rounded border-zinc-600 bg-zinc-800"
+                className="size-5 sm:size-4 rounded accent-rose-500"
               />
               Anonymous
             </label>
           </div>
           <input
             type="search"
-            placeholder={anonymous ? "Search comments…" : "Search by name, email, comment…"}
+            aria-label="Search feedback"
+            placeholder={
+              anonymous ? "Search comments…" : "Search by name, email, comment…"
+            }
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="px-3 py-2 rounded-lg text-sm bg-zinc-800 border border-zinc-700 text-white placeholder-zinc-500 focus:outline-none focus:border-zinc-500 w-full sm:w-72"
+            className="w-full rounded-lg bg-white/5 px-3 py-2 text-sm text-white ring-1 ring-inset ring-white/10 placeholder:text-zinc-500 focus:outline-2 focus:-outline-offset-1 focus:outline-rose-500 max-sm:text-base sm:w-72"
           />
-        </div>
+        </Card>
 
         {/* Feedback Table */}
-        <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 overflow-hidden">
-          <div className="px-4 py-3 border-b border-zinc-800 flex items-baseline justify-between">
+        <Card className="overflow-hidden p-0">
+          <div className="px-4 py-3 border-b border-white/10 flex items-baseline justify-between">
             <h3 className="text-sm font-semibold text-white">Responses</h3>
-            <span className="text-xs text-zinc-500">
+            <span className="text-xs text-zinc-500 tabular-nums">
               {filteredFeedback.length} of {data.feedback.length}
             </span>
           </div>
@@ -851,21 +860,33 @@ export default function FeedbackAnalyticsClient() {
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="bg-zinc-900/70 text-left text-[11px] uppercase tracking-wider text-zinc-500">
+                <thead className="bg-zinc-900/70 text-left text-xs tracking-wide text-zinc-400">
                   <tr>
-                    <th className="px-4 py-2 w-16">Score</th>
-                    {!anonymous && <th className="px-4 py-2">Attendee</th>}
-                    <th className="px-4 py-2">Comment</th>
-                    <th className="px-4 py-2 w-36">Submitted</th>
-                    <th className="px-4 py-2 w-24">Via</th>
+                    <th className="px-4 py-2 w-16 whitespace-nowrap font-medium">
+                      Score
+                    </th>
+                    {!anonymous && (
+                      <th className="px-4 py-2 whitespace-nowrap font-medium">
+                        Attendee
+                      </th>
+                    )}
+                    <th className="px-4 py-2 whitespace-nowrap font-medium">
+                      Comment
+                    </th>
+                    <th className="px-4 py-2 w-36 whitespace-nowrap font-medium">
+                      Submitted
+                    </th>
+                    <th className="px-4 py-2 w-24 whitespace-nowrap font-medium">
+                      Via
+                    </th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-zinc-800/70">
+                <tbody className="divide-y divide-white/10">
                   {filteredFeedback.map((row) => (
                     <tr key={row.ticketId} className="hover:bg-zinc-900/40">
                       <td className="px-4 py-3">
                         <span
-                          className={`inline-flex items-center justify-center h-8 w-10 rounded-lg border text-sm font-bold ${scoreBg(row.score)} ${scoreTone(row.score)}`}
+                          className={`inline-flex items-center justify-center h-8 w-10 rounded-lg border text-sm font-bold tabular-nums ${scoreBg(row.score)} ${scoreTone(row.score)}`}
                         >
                           {row.score}
                         </span>
@@ -873,14 +894,20 @@ export default function FeedbackAnalyticsClient() {
                       {!anonymous && (
                         <td className="px-4 py-3">
                           <div className="text-white">{row.name || "—"}</div>
-                          <div className="text-xs text-zinc-500">{row.email}</div>
+                          <div className="text-xs text-zinc-500">
+                            {row.email}
+                          </div>
                         </td>
                       )}
                       <td className="px-4 py-3 text-zinc-300 max-w-md">
                         {row.comment ? (
-                          <p className="whitespace-pre-wrap break-words">{row.comment}</p>
+                          <p className="whitespace-pre-wrap break-words">
+                            {row.comment}
+                          </p>
                         ) : (
-                          <span className="text-zinc-600 italic">No comment</span>
+                          <span className="text-zinc-600 italic">
+                            No comment
+                          </span>
                         )}
                       </td>
                       <td className="px-4 py-3 text-xs text-zinc-400">
@@ -895,51 +922,51 @@ export default function FeedbackAnalyticsClient() {
               </table>
             </div>
           )}
-        </div>
+        </Card>
 
         {/* Non-responders + Bulk Send */}
-        <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 overflow-hidden">
-          <div className="px-4 py-3 border-b border-zinc-800 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <Card className="overflow-hidden p-0">
+          <div className="px-4 py-3 border-b border-white/10 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h3 className="text-sm font-semibold text-white">Haven&apos;t submitted</h3>
+              <h3 className="text-sm font-semibold text-white">
+                Haven&apos;t submitted
+              </h3>
               <p className="text-xs text-zinc-500">
-                Scanned attendees without feedback · {filteredEligible.length} shown
+                Scanned attendees without feedback · {filteredEligible.length}{" "}
+                shown
               </p>
             </div>
             <div className="flex items-center gap-2">
-              <button
-                type="button"
+              <Button
                 onClick={toggleSelectAllVisible}
                 disabled={filteredEligible.length === 0}
-                className="px-3 py-1.5 rounded-lg text-xs font-semibold border border-zinc-700 bg-zinc-800/60 text-zinc-300 hover:border-zinc-600 disabled:opacity-50"
               >
                 {filteredEligible.every((row) =>
                   selectedTicketIds.has(row.ticketId),
                 ) && filteredEligible.length > 0
                   ? "Deselect visible"
                   : "Select visible"}
-              </button>
-              <button
-                type="button"
+              </Button>
+              <Button
+                variant="primary"
                 onClick={handleSendFeedbackPrompts}
                 disabled={
                   selectedTicketIds.size === 0 ||
                   Boolean(sendProgress && sendProgress.active)
                 }
-                className="px-4 py-1.5 rounded-lg text-xs font-semibold bg-[#A80D0C] text-white hover:bg-[#C11211] disabled:opacity-50"
               >
                 {sendProgress && sendProgress.active
                   ? `Sending… ${sendProgress.sent}/${sendProgress.total}`
                   : `Send feedback prompt (${selectedTicketIds.size})`}
-              </button>
+              </Button>
             </div>
           </div>
 
           {sendProgress && (
-            <div className="px-4 py-3 border-b border-zinc-800 bg-zinc-900/40">
-              <div className="h-2 w-full rounded-full bg-zinc-800 overflow-hidden">
+            <div className="px-4 py-3 border-b border-white/10 bg-zinc-900/40">
+              <div className="h-2 w-full rounded-full bg-white/5 overflow-hidden">
                 <div
-                  className="h-full bg-[#A80D0C] transition-[width]"
+                  className="h-full bg-rose-500 transition-[width]"
                   style={{ width: `${progressSentPct}%` }}
                 />
               </div>
@@ -951,13 +978,13 @@ export default function FeedbackAnalyticsClient() {
           )}
 
           {sendError && (
-            <div className="px-4 py-3 border-b border-zinc-800 bg-rose-500/10 text-rose-300 text-xs">
+            <div className="px-4 py-3 border-b border-white/10 bg-rose-500/10 text-rose-300 text-xs">
               {sendError}
             </div>
           )}
 
           {sendResult && !sendError && (
-            <div className="px-4 py-3 border-b border-zinc-800 bg-emerald-500/10 text-emerald-300 text-xs">
+            <div className="px-4 py-3 border-b border-white/10 bg-emerald-500/10 text-emerald-300 text-xs">
               {sendResult}
             </div>
           )}
@@ -971,14 +998,18 @@ export default function FeedbackAnalyticsClient() {
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="bg-zinc-900/70 text-left text-[11px] uppercase tracking-wider text-zinc-500">
+                <thead className="bg-zinc-900/70 text-left text-xs tracking-wide text-zinc-400">
                   <tr>
                     <th className="px-4 py-2 w-10"></th>
-                    <th className="px-4 py-2">Attendee</th>
-                    <th className="px-4 py-2 w-40">Checked in</th>
+                    <th className="px-4 py-2 whitespace-nowrap font-medium">
+                      Attendee
+                    </th>
+                    <th className="px-4 py-2 w-40 whitespace-nowrap font-medium">
+                      Checked in
+                    </th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-zinc-800/70">
+                <tbody className="divide-y divide-white/10">
                   {filteredEligible.map((row) => {
                     const checked = selectedTicketIds.has(row.ticketId);
                     return (
@@ -991,7 +1022,7 @@ export default function FeedbackAnalyticsClient() {
                             type="checkbox"
                             checked={checked}
                             onChange={() => toggleSelect(row.ticketId)}
-                            className="rounded border-zinc-600 bg-zinc-800"
+                            className="size-5 sm:size-4 rounded accent-rose-500"
                           />
                         </td>
                         <td className="px-4 py-3">
@@ -999,8 +1030,12 @@ export default function FeedbackAnalyticsClient() {
                             <div className="text-zinc-500 italic">Hidden</div>
                           ) : (
                             <>
-                              <div className="text-white">{row.name || "—"}</div>
-                              <div className="text-xs text-zinc-500">{row.email}</div>
+                              <div className="text-white">
+                                {row.name || "—"}
+                              </div>
+                              <div className="text-xs text-zinc-500">
+                                {row.email}
+                              </div>
                             </>
                           )}
                         </td>
@@ -1014,7 +1049,7 @@ export default function FeedbackAnalyticsClient() {
               </table>
             </div>
           )}
-        </div>
+        </Card>
       </div>
     </div>
   );

@@ -75,9 +75,7 @@ function pickFeaturedEvent(
   rows: EventRow[],
   allowedIds: Set<string> | null,
 ): UpcomingEvent | null {
-  const visible = allowedIds
-    ? rows.filter((e) => allowedIds.has(e.id))
-    : rows;
+  const visible = allowedIds ? rows.filter((e) => allowedIds.has(e.id)) : rows;
   const dated = visible.filter((e) => e.startTimeDate);
   const now = Date.now();
   const next = [...dated]
@@ -87,9 +85,7 @@ function pickFeaturedEvent(
   if (!chosen) return null;
   return {
     ...chosen,
-    isPast: chosen.startTimeDate
-      ? chosen.startTimeDate.getTime() < now
-      : false,
+    isPast: chosen.startTimeDate ? chosen.startTimeDate.getTime() < now : false,
   };
 }
 
@@ -201,7 +197,7 @@ function EventActions({ e, caps }: { e: UpcomingEvent; caps: Caps }) {
         <Link
           href="/tickets"
           prefetch={false}
-          className="rounded-lg border border-zinc-700 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-zinc-800"
+          className="rounded-lg bg-white/5 px-4 py-2 text-sm font-medium text-white ring-1 ring-inset ring-white/10 transition-colors hover:bg-white/10"
         >
           Tickets
         </Link>
@@ -210,7 +206,7 @@ function EventActions({ e, caps }: { e: UpcomingEvent; caps: Caps }) {
         <Link
           href="/check-in"
           prefetch={false}
-          className="rounded-lg border border-zinc-700 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-zinc-800"
+          className="rounded-lg bg-white/5 px-4 py-2 text-sm font-medium text-white ring-1 ring-inset ring-white/10 transition-colors hover:bg-white/10"
         >
           Check-in
         </Link>
@@ -219,7 +215,7 @@ function EventActions({ e, caps }: { e: UpcomingEvent; caps: Caps }) {
         <Link
           href="/event-questions"
           prefetch={false}
-          className="rounded-lg border border-zinc-700 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-zinc-800"
+          className="rounded-lg bg-white/5 px-4 py-2 text-sm font-medium text-white ring-1 ring-inset ring-white/10 transition-colors hover:bg-white/10"
         >
           Moderate Q&amp;A
         </Link>
@@ -236,7 +232,12 @@ function QuickActionIcon({ d }: { d: string }) {
       stroke="currentColor"
       viewBox="0 0 24 24"
     >
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={d} />
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d={d}
+      />
     </svg>
   );
 }
@@ -408,8 +409,8 @@ export default async function AdminDashboard() {
       <div className="@container">
         <div className="grid grid-cols-2 gap-4 @3xl:grid-cols-4">
           {upcoming && (
-            <div className="col-span-2 rounded-2xl border border-zinc-800 bg-zinc-900 p-6 @3xl:col-span-2 @3xl:row-span-2">
-              <p className="mb-3 text-sm font-medium uppercase tracking-wide text-zinc-500">
+            <div className="col-span-2 rounded-2xl border border-white/10 bg-zinc-900/60 p-6 @3xl:col-span-2 @3xl:row-span-2">
+              <p className="mb-3 text-sm font-medium tracking-wide text-zinc-500">
                 {heroLabel}
               </p>
               <div className="flex flex-wrap items-center gap-3">
@@ -418,7 +419,7 @@ export default async function AdminDashboard() {
                 </h3>
                 {upcoming.live && <LiveBadge />}
                 {upcoming.startTimeDate && (
-                  <span className="rounded-full bg-zinc-800 px-3 py-1 text-sm font-medium text-zinc-300">
+                  <span className="rounded-full bg-white/5 px-3 py-1 text-sm font-medium text-zinc-300">
                     {countdownLabel(upcoming.startTimeDate)}
                   </span>
                 )}
@@ -445,7 +446,7 @@ export default async function AdminDashboard() {
               key={item.label}
               href={item.href}
               prefetch={false}
-              className="flex flex-col justify-between rounded-2xl border border-zinc-800 bg-amber-500/5 p-5 transition-colors hover:border-amber-500/40"
+              className="flex flex-col justify-between rounded-2xl border border-white/10 bg-amber-500/5 p-5 transition-colors hover:border-amber-500/40"
             >
               <p className="truncate text-sm text-zinc-400">{item.label}</p>
               <div>
@@ -464,7 +465,7 @@ export default async function AdminDashboard() {
               key={stat.label}
               href={stat.href}
               prefetch={false}
-              className="flex flex-col justify-between rounded-2xl border border-zinc-800 bg-zinc-900 p-5 transition-colors hover:border-zinc-700"
+              className="flex flex-col justify-between rounded-2xl border border-white/10 bg-zinc-900/60 p-5 transition-colors hover:border-white/20"
             >
               <p className="truncate text-sm text-zinc-400">{stat.label}</p>
               <p className="text-3xl font-bold text-white tabular-nums">
@@ -474,7 +475,7 @@ export default async function AdminDashboard() {
           ))}
 
           {quickActions.length > 0 && (
-            <div className="col-span-2 rounded-2xl border border-zinc-800 bg-zinc-900 p-5 @3xl:col-span-2">
+            <div className="col-span-2 rounded-2xl border border-white/10 bg-zinc-900/60 p-5 @3xl:col-span-2">
               <p className="mb-3 truncate text-sm text-zinc-400">
                 Quick actions
               </p>
