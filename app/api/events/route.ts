@@ -9,7 +9,7 @@ import {
 import { requirePermission } from "@/app/lib/permissions";
 import { PACIFIC_TIMEZONE } from "@/app/lib/constants";
 import { pullFromWaitlist } from "@/app/lib/waitlist";
-import { db, eq, ne, events, tickets as ticketsTable } from "@ssb/db";
+import { db, and, eq, ne, events, tickets as ticketsTable } from "@ssb/db";
 import { logAuditEvent } from "@/app/lib/audit";
 import { pushWalletUpdate } from "@/app/lib/wallet-push";
 import type { InferInsertModel, InferSelectModel } from "@ssb/db";
@@ -709,6 +709,11 @@ export async function PATCH(req: Request) {
     }
 
     if (typeof allowAdmittingStandby === "boolean") {
+      const previous = await db.query.events.findFirst({
+        where: eq(events.id, id),
+        columns: { allowAdmittingStandby: true },
+      });
+
       const [updatedEvent] = await db
         .update(events)
         .set({ allowAdmittingStandby })
@@ -722,6 +727,32 @@ export async function PATCH(req: Request) {
         eventName: updatedEvent.name ?? null,
         metadata: { allowAdmittingStandby },
       });
+
+      // Standby passes render their status live from this flag, so refresh the
+      // installed passes of this event's standby tickets when it actually flips
+      // (either direction — "please wait" ↔ "entry permitted").
+      if ((previous?.allowAdmittingStandby ?? false) !== allowAdmittingStandby) {
+        try {
+          const standbyTickets = await db.query.tickets.findMany({
+            where: and(
+              eq(ticketsTable.eventId, id),
+              eq(ticketsTable.type, "STANDBY"),
+            ),
+            columns: { id: true },
+          });
+          await pushWalletUpdate(standbyTickets.map((t) => t.id), {
+            actor: auth.email ?? undefined,
+            reason: "event.toggle_allow_admitting_standby",
+            eventId: id,
+            eventName: updatedEvent.name ?? null,
+          });
+        } catch (pushError) {
+          console.error(
+            "Wallet standby-admit push failed (non-fatal):",
+            pushError,
+          );
+        }
+      }
 
       const eventWithImage = await serializeEventWithImages(updatedEvent);
 
