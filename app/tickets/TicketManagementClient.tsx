@@ -1500,8 +1500,14 @@ export default function TicketManagementClient({
           <Button
             variant="primary"
             onClick={() => {
-              setShowAddForm((prev) => !prev);
-              setNewTicketEventId((prev) => prev || selectedEventId);
+              setShowAddForm((prev) => {
+                // When opening the form, default the event dropdown to the
+                // event currently being viewed.
+                if (!prev) {
+                  setNewTicketEventId(selectedEventId);
+                }
+                return !prev;
+              });
             }}
             className="flex items-center gap-2"
           >
