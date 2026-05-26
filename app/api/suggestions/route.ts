@@ -17,7 +17,7 @@ export async function POST(req: Request) {
     const body = await req.json();
     const { id, action } = body;
 
-    if (!id || !action || !["approve", "reject"].includes(action)) {
+    if (!id || !action || !["approve", "reject", "unapprove"].includes(action)) {
       return NextResponse.json({ error: "Invalid request" }, { status: 400 });
     }
 
@@ -34,12 +34,19 @@ export async function POST(req: Request) {
       columns: { speaker: true, email: true, approved: true },
     });
 
+    // "unapprove" sends an approved pick back to Pending for re-review;
+    // "reject" and "approve" both leave it reviewed.
     await db.update(suggest)
-      .set({ reviewed: true, approved: action === "approve" })
+      .set({ reviewed: action !== "unapprove", approved: action === "approve" })
       .where(eq(suggest.id, id));
 
     await logAuditEvent({
-      action: action === "approve" ? "suggestion.approve" : "suggestion.reject",
+      action:
+        action === "approve"
+          ? "suggestion.approve"
+          : action === "unapprove"
+            ? "suggestion.unapprove"
+            : "suggestion.reject",
       actor: auth.email!,
       targetEmail: existing?.email ?? undefined,
       metadata: { suggestionId: id, speaker: existing?.speaker },
@@ -200,15 +207,23 @@ export async function PUT(req: Request) {
       );
     }
 
-    // Verify source is pending or rejected (not approved) and target is approved
+    if (sourceId === targetId) {
+      return NextResponse.json(
+        { error: "Cannot merge a suggestion into itself" },
+        { status: 400 },
+      );
+    }
+
+    // Source can be pending, rejected, or approved (deduping two approved picks);
+    // target must be approved.
     const source = await db.query.suggest.findFirst({
       where: eq(suggest.id, sourceId),
       columns: { id: true, reviewed: true, approved: true },
     });
 
-    if (!source || source.approved) {
+    if (!source) {
       return NextResponse.json(
-        { error: "Source suggestion must be pending or rejected" },
+        { error: "Source suggestion not found" },
         { status: 400 },
       );
     }

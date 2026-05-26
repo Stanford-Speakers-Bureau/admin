@@ -23,6 +23,7 @@ type AuditAction =
   | "permission.revoke"
   | "suggestion.approve"
   | "suggestion.reject"
+  | "suggestion.unapprove"
   | "suggestion.edit"
   | "suggestion.mark_duplicate"
   | "suggestion.mark_spoke"

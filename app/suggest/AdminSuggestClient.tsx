@@ -4,6 +4,7 @@ import { useState } from "react";
 import {
   ArrowPathIcon,
   ArrowsRightLeftIcon,
+  ArrowUturnLeftIcon,
   CheckIcon,
   ClockIcon,
   EyeIcon,
@@ -67,7 +68,10 @@ export default function AdminSuggestClient({
   const [isSavingVoteCount, setIsSavingVoteCount] = useState(false);
   const [voteEditError, setVoteEditError] = useState<string | null>(null);
 
-  async function handleAction(id: string, action: "approve" | "reject") {
+  async function handleAction(
+    id: string,
+    action: "approve" | "reject" | "unapprove",
+  ) {
     setProcessingIds((prev) => new Set(prev).add(id));
 
     try {
@@ -455,10 +459,13 @@ export default function AdminSuggestClient({
               .split(/\s+/)
               .filter(Boolean);
 
-            // Find all approved suggestions whose name shares at least one token
-            // Apply to both pending and rejected items
-            const matchingApproved = approvedSuggestions.filter((approved) =>
-              approved._tokens.some((t) => pendingTokens.includes(t)),
+            // Find all approved suggestions whose name shares at least one token.
+            // Applies to pending, rejected, and approved items (excluding self so an
+            // approved pick can be merged into another approved duplicate).
+            const matchingApproved = approvedSuggestions.filter(
+              (approved) =>
+                approved.id !== suggestion.id &&
+                approved._tokens.some((t) => pendingTokens.includes(t)),
             );
 
             const isDuplicateOfApproved = matchingApproved.length > 0;
@@ -641,27 +648,73 @@ export default function AdminSuggestClient({
                   {suggestion.reviewed && (
                     <div className="flex gap-2 shrink-0 flex-wrap">
                       {suggestion.approved && (
-                        <button
-                          type="button"
-                          onClick={() =>
-                            handleToggleSpoke(suggestion.id, !suggestion.spoke)
-                          }
-                          disabled={processingIds.has(suggestion.id)}
-                          className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 ${
-                            suggestion.spoke
-                              ? "bg-white/5 text-zinc-200 ring-1 ring-inset ring-white/10 hover:bg-white/10"
-                              : "bg-sky-500/20 text-sky-300 hover:bg-sky-500/30"
-                          }`}
-                        >
-                          {processingIds.has(suggestion.id) ? (
-                            <div className="size-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                          ) : suggestion.spoke ? (
-                            <EyeIcon className="size-4 shrink-0" aria-hidden="true" />
-                          ) : (
-                            <CheckIcon className="size-4 shrink-0" aria-hidden="true" />
+                        <>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              handleToggleSpoke(
+                                suggestion.id,
+                                !suggestion.spoke,
+                              )
+                            }
+                            disabled={processingIds.has(suggestion.id)}
+                            className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 ${
+                              suggestion.spoke
+                                ? "bg-white/5 text-zinc-200 ring-1 ring-inset ring-white/10 hover:bg-white/10"
+                                : "bg-sky-500/20 text-sky-300 hover:bg-sky-500/30"
+                            }`}
+                          >
+                            {processingIds.has(suggestion.id) ? (
+                              <div className="size-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                            ) : suggestion.spoke ? (
+                              <EyeIcon className="size-4 shrink-0" aria-hidden="true" />
+                            ) : (
+                              <CheckIcon className="size-4 shrink-0" aria-hidden="true" />
+                            )}
+                            {suggestion.spoke ? "Unhide" : "Mark Spoke"}
+                          </button>
+                          {isDuplicateOfApproved && (
+                            <button
+                              type="button"
+                              onClick={() => startDuplicateMerge(suggestion)}
+                              disabled={processingIds.has(suggestion.id)}
+                              className="flex items-center gap-2 px-3 py-2 bg-amber-500/20 text-amber-400 rounded-lg text-sm font-medium hover:bg-amber-500/30 transition-colors disabled:opacity-50"
+                            >
+                              <ArrowsRightLeftIcon className="size-4 shrink-0" aria-hidden="true" />
+                              Duplicate
+                            </button>
                           )}
-                          {suggestion.spoke ? "Unhide" : "Mark Spoke"}
-                        </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              handleAction(suggestion.id, "unapprove")
+                            }
+                            disabled={processingIds.has(suggestion.id)}
+                            className="flex items-center gap-2 px-3 py-2 bg-white/5 text-zinc-200 ring-1 ring-inset ring-white/10 rounded-lg text-sm font-medium hover:bg-white/10 transition-colors disabled:opacity-50"
+                          >
+                            {processingIds.has(suggestion.id) ? (
+                              <div className="size-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                            ) : (
+                              <ArrowUturnLeftIcon className="size-4 shrink-0" aria-hidden="true" />
+                            )}
+                            Unapprove
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              handleAction(suggestion.id, "reject")
+                            }
+                            disabled={processingIds.has(suggestion.id)}
+                            className="flex items-center gap-2 px-3 py-2 bg-rose-500/20 text-rose-400 rounded-lg text-sm font-medium hover:bg-rose-500/30 transition-colors disabled:opacity-50"
+                          >
+                            {processingIds.has(suggestion.id) ? (
+                              <div className="size-4 border-2 border-rose-400 border-t-transparent rounded-full animate-spin" />
+                            ) : (
+                              <XMarkIcon className="size-4 shrink-0" aria-hidden="true" />
+                            )}
+                            Reject
+                          </button>
+                        </>
                       )}
                       {!suggestion.approved &&
                         isDuplicateOfApproved &&
@@ -759,8 +812,10 @@ export default function AdminSuggestClient({
             .split(/\s+/)
             .filter(Boolean);
 
-          const matchingApproved = approvedSuggestions.filter((approved) =>
-            approved._tokens.some((t) => pendingTokens.includes(t)),
+          const matchingApproved = approvedSuggestions.filter(
+            (approved) =>
+              approved.id !== duplicateSuggestion.id &&
+              approved._tokens.some((t) => pendingTokens.includes(t)),
           );
 
           return (
