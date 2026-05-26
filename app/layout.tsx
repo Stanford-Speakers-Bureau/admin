@@ -243,6 +243,8 @@ async function getEvents() {
         route: true,
         questionsEnabled: true,
         questionsRankingsHidden: true,
+        identityVerificationEnabled: true,
+        allowAdmittingStandby: true,
       },
       orderBy: desc(events.startTimeDate),
     });
@@ -261,6 +263,8 @@ async function getEvents() {
       questionsEnabled: e.questionsEnabled ?? false,
       questionsRankingsHidden: e.questionsRankingsHidden ?? false,
       route: e.route ?? null,
+      identityVerificationEnabled: e.identityVerificationEnabled ?? true,
+      allowAdmittingStandby: e.allowAdmittingStandby ?? false,
     }));
   } catch (error) {
     console.error("Failed to fetch events for layout:", error);

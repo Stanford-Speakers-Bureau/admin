@@ -291,6 +291,8 @@ function CheckInContent({ eventId }: { eventId: string }) {
   const [error, setError] = useState<string | null>(null);
   const [isPolling, setIsPolling] = useState(false);
   const [isTogglingLive, setIsTogglingLive] = useState(false);
+  const [isTogglingIdVerify, setIsTogglingIdVerify] = useState(false);
+  const [isTogglingStandby, setIsTogglingStandby] = useState(false);
 
   const [timelineMode, setTimelineMode] = useState<TimelineMode>("scanner");
   const [zoomRange, setZoomRange] = useState<[number, number] | null>(null);
@@ -304,6 +306,8 @@ function CheckInContent({ eventId }: { eventId: string }) {
 
   const currentEvent = events.find((e) => e.id === eventId);
   const isLive = currentEvent?.live ?? false;
+  const isIdVerifyEnabled = currentEvent?.identityVerificationEnabled ?? true;
+  const isAdmittingStandby = currentEvent?.allowAdmittingStandby ?? false;
   const scannerLeaderboard =
     data?.scannerLeaderboard ?? EMPTY_SCANNER_LEADERBOARD;
   const scannedCount = data?.scannedCount ?? 0;
@@ -396,6 +400,52 @@ function CheckInContent({ eventId }: { eventId: string }) {
       setError("Failed to update live status");
     } finally {
       setIsTogglingLive(false);
+    }
+  }
+
+  async function handleToggleIdVerify() {
+    if (!eventId) return;
+    setIsTogglingIdVerify(true);
+    try {
+      const newVal = !isIdVerifyEnabled;
+      const res = await fetch("/api/events", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: eventId, identityVerificationEnabled: newVal }),
+      });
+      const result = await res.json();
+      if (res.ok && result.event) {
+        updateEvent(eventId, { identityVerificationEnabled: newVal });
+      } else {
+        setError(result.error || "Failed to update identity verification");
+      }
+    } catch {
+      setError("Failed to update identity verification");
+    } finally {
+      setIsTogglingIdVerify(false);
+    }
+  }
+
+  async function handleToggleAdmittingStandby() {
+    if (!eventId) return;
+    setIsTogglingStandby(true);
+    try {
+      const newVal = !isAdmittingStandby;
+      const res = await fetch("/api/events", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: eventId, allowAdmittingStandby: newVal }),
+      });
+      const result = await res.json();
+      if (res.ok && result.event) {
+        updateEvent(eventId, { allowAdmittingStandby: newVal });
+      } else {
+        setError(result.error || "Failed to update standby admission");
+      }
+    } catch {
+      setError("Failed to update standby admission");
+    } finally {
+      setIsTogglingStandby(false);
     }
   }
 
@@ -1112,6 +1162,50 @@ function CheckInContent({ eventId }: { eventId: string }) {
             />
           </div>
           {isLive ? "Live" : "Not Live"}
+        </button>
+
+        {/* ID verification toggle */}
+        <button
+          type="button"
+          onClick={handleToggleIdVerify}
+          disabled={isTogglingIdVerify}
+          title="Require identity verification before admitting guests"
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-lg font-medium transition-colors text-sm disabled:opacity-50 ${
+            isIdVerifyEnabled
+              ? "bg-blue-500/20 text-blue-400 ring-1 ring-inset ring-blue-500/30 hover:bg-blue-500/30"
+              : "bg-white/5 text-zinc-400 ring-1 ring-inset ring-white/10 hover:bg-white/10"
+          }`}
+        >
+          <div
+            className={`w-8 h-4 rounded-full relative transition-colors ${isIdVerifyEnabled ? "bg-blue-500" : "bg-zinc-600"}`}
+          >
+            <div
+              className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-transform ${isIdVerifyEnabled ? "translate-x-4" : "translate-x-0.5"}`}
+            />
+          </div>
+          ID Check
+        </button>
+
+        {/* Allow admitting standby toggle */}
+        <button
+          type="button"
+          onClick={handleToggleAdmittingStandby}
+          disabled={isTogglingStandby}
+          title="Allow scanners to admit standby guests"
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-lg font-medium transition-colors text-sm disabled:opacity-50 ${
+            isAdmittingStandby
+              ? "bg-amber-500/20 text-amber-400 ring-1 ring-inset ring-amber-500/30 hover:bg-amber-500/30"
+              : "bg-white/5 text-zinc-400 ring-1 ring-inset ring-white/10 hover:bg-white/10"
+          }`}
+        >
+          <div
+            className={`w-8 h-4 rounded-full relative transition-colors ${isAdmittingStandby ? "bg-amber-500" : "bg-zinc-600"}`}
+          >
+            <div
+              className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-transform ${isAdmittingStandby ? "translate-x-4" : "translate-x-0.5"}`}
+            />
+          </div>
+          Admit Standby
         </button>
 
         <div className="h-8 w-px bg-white/10 hidden sm:block" />

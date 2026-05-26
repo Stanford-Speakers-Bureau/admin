@@ -24,6 +24,8 @@ export type EventOption = {
   route?: string | null;
   questionsEnabled?: boolean;
   questionsRankingsHidden?: boolean;
+  identityVerificationEnabled?: boolean;
+  allowAdmittingStandby?: boolean;
 };
 
 type EventContextType = {

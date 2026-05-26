@@ -654,7 +654,7 @@ export async function POST(req: Request) {
 export async function PATCH(req: Request) {
   try {
     const body = await req.json();
-    const { id, live, standbyEnabled } = body;
+    const { id, live, standbyEnabled, identityVerificationEnabled, allowAdmittingStandby } = body;
 
     if (!id) {
       return NextResponse.json(
@@ -688,9 +688,49 @@ export async function PATCH(req: Request) {
       return NextResponse.json({ success: true, event: eventWithImage });
     }
 
+    if (typeof identityVerificationEnabled === "boolean") {
+      const [updatedEvent] = await db
+        .update(events)
+        .set({ identityVerificationEnabled })
+        .where(eq(events.id, id))
+        .returning();
+
+      await logAuditEvent({
+        action: "event.toggle_identity_verification",
+        actor: auth.email!,
+        eventId: id,
+        eventName: updatedEvent.name ?? null,
+        metadata: { identityVerificationEnabled },
+      });
+
+      const eventWithImage = await serializeEventWithImages(updatedEvent);
+
+      return NextResponse.json({ success: true, event: eventWithImage });
+    }
+
+    if (typeof allowAdmittingStandby === "boolean") {
+      const [updatedEvent] = await db
+        .update(events)
+        .set({ allowAdmittingStandby })
+        .where(eq(events.id, id))
+        .returning();
+
+      await logAuditEvent({
+        action: "event.toggle_allow_admitting_standby",
+        actor: auth.email!,
+        eventId: id,
+        eventName: updatedEvent.name ?? null,
+        metadata: { allowAdmittingStandby },
+      });
+
+      const eventWithImage = await serializeEventWithImages(updatedEvent);
+
+      return NextResponse.json({ success: true, event: eventWithImage });
+    }
+
     if (typeof live !== "boolean") {
       return NextResponse.json(
-        { error: "Either 'live' or 'standbyEnabled' boolean is required" },
+        { error: "A boolean field (live, standbyEnabled, identityVerificationEnabled, or allowAdmittingStandby) is required" },
         { status: 400 },
       );
     }

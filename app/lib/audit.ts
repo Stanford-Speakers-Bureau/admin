@@ -14,6 +14,8 @@ type AuditAction =
   | "event.edit"
   | "event.toggle_live"
   | "event.toggle_standby"
+  | "event.toggle_identity_verification"
+  | "event.toggle_allow_admitting_standby"
   | "event.delete"
   | "user.add_role"
   | "user.remove_role"
