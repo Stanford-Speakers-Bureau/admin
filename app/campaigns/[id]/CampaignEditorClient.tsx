@@ -210,6 +210,16 @@ export default function CampaignEditorClient({
     ...new Set(segments.flatMap((segment) => segment.eventIds)),
   ];
 
+  // Hero card can promote any event, not just the audience's events — a
+  // marketing blast to all registered users may showcase an upcoming event.
+  // Surface audience-referenced events first, then every other event.
+  const heroCardEventIds = [
+    ...allReferencedEventIds,
+    ...events
+      .map((e) => e.id)
+      .filter((id) => !allReferencedEventIds.includes(id)),
+  ];
+
   const applyCampaignState = useCallback(
     (data: {
       campaign: {
@@ -364,15 +374,8 @@ export default function CampaignEditorClient({
       }
     }
     if (includeHeroCard) {
-      const referencedEventIds = new Set(
-        segments.flatMap((segment) => segment.eventIds),
-      );
       if (!heroEventId) {
         setError("Select an event for the hero card");
-        return null;
-      }
-      if (!referencedEventIds.has(heroEventId)) {
-        setError("Hero card event must be one of the selected audience events");
         return null;
       }
     }
@@ -908,7 +911,7 @@ export default function CampaignEditorClient({
           </Card>
 
           {/* Hero card */}
-          {allReferencedEventIds.length > 0 && (
+          {events.length > 0 && (
             <Card className="space-y-3">
               <label className="flex items-center gap-3 cursor-pointer">
                 <input
@@ -931,7 +934,7 @@ export default function CampaignEditorClient({
                   className="disabled:opacity-50"
                 >
                   <option value="">Select hero card event...</option>
-                  {allReferencedEventIds.map((eid) => {
+                  {heroCardEventIds.map((eid) => {
                     const ev = events.find((e) => e.id === eid);
                     return (
                       <option key={eid} value={eid}>
