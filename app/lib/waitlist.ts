@@ -34,7 +34,16 @@ type PullFromWaitlistAuditContext = {
 };
 
 function getErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : "";
+  // Walk the cause chain: when a Postgres function raises, Drizzle's top-level
+  // message is just "Failed query: ..." and the real PG message (e.g. the
+  // leave_waitlist "not_found" text) lives on error.cause.
+  const parts: string[] = [];
+  let current: unknown = error;
+  while (current instanceof Error) {
+    parts.push(current.message);
+    current = current.cause;
+  }
+  return parts.join(" ");
 }
 
 function normalizeReferralCode(
