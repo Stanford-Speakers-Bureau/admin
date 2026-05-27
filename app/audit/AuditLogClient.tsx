@@ -216,6 +216,8 @@ const DEFAULT_EXCLUDED_ACTIONS = new Set([
   "mailing_list.resubscribe",
   "suggestion.submit",
   "event_question.submit",
+  "wallet.install",
+  "wallet.push",
 ]);
 const DEFAULT_ACTION_VALUES = ACTION_VALUES.filter(
   (action) => !DEFAULT_EXCLUDED_ACTIONS.has(action),
@@ -1451,7 +1453,7 @@ export default function AuditLogClient() {
                             className="ml-2 text-[11px] tabular-nums text-zinc-500"
                             title={`Grouped from ${log.group_count.toLocaleString()} chunks`}
                           >
-                            \u00d7{log.group_count.toLocaleString()}
+                            ×{log.group_count.toLocaleString()}
                           </span>
                         ) : null}
                       </TD>
