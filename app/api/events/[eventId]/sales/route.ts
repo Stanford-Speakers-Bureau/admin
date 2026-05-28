@@ -42,7 +42,7 @@ export async function GET(
     // Get event capacity
     const event = await db.query.events.findFirst({
       where: eq(events.id, eventId),
-      columns: { capacity: true },
+      columns: { capacity: true, releaseDate: true },
     });
 
     if (!event) {
@@ -120,6 +120,7 @@ export async function GET(
 
     return NextResponse.json({
       timestamps,
+      releaseDate: event.releaseDate ? event.releaseDate.toISOString() : null,
       totalTickets,
       capacity: event.capacity,
       vipCount,

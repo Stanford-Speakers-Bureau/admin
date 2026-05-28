@@ -26,6 +26,7 @@ type SalesAffiliationKey =
 
 type SalesResponse = {
   timestamps: string[];
+  releaseDate: string | null;
   totalTickets: number;
   capacity: number;
   vipCount: number;
@@ -235,8 +236,19 @@ export default function TicketSalesGraph({
 
   const fullRange = useMemo<[number, number]>(() => {
     if (epochs.length === 0) return [Date.now(), Date.now()];
-    return [epochs[0], Math.max(epochs[epochs.length - 1], epochs[0] + MIN)];
-  }, [epochs]);
+    const firstSale = epochs[0];
+    const lastSale = epochs[epochs.length - 1];
+    // Start at ticket release time if it has already passed; otherwise use the
+    // first sale. Never start after the first sale (guards pre-release sales).
+    const releaseEpoch = salesData?.releaseDate
+      ? new Date(salesData.releaseDate).getTime()
+      : null;
+    const start =
+      releaseEpoch != null && releaseEpoch <= Date.now()
+        ? Math.min(releaseEpoch, firstSale)
+        : firstSale;
+    return [start, Math.max(lastSale, start + MIN)];
+  }, [epochs, salesData]);
 
   const visibleRange = zoomRange ?? fullRange;
   const visibleSpan = visibleRange[1] - visibleRange[0];

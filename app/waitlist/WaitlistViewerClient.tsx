@@ -312,7 +312,7 @@ export default function WaitlistViewerClient() {
           hint="Select an event from the sidebar to view its waitlist"
         />
       ) : isLoading ? (
-        <EmptyState title="Loading waitlist\u2026" />
+        <EmptyState title="Loading waitlist…" />
       ) : waitlist.length === 0 ? (
         <EmptyState
           title="No waitlist entries"
