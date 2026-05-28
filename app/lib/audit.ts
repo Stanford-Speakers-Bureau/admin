@@ -45,6 +45,7 @@ type AuditAction =
   | "event_question.rankings_hidden"
   | "waitlist.pull"
   | "waitlist.issue_standby"
+  | "waitlist.convert_standby"
   | "referral.toggle"
   | "campaign.create"
   | "campaign.send"

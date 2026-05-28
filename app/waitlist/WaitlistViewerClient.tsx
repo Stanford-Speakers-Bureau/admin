@@ -80,8 +80,10 @@ export default function WaitlistViewerClient() {
   const { events, selectedEventId, updateEvent } = useEventContext();
   const [showSendDialog, setShowSendDialog] = useState(false);
   const [showStandbyConfirm, setShowStandbyConfirm] = useState(false);
+  const [showDisableDialog, setShowDisableDialog] = useState(false);
   const [isSendingEmails, setIsSendingEmails] = useState(false);
   const [isTogglingStandby, setIsTogglingStandby] = useState(false);
+  const [isConvertingStandby, setIsConvertingStandby] = useState(false);
   const [standbyOpenTime, setStandbyOpenTime] = useState("7:30 PM");
   const [expectedCapacity, setExpectedCapacity] = useState("100-200");
   const [notifySuccess, setNotifySuccess] = useState<string | null>(null);
@@ -149,8 +151,8 @@ export default function WaitlistViewerClient() {
     refetch();
   }
 
-  async function handleToggleStandby(enable: boolean) {
-    if (!selectedEventId) return;
+  async function handleToggleStandby(enable: boolean): Promise<boolean> {
+    if (!selectedEventId) return false;
 
     setIsTogglingStandby(true);
     setNotifyError(null);
@@ -178,14 +180,72 @@ export default function WaitlistViewerClient() {
       setNotifySuccess(
         enable ? "Standby line enabled." : "Standby line disabled.",
       );
+      return true;
     } catch (err) {
       console.error("Error toggling standby mode:", err);
       setNotifyError(
         err instanceof Error ? err.message : "Failed to toggle standby mode",
       );
+      return false;
     } finally {
       setIsTogglingStandby(false);
       setShowStandbyConfirm(false);
+      setShowDisableDialog(false);
+    }
+  }
+
+  // When standby is turned off, optionally migrate the existing standby tickets
+  // first (to regular tickets or back to the waitlist), then disable standby.
+  async function handleConvertAndDisable(mode: "regular" | "waitlist") {
+    if (!selectedEventId) return;
+
+    setIsConvertingStandby(true);
+    setNotifyError(null);
+    setNotifySuccess(null);
+
+    try {
+      const response = await fetch("/api/waitlist", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "convert_standby",
+          eventId: selectedEventId,
+          mode,
+        }),
+      });
+
+      if (!response.ok) {
+        let errorMessage = "Failed to convert standby tickets";
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.error || errorMessage;
+        } catch {
+          errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+        }
+        throw new Error(errorMessage);
+      }
+
+      const result = await response.json();
+      const disabled = await handleToggleStandby(false);
+
+      if (disabled) {
+        const destination =
+          mode === "regular" ? "regular tickets" : "the waitlist";
+        setNotifySuccess(
+          `Converted ${result.converted} standby ticket${result.converted !== 1 ? "s" : ""} to ${destination}${result.errors > 0 ? ` (${result.errors} failed)` : ""}. Standby line disabled.`,
+        );
+      }
+      refetch();
+    } catch (err) {
+      console.error("Error converting standby tickets:", err);
+      setNotifyError(
+        err instanceof Error
+          ? err.message
+          : "Failed to convert standby tickets",
+      );
+    } finally {
+      setIsConvertingStandby(false);
+      setShowDisableDialog(false);
     }
   }
 
@@ -254,7 +314,13 @@ export default function WaitlistViewerClient() {
               disabled={isTogglingStandby}
               onChange={() => {
                 if (isStandbyMode) {
-                  handleToggleStandby(false);
+                  // Ask how to handle existing standby tickets; if there are
+                  // none, there's nothing to migrate, so just turn it off.
+                  if (standbyTickets.length > 0) {
+                    setShowDisableDialog(true);
+                  } else {
+                    void handleToggleStandby(false);
+                  }
                 } else {
                   setShowStandbyConfirm(true);
                 }
@@ -415,7 +481,24 @@ export default function WaitlistViewerClient() {
       <ConfirmationDialog
         open={showStandbyConfirm}
         title="Enable Standby Line?"
-        description="This closes the online waitlist and shows the standby ticket option on the event page."
+        tone={ticketsStillAvailable ? "danger" : "primary"}
+        description={
+          ticketsStillAvailable ? (
+            <>
+              <p>
+                Regular tickets are still available for this event. Enabling
+                standby now will likely reduce turnout — people will line up for
+                standby instead of claiming the open tickets. Are you sure?
+              </p>
+              <p className="mt-2">
+                This also closes the online waitlist and shows the standby
+                ticket option on the event page.
+              </p>
+            </>
+          ) : (
+            "This closes the online waitlist and shows the standby ticket option on the event page."
+          )
+        }
         confirmLabel={
           isTogglingStandby ? (
             <>
@@ -426,7 +509,6 @@ export default function WaitlistViewerClient() {
             "Enable"
           )
         }
-        tone="primary"
         dismissible={!isTogglingStandby}
         isConfirming={isTogglingStandby}
         onCancel={() => setShowStandbyConfirm(false)}
@@ -434,6 +516,77 @@ export default function WaitlistViewerClient() {
           void handleToggleStandby(true);
         }}
       />
+
+      {/* Disable Standby — choose what happens to existing standby tickets */}
+      {showDisableDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-md rounded-2xl border border-white/10 bg-zinc-900 p-6">
+            <h2 className="mb-2 text-sm font-semibold text-white">
+              Disable Standby Line
+            </h2>
+            <p className="mb-5 text-sm text-zinc-400">
+              This event has{" "}
+              <span className="font-semibold text-amber-400">
+                {standbyTickets.length}
+              </span>{" "}
+              standby ticket{standbyTickets.length !== 1 ? "s" : ""}. Choose what
+              happens to them when standby turns off.
+            </p>
+            <div className="space-y-2.5">
+              <button
+                type="button"
+                onClick={() => void handleConvertAndDisable("regular")}
+                disabled={isConvertingStandby || isTogglingStandby}
+                className="block w-full rounded-lg bg-white/5 px-4 py-3 text-left ring-1 ring-inset ring-white/10 transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <span className="block text-sm font-semibold text-white">
+                  Convert to regular tickets
+                </span>
+                <span className="mt-0.5 block text-xs text-zinc-400">
+                  Upgrade everyone to a guaranteed ticket and email them a
+                  confirmation.
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleConvertAndDisable("waitlist")}
+                disabled={isConvertingStandby || isTogglingStandby}
+                className="block w-full rounded-lg bg-white/5 px-4 py-3 text-left ring-1 ring-inset ring-white/10 transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <span className="block text-sm font-semibold text-white">
+                  Move back to waitlist
+                </span>
+                <span className="mt-0.5 block text-xs text-zinc-400">
+                  Return them to the waitlist (no email). Their standby ticket is
+                  voided.
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleToggleStandby(false)}
+                disabled={isConvertingStandby || isTogglingStandby}
+                className="block w-full rounded-lg bg-white/5 px-4 py-3 text-left ring-1 ring-inset ring-white/10 transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <span className="block text-sm font-semibold text-white">
+                  Just disable
+                </span>
+                <span className="mt-0.5 block text-xs text-zinc-400">
+                  Turn standby off but leave the existing standby tickets
+                  unchanged.
+                </span>
+              </button>
+            </div>
+            <div className="mt-5 flex justify-end">
+              <Button
+                onClick={() => setShowDisableDialog(false)}
+                disabled={isConvertingStandby || isTogglingStandby}
+              >
+                Cancel
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Send Standby Emails Dialog */}
       {showSendDialog && (

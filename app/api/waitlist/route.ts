@@ -1,10 +1,20 @@
 import { NextResponse } from "next/server";
 import { requirePermission } from "@/app/lib/permissions";
 import { isValidUUID } from "@/app/lib/validation";
-import { sendStandbyLineEmail } from "@/app/lib/email";
+import { sendStandbyLineEmail, sendTicketEmail } from "@/app/lib/email";
 import { PACIFIC_TIMEZONE } from "@/app/lib/constants";
 import { removeWaitlistEntryForEmail } from "@/app/lib/waitlist";
-import { db, eq, and, waitlist, events, tickets } from "@ssb/db";
+import {
+  db,
+  eq,
+  and,
+  sql,
+  waitlist,
+  events,
+  tickets,
+  walletVoidedPasses,
+} from "@ssb/db";
+import { pushWalletUpdate } from "@/app/lib/wallet-push";
 import { logAuditEvent } from "@/app/lib/audit";
 
 async function sendWithRetry(
@@ -200,6 +210,14 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   try {
     const body = await req.json();
+
+    // Disabling standby can offer to migrate existing standby tickets either
+    // back onto the waitlist or up to regular tickets. That conversion runs
+    // through this same route under an explicit action discriminator.
+    if (body?.action === "convert_standby") {
+      return handleConvertStandby(body);
+    }
+
     const { eventId, waitlistOpenTime, expectedCapacity } = body;
 
     if (!eventId) {
@@ -354,4 +372,213 @@ export async function POST(req: Request) {
       { status: 500 },
     );
   }
+}
+
+type ConvertStandbyBody = {
+  eventId?: unknown;
+  mode?: unknown;
+};
+
+/**
+ * Migrate an event's existing STANDBY tickets when standby mode is turned off.
+ *
+ * - mode "regular": flip each STANDBY ticket to STANDARD and send the normal
+ *   ticket confirmation (they now hold a guaranteed ticket). The type-counter
+ *   trigger keeps public_tickets_sold/standby_tickets_sold accurate.
+ * - mode "waitlist": tombstone the pass, delete the ticket, and re-add the
+ *   person to the back of the waitlist silently (no email). Mirrors the
+ *   cancel/delete wallet flow so installed passes flip to voided.
+ *
+ * Per-ticket failures are collected, not fatal. The wallet push and audit log
+ * are best-effort.
+ */
+async function handleConvertStandby(body: ConvertStandbyBody) {
+  const eventId = typeof body.eventId === "string" ? body.eventId : null;
+  const mode = body.mode;
+
+  if (!eventId) {
+    return NextResponse.json({ error: "eventId is required" }, { status: 400 });
+  }
+  if (!isValidUUID(eventId)) {
+    return NextResponse.json(
+      { error: "Invalid event ID format" },
+      { status: 400 },
+    );
+  }
+  if (mode !== "regular" && mode !== "waitlist") {
+    return NextResponse.json(
+      { error: "mode must be 'regular' or 'waitlist'" },
+      { status: 400 },
+    );
+  }
+
+  const auth = await requirePermission("tickets.edit", eventId);
+  if (!auth.authorized) {
+    return NextResponse.json({ error: auth.error }, { status: 401 });
+  }
+
+  const event = await db.query.events.findFirst({
+    where: eq(events.id, eventId),
+    columns: {
+      id: true,
+      name: true,
+      route: true,
+      startTimeDate: true,
+      endTimeDate: true,
+      venue: true,
+      venueLink: true,
+      desc: true,
+      doorsOpen: true,
+      tagline: true,
+      imgVersion: true,
+    },
+  });
+
+  if (!event) {
+    return NextResponse.json({ error: "Event not found" }, { status: 404 });
+  }
+
+  const standbyTickets = await db.query.tickets.findMany({
+    where: and(eq(tickets.eventId, eventId), eq(tickets.type, "STANDBY")),
+    columns: { id: true, email: true, name: true },
+  });
+
+  if (standbyTickets.length === 0) {
+    return NextResponse.json({ success: true, converted: 0, errors: 0, mode });
+  }
+
+  let converted = 0;
+  let errorCount = 0;
+  // Serials of tickets whose installed passes need a refresh push: an upgrade
+  // to STANDARD (mode "regular") or a flip to voided (mode "waitlist", where
+  // the row is gone but the tombstone serves a voided pass).
+  const pushIds: string[] = [];
+
+  if (mode === "regular") {
+    for (const ticket of standbyTickets) {
+      try {
+        await db
+          .update(tickets)
+          .set({ type: "STANDARD" })
+          .where(eq(tickets.id, ticket.id));
+        pushIds.push(ticket.id);
+        converted++;
+
+        try {
+          await sendWithRetry(() =>
+            sendTicketEmail({
+              email: ticket.email,
+              name: ticket.name || null,
+              eventName: event.name || "Event",
+              ticketType: "STANDARD",
+              eventStartTime: event.startTimeDate?.toISOString() || null,
+              eventEndTime: event.endTimeDate?.toISOString() || null,
+              eventRoute: event.route || null,
+              ticketId: ticket.id,
+              eventVenue: event.venue || null,
+              eventVenueLink: event.venueLink || null,
+              eventDescription: event.desc || null,
+              doorsOpenTime: event.doorsOpen?.toISOString() || null,
+              eventId: event.id,
+              imgVersion: event.imgVersion ?? null,
+              eventTagline: event.tagline || null,
+            }),
+          );
+        } catch (emailError) {
+          console.error(
+            `Standby→regular email failed for ${ticket.email} (non-fatal):`,
+            emailError,
+          );
+        }
+      } catch (err) {
+        errorCount++;
+        console.error(
+          `Failed to convert standby ticket ${ticket.id} to regular:`,
+          err,
+        );
+      }
+    }
+  } else {
+    // mode === "waitlist": append to the back of the waitlist. Compute the
+    // starting position once and increment locally as we insert.
+    const [{ maxPos } = { maxPos: 0 }] = await db
+      .select({
+        maxPos: sql<number>`COALESCE(MAX(${waitlist.position}), 0)`,
+      })
+      .from(waitlist)
+      .where(eq(waitlist.eventId, eventId));
+    let nextPosition = Number(maxPos) || 0;
+
+    for (const ticket of standbyTickets) {
+      try {
+        // Tombstone first so a poll that lands after the delete still renders a
+        // voided pass from the event row (mirrors the cancel/delete flow).
+        await db
+          .insert(walletVoidedPasses)
+          .values({
+            serialNumber: ticket.id,
+            email: ticket.email,
+            name: ticket.name ?? null,
+            ticketType: "STANDBY",
+            eventId,
+          })
+          .onConflictDoNothing();
+
+        await db.delete(tickets).where(eq(tickets.id, ticket.id));
+
+        nextPosition++;
+        await db
+          .insert(waitlist)
+          .values({
+            eventId,
+            email: ticket.email,
+            name: ticket.name ?? null,
+            referral: null,
+            position: nextPosition,
+          })
+          .onConflictDoNothing();
+
+        pushIds.push(ticket.id);
+        converted++;
+      } catch (err) {
+        errorCount++;
+        console.error(
+          `Failed to convert standby ticket ${ticket.id} to waitlist:`,
+          err,
+        );
+      }
+    }
+  }
+
+  try {
+    await pushWalletUpdate(pushIds, {
+      actor: auth.email ?? undefined,
+      reason:
+        mode === "regular"
+          ? "standby.convert_regular"
+          : "standby.convert_waitlist",
+      eventId,
+      eventName: event.name ?? null,
+    });
+  } catch (pushError) {
+    console.error(
+      "Wallet push after standby conversion failed (non-fatal):",
+      pushError,
+    );
+  }
+
+  await logAuditEvent({
+    action: "waitlist.convert_standby",
+    actor: auth.email!,
+    eventId,
+    eventName: event.name ?? null,
+    metadata: {
+      mode,
+      converted,
+      errors: errorCount,
+      total: standbyTickets.length,
+    },
+  });
+
+  return NextResponse.json({ success: true, converted, errors: errorCount, mode });
 }
