@@ -339,6 +339,19 @@ function formatPillTime(dateString: string | null): string {
   });
 }
 
+/**
+ * Build the "Doors open at X and close promptly at Y" clause, omitting whichever
+ * time is unavailable. Returns "" when neither is known — never invents a default.
+ */
+function buildDoorsClause(doorsOpen: string | null, doorsClose: string | null): string {
+  if (doorsOpen && doorsClose) {
+    return `Doors open at ${doorsOpen} and close promptly at ${doorsClose}`;
+  }
+  if (doorsOpen) return `Doors open at ${doorsOpen}`;
+  if (doorsClose) return `Doors close promptly at ${doorsClose}`;
+  return "";
+}
+
 /** Format full date+time as "Thursday, January 23, 2026 at 8:00 PM" */
 function formatFullDateTime(dateString: string | null): string {
   if (!dateString) return "TBA";
@@ -1183,9 +1196,9 @@ async function generateQRCodePngBuffer(
 
     const png = new Uint8Array(
       PNG_SIGNATURE.length +
-        ihdrChunk.length +
-        idatChunk.length +
-        iendChunk.length,
+      ihdrChunk.length +
+      idatChunk.length +
+      iendChunk.length,
     );
     let offset = 0;
     for (const part of [PNG_SIGNATURE, ihdrChunk, idatChunk, iendChunk]) {
@@ -1577,6 +1590,8 @@ async function generateDayOfReminderEmailHTML(
 
   const formattedDate = formatFullDateTime(doorsOpenTime || eventStartTime);
   const formattedDoorsOpen = doorsOpenTime ? formatPillTime(doorsOpenTime) : null;
+  const formattedClose = eventStartTime ? formatPillTime(eventStartTime) : null;
+  const doorsClause = buildDoorsClause(formattedDoorsOpen, formattedClose);
 
   const qrImageSrc = options?.qrCid ? `cid:${options.qrCid}` : "";
   const ticketValidTime = eventStartTime
@@ -1659,7 +1674,7 @@ async function generateDayOfReminderEmailHTML(
 
   // Excitement message
   contentSections.push(buildParagraph(
-    `See you tonight! Doors open at ${formattedDoorsOpen || "7:30 PM"} &mdash; don't be late, no late entry allowed.`,
+    `See you tonight!${doorsClause ? ` ${doorsClause} &mdash; don't be late, no late entry allowed.` : ""}`,
   ));
 
   // Cancel ticket message + button (VIP/External only — regular tickets use the top banner)
@@ -1735,6 +1750,8 @@ function generateDayOfReminderEmailText(
 
   const formattedDate = formatFullDateTime(doorsOpenTime || eventStartTime);
   const formattedDoorsOpen = doorsOpenTime ? formatPillTime(doorsOpenTime) : null;
+  const formattedClose = eventStartTime ? formatPillTime(eventStartTime) : null;
+  const doorsClause = buildDoorsClause(formattedDoorsOpen, formattedClose);
 
   const baseUrl = getBaseUrl();
   const eventUrl = eventRoute ? `${baseUrl}/events/${eventRoute}` : null;
@@ -1749,7 +1766,7 @@ function generateDayOfReminderEmailText(
   return `
 ${!isVIP && !isExternal && cancelLine ? `${cancelLine}\n\n---\n` : ""}${eventName || "Event"} is TODAY${formattedDoorsOpen ? ` - Doors at ${formattedDoorsOpen}` : ""}!
 
-${isVIP ? "Use the VIP entrance when you arrive — we've saved you a front-row seat.\n\n" : ""}See you tonight! Doors open at ${formattedDoorsOpen || "7:30 PM"} — don't be late, no late entry allowed.
+${isVIP ? "Use the VIP entrance when you arrive — we've saved you a front-row seat.\n\n" : ""}See you tonight!${doorsClause ? ` ${doorsClause} — don't be late, no late entry allowed.` : ""}
 
 ${buildImportantNoticeText()}
 ${isVIP || isExternal ? `\n${cancelLine}` : ""}
@@ -1787,7 +1804,7 @@ export async function sendDayOfReminderEmail(
     : null;
 
   const subject = data.eventName
-    ? `[${formattedDoorsOpen ? `${formattedDoorsOpen} ` : ""}TODAY!] Come see ${data.eventName}${data.eventVenue ? ` @ ${data.eventVenue}` : ""}`
+    ? `[${formattedDoorsOpen ? `DOORS @ ${formattedDoorsOpen} ` : ""}TODAY!] Come see ${data.eventName}${data.eventVenue ? ` @ ${data.eventVenue}` : ""}`
     : "Event Reminder - Today!";
   const cancelTicketUrl = await buildCancellationLink({
     baseUrl: getBaseUrl(),
@@ -2087,7 +2104,9 @@ async function generateEarlyReminderEmailHTML(
   const isExternal = ticketType?.toUpperCase() === "EXTERNAL";
 
   const formattedDate = formatFullDateTime(doorsOpenTime || eventStartTime);
-  const formattedDoorsOpen = doorsOpenTime ? formatPillTime(doorsOpenTime) : "7:30 PM";
+  const formattedDoorsOpen = doorsOpenTime ? formatPillTime(doorsOpenTime) : null;
+  const formattedClose = eventStartTime ? formatPillTime(eventStartTime) : null;
+  const doorsClause = buildDoorsClause(formattedDoorsOpen, formattedClose);
 
   const dayLabel = formattedDate.includes("Friday") ? "Friday" : formattedDate.split(",")[0];
   const _tomorrowDate = new Date();
@@ -2183,7 +2202,7 @@ async function generateEarlyReminderEmailHTML(
 
   // Excitement message
   contentSections.push(buildParagraph(
-    `${promo ? "Not interested? No worries, we're" : "We're"} excited to see you ${isTomorrow ? "tomorrow" : `this ${dayLabel}`}! Doors open at ${formattedDoorsOpen} &mdash; no late entry, so plan to arrive early.`,
+    `${promo ? "Not interested? No worries, we're" : "We're"} excited to see you ${isTomorrow ? "tomorrow" : `this ${dayLabel}`}!${doorsClause ? ` ${doorsClause} &mdash; no late entry, so plan to arrive early.` : ""}`,
   ));
 
   // Cancel ticket message + button (VIP/External only — regular tickets use the top banner)
@@ -2259,7 +2278,9 @@ function generateEarlyReminderEmailText(
   } = data;
 
   const formattedDate = formatFullDateTime(doorsOpenTime || eventStartTime);
-  const formattedDoorsOpen = doorsOpenTime ? formatPillTime(doorsOpenTime) : "7:30 PM";
+  const formattedDoorsOpen = doorsOpenTime ? formatPillTime(doorsOpenTime) : null;
+  const formattedClose = eventStartTime ? formatPillTime(eventStartTime) : null;
+  const doorsClause = buildDoorsClause(formattedDoorsOpen, formattedClose);
 
   const dayLabel = formattedDate.includes("Friday") ? "Friday" : formattedDate.split(",")[0];
   const _tomorrowDate = new Date();
@@ -2294,7 +2315,7 @@ ${promo.time ? `\u{1F554} ${promo.time}` : ""}
   return `
 ${!isVIP && !isExternal && cancelLine ? `${cancelLine}\n\n---\n` : ""}${eventName} is ${dayPhrase}!${promo?.title ? ` ${promo.title}` : ""}
 ${promoSection}
-${promo ? "Not interested? No worries, we're" : "We're"} excited to see you ${isTomorrow ? "tomorrow" : `this ${dayLabel}`}! Doors open at ${formattedDoorsOpen} — no late entry, so plan to arrive early.
+${promo ? "Not interested? No worries, we're" : "We're"} excited to see you ${isTomorrow ? "tomorrow" : `this ${dayLabel}`}!${doorsClause ? ` ${doorsClause} — no late entry, so plan to arrive early.` : ""}
 
 ${buildImportantNoticeText()}
 ${isVIP || isExternal ? `\n${cancelLine}` : ""}
@@ -2329,7 +2350,7 @@ export async function sendEarlyReminderEmail(
       hour12: true,
       timeZone: PACIFIC_TIMEZONE,
     }).format(new Date(data.doorsOpenTime))
-    : "7:30 PM";
+    : null;
 
   // Format day of week from event start time
   const dayOfWeek = data.eventStartTime
@@ -2347,7 +2368,7 @@ export async function sendEarlyReminderEmail(
     : false;
 
   const subject = data.eventName
-    ? `Can you still make it ${isEventTomorrow ? "Tomorrow" : `This ${dayOfWeek}`} @ ${formattedDoorsOpen}? ${data.eventName}${data.eventVenue ? ` @ ${data.eventVenue}` : ""}`
+    ? `Can you still make it ${isEventTomorrow ? "Tomorrow" : `This ${dayOfWeek}`}${formattedDoorsOpen ? ` @ ${formattedDoorsOpen}` : ""}? ${data.eventName}${data.eventVenue ? ` @ ${data.eventVenue}` : ""}`
     : "Event Reminder";
   const cancelTicketUrl = await buildCancellationLink({
     baseUrl: getBaseUrl(),
@@ -2554,11 +2575,11 @@ async function generateTicketsAvailableNowEmailHTML(
       </td>
     </tr>
     ${buildFooter(eventUnsubFooter({
-      email: data.email,
-      eventId: data.eventId,
-      eventName: data.eventName,
-      eventStartTime: data.eventStartTime,
-    }))}`;
+    email: data.email,
+    eventId: data.eventId,
+    eventName: data.eventName,
+    eventStartTime: data.eventStartTime,
+  }))}`;
 
   return buildEmailShell(
     "Tickets are LIVE!",
@@ -2711,11 +2732,11 @@ async function generateTicketsAvailableInEmailHTML(
       </td>
     </tr>
     ${buildFooter(eventUnsubFooter({
-      email: data.email,
-      eventId: data.eventId,
-      eventName: data.eventName,
-      eventStartTime: data.eventStartTime,
-    }))}`;
+    email: data.email,
+    eventId: data.eventId,
+    eventName: data.eventName,
+    eventStartTime: data.eventStartTime,
+  }))}`;
 
   return buildEmailShell(
     "Tickets dropping soon!",
@@ -2847,11 +2868,11 @@ async function generateClaimTicketEmailHTML(
       </td>
     </tr>
     ${buildFooter(eventUnsubFooter({
-      email: data.email,
-      eventId: data.eventId,
-      eventName: data.eventName,
-      eventStartTime: data.eventStartTime,
-    }))}`;
+    email: data.email,
+    eventId: data.eventId,
+    eventName: data.eventName,
+    eventStartTime: data.eventStartTime,
+  }))}`;
 
   return buildEmailShell(
     "Tickets are LIVE!",
@@ -3242,11 +3263,11 @@ async function generateEventAnnouncedEmailHTML(
       </td>
     </tr>
     ${buildFooter(eventUnsubFooter({
-      email: data.email,
-      eventId: data.eventId,
-      eventName: data.eventName,
-      eventStartTime: data.eventStartTime,
-    }))}`;
+    email: data.email,
+    eventId: data.eventId,
+    eventName: data.eventName,
+    eventStartTime: data.eventStartTime,
+  }))}`;
 
   return buildEmailShell(
     "Speaker Announcement",
