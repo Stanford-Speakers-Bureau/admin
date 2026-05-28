@@ -2368,7 +2368,7 @@ export async function sendEarlyReminderEmail(
     : false;
 
   const subject = data.eventName
-    ? `Can you still make it ${isEventTomorrow ? "Tomorrow" : `This ${dayOfWeek}`}${formattedDoorsOpen ? ` @ ${formattedDoorsOpen}` : ""}? ${data.eventName}${data.eventVenue ? ` @ ${data.eventVenue}` : ""}`
+    ? `Can you still make it ${isEventTomorrow ? "tomorrow" : `this ${dayOfWeek}`}${formattedDoorsOpen ? ` @ ${formattedDoorsOpen}` : ""}? ${data.eventName}${data.eventVenue ? ` @ ${data.eventVenue}` : ""}`
     : "Event Reminder";
   const cancelTicketUrl = await buildCancellationLink({
     baseUrl: getBaseUrl(),
