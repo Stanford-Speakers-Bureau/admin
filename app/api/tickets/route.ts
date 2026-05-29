@@ -150,6 +150,7 @@ function serializeTicket(ticket: {
   id: string;
   email: string;
   name: string | null;
+  title: string | null;
   type: string;
   createdAt: Date;
   scanned: boolean;
@@ -172,6 +173,7 @@ function serializeTicket(ticket: {
     id: ticket.id,
     email: ticket.email,
     name: ticket.name,
+    title: ticket.title,
     type: ticket.type,
     created_at: ticket.createdAt.toISOString(),
     scanned: ticket.scanned,
@@ -213,6 +215,7 @@ async function serializeTicketWithFeeWaiver(ticket: {
   id: string;
   email: string;
   name: string | null;
+  title: string | null;
   type: string;
   createdAt: Date;
   scanned: boolean;
@@ -284,7 +287,7 @@ type TicketCancellationRpcResult = {
 
 /** Standard ticket columns */
 const TICKET_COLUMNS = {
-  id: true, email: true, name: true, type: true, createdAt: true,
+  id: true, email: true, name: true, title: true, type: true, createdAt: true,
   scanned: true, scanTime: true, referral: true, eventId: true,
 } as const;
 
@@ -826,7 +829,7 @@ async function syncEventScannedCounts() {
 export async function PATCH(req: Request) {
   try {
     const body = await req.json();
-    const { id, action, type, scanned, promo, name, ticketIds, auditBatchId } = body;
+    const { id, action, type, scanned, promo, name, title, ticketIds, auditBatchId } = body;
 
     // Resolve the event this request touches so we can scope the permission
     // check: batch reminders carry eventId on the query string, single-ticket
@@ -904,6 +907,38 @@ export async function PATCH(req: Request) {
         eventName: ticket!.event?.name ?? null,
         targetEmail: ticket!.email,
         metadata: { ticketId: id, newName },
+      });
+
+      return NextResponse.json({
+        success: true,
+        ticket: await serializeTicketWithFeeWaiver(ticket!),
+      });
+    } else if (action === "updateTitle") {
+      // Update the ticket's internal admin-only title. Unlike updateName this
+      // is never reflected on the wallet pass, so no pushWalletUpdate here.
+      const trimmed = typeof title === "string" ? title.trim() : "";
+      if (trimmed.length > 200) {
+        return NextResponse.json(
+          { error: "Title must be 200 characters or less" },
+          { status: 400 },
+        );
+      }
+      const newTitle = trimmed || null;
+
+      await db.update(tickets).set({ title: newTitle }).where(eq(tickets.id, id));
+      const ticket = await db.query.tickets.findFirst({
+        where: eq(tickets.id, id),
+        columns: TICKET_COLUMNS,
+        with: TICKET_WITH_EVENT,
+      });
+
+      await logAuditEvent({
+        action: "ticket.update_title",
+        actor: auth.email!,
+        eventId: ticket!.eventId,
+        eventName: ticket!.event?.name ?? null,
+        targetEmail: ticket!.email,
+        metadata: { ticketId: id, newTitle },
       });
 
       return NextResponse.json({
@@ -1633,7 +1668,7 @@ export async function PATCH(req: Request) {
       return NextResponse.json(
         {
           error:
-            "Invalid action. Use 'updateName', 'unscan', 'updateType', 'updateScanned', 'resendEmail', 'sendDayOfReminders', 'sendDayOfReminder', 'sendEarlyReminders', 'sendEarlyReminder'.",
+            "Invalid action. Use 'updateName', 'updateTitle', 'unscan', 'updateType', 'updateScanned', 'resendEmail', 'sendDayOfReminders', 'sendDayOfReminder', 'sendEarlyReminders', 'sendEarlyReminder'.",
         },
         { status: 400 },
       );
@@ -1651,6 +1686,8 @@ export async function POST(req: Request) {
   try {
     const body = await req.json();
     const { email, eventId, type, name } = body;
+    const titleInput = typeof body.title === "string" ? body.title.trim() : "";
+    const newTitle = titleInput || null;
 
     if (!email || typeof email !== "string") {
       return NextResponse.json({ error: "Email is required" }, { status: 400 });
@@ -1729,7 +1766,7 @@ export async function POST(req: Request) {
 
       // Update the existing ticket's type (and name if provided)
       await db.update(tickets)
-        .set({ type: newType, ...(name ? { name } : {}) })
+        .set({ type: newType, ...(name ? { name } : {}), ...(titleInput ? { title: newTitle } : {}) })
         .where(eq(tickets.id, existingTicket.id));
       const updatedTicket = await db.query.tickets.findFirst({
         where: eq(tickets.id, existingTicket.id),
@@ -1851,6 +1888,7 @@ export async function POST(req: Request) {
       eventId: eventId,
       email: email,
       name: name || null,
+      title: newTitle,
       type: type || "VIP",
     }).returning();
     const ticket = await db.query.tickets.findFirst({

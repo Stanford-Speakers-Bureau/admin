@@ -19,11 +19,14 @@ import { BulkSendProgressState, runChunkedSend } from "@/app/lib/bulkSend";
 import { formatDate } from "@/app/lib/formatting";
 import { isValidEmail } from "@/app/lib/validation";
 import {
+  ArrowDownTrayIcon,
   ArrowPathIcon,
   BellIcon,
   CheckIcon,
   ClockIcon,
   EnvelopeIcon,
+  EyeIcon,
+  EyeSlashIcon,
   MagnifyingGlassIcon,
   PencilIcon,
   PlusIcon,
@@ -53,6 +56,7 @@ export type Ticket = {
   id: string;
   email: string;
   name: string | null;
+  title: string | null;
   type: string | null;
   created_at: string;
   scanned: boolean;
@@ -68,7 +72,7 @@ export type Ticket = {
   } | null;
 };
 
-type TicketRow = { name: string; email: string };
+type TicketRow = { name: string; email: string; title: string };
 type EmailLookupResult = { type: string; name: string | null } | null;
 
 type ReminderRecipient = Pick<Ticket, "id" | "email">;
@@ -125,7 +129,9 @@ function formatAffiliationLabel(affiliation: TicketAffiliationKey): string {
 // Parses the standard "Name" <email> format (e.g. from email clients), with or
 // without surrounding quotes around the name. Returns null if the input doesn't
 // match that shape so callers can fall back to treating it as plain text.
-function parseNameEmailPair(value: string): TicketRow | null {
+function parseNameEmailPair(
+  value: string,
+): Pick<TicketRow, "name" | "email"> | null {
   const match = value.match(/^\s*(.*?)\s*<\s*([^<>\s]+@[^<>\s]+)\s*>\s*$/);
   if (!match) {
     return null;
@@ -133,6 +139,14 @@ function parseNameEmailPair(value: string): TicketRow | null {
   const name = match[1].trim().replace(/^["']|["']$/g, "").trim();
   const email = match[2].trim();
   return { name, email };
+}
+
+function escapeCsvValue(value: string | number): string {
+  const stringValue = String(value);
+  if (/[",\n]/.test(stringValue)) {
+    return `"${stringValue.replace(/"/g, '""')}"`;
+  }
+  return stringValue;
 }
 
 function parseSpreadsheetTicketRows(clipboardText: string): TicketRow[] {
@@ -159,6 +173,7 @@ function parseSpreadsheetTicketRows(clipboardText: string): TicketRow[] {
     parsedRows.push({
       name: columns[0] || "",
       email: columns[1] || "",
+      title: "",
     });
   }
 
@@ -278,7 +293,7 @@ export default function TicketManagementClient({
   const [success, setSuccess] = useState<string | null>(null);
   const [showAddForm, setShowAddForm] = useState(false);
   const [newTicketRows, setNewTicketRows] = useState<TicketRow[]>([
-    { name: "", email: "" },
+    { name: "", email: "", title: "" },
   ]);
   const [newTicketEventId, setNewTicketEventId] = useState(selectedEventId);
   const [newTicketType, setNewTicketType] = useState("VIP");
@@ -316,6 +331,18 @@ export default function TicketManagementClient({
   );
   const [editingNameId, setEditingNameId] = useState<string | null>(null);
   const [editingNameValue, setEditingNameValue] = useState("");
+  const [editingTitleId, setEditingTitleId] = useState<string | null>(null);
+  const [editingTitleValue, setEditingTitleValue] = useState("");
+  // Titles are hidden by default (only a few guests have one). The toggle
+  // reveals every title; revealedTitleIds reveals individual rows on demand.
+  const [showTitles, setShowTitles] = useState(false);
+  const [revealedTitleIds, setRevealedTitleIds] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportScope, setExportScope] = useState<"filtered" | "all">(
+    "filtered",
+  );
   const [deleteModalTicket, setDeleteModalTicket] = useState<Ticket | null>(
     null,
   );
@@ -333,7 +360,7 @@ export default function TicketManagementClient({
   const RECIPIENT_PAGE_SIZE = 500;
 
   function resetNewTicketForm() {
-    setNewTicketRows([{ name: "", email: "" }]);
+    setNewTicketRows([{ name: "", email: "", title: "" }]);
     setNewTicketEventId(selectedEventId);
     setNewTicketType("VIP");
     setEmailLookups({});
@@ -411,7 +438,7 @@ export default function TicketManagementClient({
       const requiredLength = index + parsedRows.length;
 
       while (next.length < requiredLength) {
-        next.push({ name: "", email: "" });
+        next.push({ name: "", email: "", title: "" });
       }
 
       parsedRows.forEach((row, offset) => {
@@ -878,6 +905,125 @@ export default function TicketManagementClient({
     }
   }
 
+  async function handleUpdateTitle(id: string, newTitle: string) {
+    const trimmed = newTitle.trim();
+    const ticket = tickets.find((t) => t.id === id);
+    // Don't update if value hasn't changed
+    if ((ticket?.title || "") === trimmed) {
+      setEditingTitleId(null);
+      return;
+    }
+
+    setUpdatingTicketId(id);
+    try {
+      const response = await fetch("/api/tickets", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, action: "updateTitle", title: trimmed }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to update title");
+      }
+
+      const data = await response.json();
+      setTickets((prev) =>
+        prev.map((t) => (t.id === id ? (data.ticket as Ticket) : t)),
+      );
+      setSuccess("Title updated successfully!");
+    } catch (err) {
+      console.error("Error updating title:", err);
+      setError(err instanceof Error ? err.message : "Failed to update title");
+    } finally {
+      setUpdatingTicketId(null);
+      setEditingTitleId(null);
+    }
+  }
+
+  async function handleExport(scope: "filtered" | "all") {
+    if (!selectedEventId) return;
+    setIsExporting(true);
+    setError(null);
+    try {
+      // Pull every matching row in one request. "filtered" mirrors the active
+      // filters; "all" exports the whole event regardless of filters. Both are
+      // scoped to the selected event — the page itself is event-scoped.
+      const params = new URLSearchParams({
+        eventId: selectedEventId,
+        limit: "100000",
+        offset: "0",
+      });
+      if (scope === "filtered") {
+        if (search.trim()) params.append("search", search.trim());
+        if (ticketTypeFilter) params.append("type", ticketTypeFilter);
+        if (scannedFilter) params.append("scanned", scannedFilter);
+        if (feeWaiverFilter) params.append("feeWaiver", feeWaiverFilter);
+        if (affiliationFilter) params.append("affiliation", affiliationFilter);
+      }
+
+      const response = await fetch(`/api/tickets?${params}`);
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || "Failed to export tickets");
+      }
+      const data = await response.json();
+      const exportTickets = (data.tickets as Ticket[]) || [];
+
+      const rows = [
+        [
+          "Name",
+          "Title",
+          "Email",
+          "Type",
+          "Status",
+          "Scanned at",
+          "Created",
+          "Referral",
+          "Fee waiver",
+          "Event",
+        ],
+        ...exportTickets.map((t) => [
+          t.name || "",
+          t.title || "",
+          t.email,
+          t.type || "",
+          t.scanned ? "Scanned" : "Not scanned",
+          t.scan_time ? formatDate(t.scan_time) : "",
+          formatDate(t.created_at),
+          t.referral || "",
+          t.has_fee_waiver ? "Yes" : "No",
+          t.events?.name || "",
+        ]),
+      ];
+
+      const csv = rows
+        .map((row) => row.map((value) => escapeCsvValue(value)).join(","))
+        .join("\n");
+
+      const blob = new Blob([csv], { type: "text/csv" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      const eventName =
+        events.find((e) => e.id === selectedEventId)?.name || "event";
+      const eventSlug =
+        eventName
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, "-")
+          .replace(/^-+|-+$/g, "") || "event";
+      link.href = url;
+      link.download = `tickets-${eventSlug}-${scope}.csv`;
+      link.click();
+      URL.revokeObjectURL(url);
+      setSuccess(`Exported ${exportTickets.length} ticket(s) to CSV`);
+    } catch (err) {
+      console.error("Error exporting tickets:", err);
+      setError(err instanceof Error ? err.message : "Failed to export tickets");
+    } finally {
+      setIsExporting(false);
+    }
+  }
+
   async function handleResendEmail(id: string) {
     const ticket = tickets.find((item) => item.id === id);
     const shouldResend = await confirmAction({
@@ -1165,6 +1311,7 @@ export default function TicketManagementClient({
     for (const row of rowsToSubmit) {
       const email = row.email.trim().toLowerCase();
       const name = row.name.trim();
+      const title = row.title.trim();
       try {
         const response = await fetch("/api/tickets", {
           method: "POST",
@@ -1172,6 +1319,7 @@ export default function TicketManagementClient({
           body: JSON.stringify({
             email,
             name,
+            title,
             eventId: newTicketEventId,
             type: newTicketType,
           }),
@@ -1301,6 +1449,95 @@ export default function TicketManagementClient({
         title="Click to edit name"
       >
         <span className="truncate">{ticket.name || "—"}</span>
+        <PencilIcon
+          aria-hidden="true"
+          className="size-4 shrink-0 text-zinc-600 opacity-0 transition-opacity group-hover:opacity-100"
+        />
+      </button>
+    );
+  }
+
+  function renderTitleCell(ticket: Ticket) {
+    if (editingTitleId === ticket.id) {
+      return (
+        <input
+          type="text"
+          name="ticket-title"
+          aria-label="Ticket holder title"
+          value={editingTitleValue}
+          onChange={(e) => setEditingTitleValue(e.target.value)}
+          onBlur={() => handleUpdateTitle(ticket.id, editingTitleValue)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              handleUpdateTitle(ticket.id, editingTitleValue);
+            } else if (e.key === "Escape") {
+              setEditingTitleId(null);
+            }
+          }}
+          autoFocus
+          disabled={updatingTicketId === ticket.id}
+          className="w-full rounded-lg bg-white/5 px-2 py-1 text-base text-white ring-1 ring-inset ring-white/10 placeholder:text-zinc-500 focus:outline-2 focus:-outline-offset-1 focus:outline-rose-500 disabled:opacity-50 sm:text-sm"
+          placeholder="Enter title"
+        />
+      );
+    }
+
+    const revealed = showTitles || revealedTitleIds.has(ticket.id);
+
+    // Hidden state: rows that have a title get a click-to-reveal control;
+    // rows without one stay blank so the column reads as mostly empty.
+    if (!revealed) {
+      if (!ticket.title) {
+        // No title yet: a quiet click-to-add affordance (a "+" surfaces on
+        // hover) that opens the editor directly, no reveal step needed.
+        return (
+          <button
+            type="button"
+            onClick={() => {
+              setEditingTitleId(ticket.id);
+              setEditingTitleValue("");
+            }}
+            className="group inline-flex items-center gap-1 text-sm text-zinc-600 transition-colors hover:text-zinc-300"
+            title="Add title"
+          >
+            <span>—</span>
+            <PlusIcon
+              aria-hidden="true"
+              className="size-3.5 shrink-0 opacity-0 transition-opacity group-hover:opacity-100"
+            />
+          </button>
+        );
+      }
+      return (
+        <button
+          type="button"
+          onClick={() =>
+            setRevealedTitleIds((prev) => {
+              const next = new Set(prev);
+              next.add(ticket.id);
+              return next;
+            })
+          }
+          className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium text-zinc-500 ring-1 ring-inset ring-white/10 transition-colors hover:text-zinc-200 hover:ring-white/20"
+          title="Show title"
+        >
+          <EyeIcon aria-hidden="true" className="size-3.5 shrink-0" />
+          Title
+        </button>
+      );
+    }
+
+    return (
+      <button
+        type="button"
+        onClick={() => {
+          setEditingTitleId(ticket.id);
+          setEditingTitleValue(ticket.title || "");
+        }}
+        className="group inline-flex max-w-full items-center gap-1.5 text-left text-sm text-zinc-300 transition-colors hover:text-white"
+        title="Click to edit title"
+      >
+        <span className="truncate">{ticket.title || "—"}</span>
         <PencilIcon
           aria-hidden="true"
           className="size-4 shrink-0 text-zinc-600 opacity-0 transition-opacity group-hover:opacity-100"
@@ -1498,6 +1735,41 @@ export default function TicketManagementClient({
               <span className="hidden sm:inline">Send</span>
             </button>
           </div>
+          <div className="flex items-stretch overflow-hidden rounded-lg bg-white/5 ring-1 ring-inset ring-white/10">
+            <select
+              value={exportScope}
+              onChange={(e) =>
+                setExportScope(e.target.value as "filtered" | "all")
+              }
+              disabled={!selectedEventId || isExporting}
+              className="appearance-none border-0 bg-transparent bg-[length:1rem_1rem] bg-[right_0.75rem_center] bg-no-repeat py-2 pr-8 pl-3.5 text-sm font-medium text-zinc-200 focus:ring-0 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+              style={{
+                backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%239ca3af' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e")`,
+              }}
+              aria-label="Export scope"
+            >
+              <option value="filtered">Current filter</option>
+              <option value="all">All tickets</option>
+            </select>
+            <button
+              type="button"
+              onClick={() => handleExport(exportScope)}
+              disabled={!selectedEventId || isExporting}
+              className="flex items-center gap-2 border-l border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-zinc-200 transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+              title={
+                exportScope === "filtered"
+                  ? "Export tickets matching the current filters to CSV"
+                  : "Export all tickets for this event to CSV"
+              }
+            >
+              {isExporting ? (
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+              ) : (
+                <ArrowDownTrayIcon aria-hidden="true" className="size-4 shrink-0" />
+              )}
+              <span className="hidden sm:inline">Export</span>
+            </button>
+          </div>
           <Button
             onClick={() => fetchTickets()}
             disabled={isLoading}
@@ -1682,7 +1954,7 @@ export default function TicketManagementClient({
                   onClick={() =>
                     setNewTicketRows((prev) => [
                       ...prev,
-                      { name: "", email: "" },
+                      { name: "", email: "", title: "" },
                     ])
                   }
                   className="flex items-center gap-1 rounded-md px-2.5 py-1.5 text-sm font-medium text-zinc-400 hover:bg-white/5 hover:text-white"
@@ -1725,7 +1997,23 @@ export default function TicketManagementClient({
                         }
                       }}
                       placeholder="Attendee name"
-                      className="sm:w-2/5 sm:text-sm"
+                      className="sm:w-1/3 sm:text-sm"
+                    />
+                    <Input
+                      type="text"
+                      name={`attendee-title-${index}`}
+                      aria-label={`Attendee ${index + 1} title (optional)`}
+                      value={row.title}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        setNewTicketRows((prev) => {
+                          const next = [...prev];
+                          next[index] = { ...next[index], title: value };
+                          return next;
+                        });
+                      }}
+                      placeholder="Title (optional)"
+                      className="sm:w-1/4 sm:text-sm"
                     />
                     <div className="relative w-full sm:flex-1">
                       <Input
@@ -1986,6 +2274,34 @@ export default function TicketManagementClient({
                 <THead>
                   <TR className="border-b border-white/10">
                     <TH className="px-4 py-3.5">Name</TH>
+                    <TH className="px-4 py-3.5">
+                      <span className="inline-flex items-center gap-1.5">
+                        Title
+                        <button
+                          type="button"
+                          onClick={() => setShowTitles((prev) => !prev)}
+                          className="rounded p-0.5 text-zinc-500 transition-colors hover:text-zinc-200"
+                          title={
+                            showTitles ? "Hide all titles" : "Show all titles"
+                          }
+                          aria-label={
+                            showTitles ? "Hide all titles" : "Show all titles"
+                          }
+                        >
+                          {showTitles ? (
+                            <EyeSlashIcon
+                              aria-hidden="true"
+                              className="size-3.5 shrink-0"
+                            />
+                          ) : (
+                            <EyeIcon
+                              aria-hidden="true"
+                              className="size-3.5 shrink-0"
+                            />
+                          )}
+                        </button>
+                      </span>
+                    </TH>
                     <TH className="px-4 py-3.5">Email</TH>
                     <TH className="px-4 py-3.5">Type</TH>
                     <TH className="hidden px-4 py-3.5 lg:table-cell">
@@ -2003,6 +2319,9 @@ export default function TicketManagementClient({
                     >
                       <TD className="max-w-[220px] px-4 py-3">
                         {renderNameCell(ticket)}
+                      </TD>
+                      <TD className="max-w-[220px] px-4 py-3">
+                        {renderTitleCell(ticket)}
                       </TD>
                       <TD className="px-4 py-3">
                         <div className="max-w-[280px] truncate text-sm text-zinc-300">
@@ -2040,6 +2359,7 @@ export default function TicketManagementClient({
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     {renderNameCell(ticket)}
+                    <div className="mt-0.5">{renderTitleCell(ticket)}</div>
                     <p className="mt-0.5 truncate text-sm text-zinc-400">
                       {ticket.email}
                     </p>

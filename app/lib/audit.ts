@@ -4,6 +4,7 @@ type AuditAction =
   | "ticket.create"
   | "ticket.delete"
   | "ticket.update_name"
+  | "ticket.update_title"
   | "ticket.update_type"
   | "ticket.cancel"
   | "ticket.uncancel"
