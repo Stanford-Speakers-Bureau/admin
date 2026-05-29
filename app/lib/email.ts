@@ -3336,6 +3336,10 @@ export type CampaignEmailData = {
     formUrl: string;
     scoreLinks: Array<{ score: number; url: string }>;
   } | null;
+  cancelCallout?: {
+    url: string;
+    position: "before" | "after";
+  } | null;
 };
 
 function escapeHtml(value: string): string {
@@ -3391,6 +3395,22 @@ function buildCampaignFeedbackPromptHTML(
   `;
 }
 
+/**
+ * Builds the campaign "please cancel" callout — the same prompt and signed
+ * cancel link as transactional emails, rendered as a div so it can sit inside
+ * the campaign content column before or after the body.
+ */
+function buildCampaignCancelCallout(
+  callout: NonNullable<CampaignEmailData["cancelCallout"]>,
+): string {
+  const margin =
+    callout.position === "before" ? "0 0 24px 0" : "24px 0 0 0";
+  return `
+    <div style="margin: ${margin}; background-color: #18181b; border: 2px solid #A80D0C; border-radius: 8px; padding: 14px 20px; text-align: center;">
+      <p style="margin: 0; color: #d4d4d8; font-size: 14px; font-weight: 600; line-height: 1.5;">Can&rsquo;t make it? <a href="${escapeHtml(callout.url)}" style="color: #A80D0C; text-decoration: underline; font-weight: 700;">Please cancel</a> so someone else can attend.</p>
+    </div>`;
+}
+
 function generateCampaignEmailText(data: CampaignEmailData): string {
   const body = data.bodyMarkdown
     .replace(/\*\*(.+?)\*\*/g, "$1")
@@ -3398,12 +3418,24 @@ function generateCampaignEmailText(data: CampaignEmailData): string {
     .replace(/<u>(.+?)<\/u>/g, "$1")
     .replace(/\[([^\]]+)\]\(([^)]+)\)/g, "$1 ($2)");
 
+  const cancelLine = data.cancelCallout
+    ? `Can't make it? Please cancel so someone else can attend.\nCancel: ${data.cancelCallout.url}`
+    : "";
+  const cancelBefore =
+    cancelLine && data.cancelCallout?.position === "before"
+      ? `${cancelLine}\n\n`
+      : "";
+  const cancelAfter =
+    cancelLine && data.cancelCallout?.position === "after"
+      ? `\n\n${cancelLine}`
+      : "";
+
   const feedbackSection = data.feedbackPrompt
     ? `\n\nHow likely are you to recommend Stanford Speakers Bureau events to a friend?\nShare feedback here: ${data.feedbackPrompt.formUrl}`
     : "";
 
   return `
-${body}
+${cancelBefore}${body}${cancelAfter}
 ${feedbackSection}
 
 Stanford Speakers Bureau
@@ -3414,12 +3446,20 @@ For questions, please email ${FROM_EMAIL}
 function generateCampaignEmailHTML(data: CampaignEmailData): string {
   const contentSections: string[] = [];
 
+  if (data.cancelCallout && data.cancelCallout.position === "before") {
+    contentSections.push(buildCampaignCancelCallout(data.cancelCallout));
+  }
+
   contentSections.push(`
     <div style="color: #d4d4d8; font-size: 16px; line-height: 1.7; margin-bottom: 24px;">
       ${gmailBlendStart}
         <div style="color: #f4f4f5; font-size: 16px; line-height: 1.7;">${markdownToEmailHTML(data.bodyMarkdown)}</div>
       ${gmailBlendEnd}
     </div>`);
+
+  if (data.cancelCallout && data.cancelCallout.position === "after") {
+    contentSections.push(buildCampaignCancelCallout(data.cancelCallout));
+  }
 
   if (data.feedbackPrompt) {
     contentSections.push(buildCampaignFeedbackPromptHTML(data.feedbackPrompt));

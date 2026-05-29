@@ -59,6 +59,8 @@ export async function GET(_req: Request, { params }: Params) {
       includeHeroCard: campaign.includeHeroCard,
       feedbackEventId: campaign.feedbackEventId,
       includeFeedbackPrompt: campaign.includeFeedbackPrompt,
+      cancelCalloutEventId: campaign.cancelCalloutEventId,
+      includeCancelCallout: campaign.includeCancelCallout,
     });
     if (!auth.authorized) {
       return NextResponse.json({ error: auth.error }, { status: 401 });
@@ -73,6 +75,16 @@ export async function GET(_req: Request, { params }: Params) {
             route: true,
             startTimeDate: true,
             endTimeDate: true,
+          },
+        })
+      : null;
+
+    const cancelCalloutEvent = campaign?.cancelCalloutEventId
+      ? await db.query.events.findFirst({
+          where: eq(events.id, campaign.cancelCalloutEventId),
+          columns: {
+            id: true,
+            name: true,
           },
         })
       : null;
@@ -110,6 +122,10 @@ export async function GET(_req: Request, { params }: Params) {
         eventDoorsOpen: campaign.event?.doorsOpen?.toISOString() ?? null,
         includeHeroCard: campaign.includeHeroCard,
         includeFeedbackPrompt: campaign.includeFeedbackPrompt,
+        includeCancelCallout: campaign.includeCancelCallout,
+        cancelCalloutEventId: campaign.cancelCalloutEventId,
+        cancelCalloutPosition: campaign.cancelCalloutPosition,
+        cancelCalloutEventName: cancelCalloutEvent?.name ?? null,
         footerType: campaign.footerType,
         feedbackEventName: feedbackEvent?.name ?? null,
         feedbackEventRoute: feedbackEvent?.route ?? null,
@@ -151,6 +167,8 @@ export async function PATCH(req: Request, { params }: Params) {
         includeHeroCard: true,
         feedbackEventId: true,
         includeFeedbackPrompt: true,
+        cancelCalloutEventId: true,
+        includeCancelCallout: true,
       },
     });
 
@@ -164,6 +182,8 @@ export async function PATCH(req: Request, { params }: Params) {
       includeHeroCard: campaign.includeHeroCard,
       feedbackEventId: campaign.feedbackEventId,
       includeFeedbackPrompt: campaign.includeFeedbackPrompt,
+      cancelCalloutEventId: campaign.cancelCalloutEventId,
+      includeCancelCallout: campaign.includeCancelCallout,
     });
     if (!existingAuth.authorized) {
       return NextResponse.json({ error: existingAuth.error }, { status: 401 });
@@ -177,6 +197,9 @@ export async function PATCH(req: Request, { params }: Params) {
       includeHeroCard?: boolean;
       feedbackEventId?: string | null;
       includeFeedbackPrompt?: boolean;
+      cancelCalloutEventId?: string | null;
+      includeCancelCallout?: boolean;
+      cancelCalloutPosition?: string;
       footerType?: string;
     };
     try {
@@ -255,6 +278,35 @@ export async function PATCH(req: Request, { params }: Params) {
         { status: 400 },
       );
     }
+    if (
+      body.includeCancelCallout !== undefined &&
+      typeof body.includeCancelCallout !== "boolean"
+    ) {
+      return NextResponse.json(
+        { error: "includeCancelCallout must be a boolean when provided" },
+        { status: 400 },
+      );
+    }
+    if (
+      body.cancelCalloutPosition !== undefined &&
+      body.cancelCalloutPosition !== "before" &&
+      body.cancelCalloutPosition !== "after"
+    ) {
+      return NextResponse.json(
+        { error: "cancelCalloutPosition must be 'before' or 'after'" },
+        { status: 400 },
+      );
+    }
+    if (
+      body.cancelCalloutEventId !== undefined &&
+      body.cancelCalloutEventId !== null &&
+      typeof body.cancelCalloutEventId !== "string"
+    ) {
+      return NextResponse.json(
+        { error: "cancelCalloutEventId must be a string or null when provided" },
+        { status: 400 },
+      );
+    }
 
     if (
       body.eventId !== undefined &&
@@ -290,6 +342,14 @@ export async function PATCH(req: Request, { params }: Params) {
       body.includeFeedbackPrompt !== undefined
         ? body.includeFeedbackPrompt
         : campaign.includeFeedbackPrompt;
+    const effectiveCancelCalloutEventId =
+      body.cancelCalloutEventId !== undefined
+        ? body.cancelCalloutEventId
+        : campaign.cancelCalloutEventId;
+    const effectiveIncludeCancelCallout =
+      body.includeCancelCallout !== undefined
+        ? body.includeCancelCallout
+        : campaign.includeCancelCallout;
 
     if (
       effectiveIncludeHeroCard &&
@@ -312,6 +372,19 @@ export async function PATCH(req: Request, { params }: Params) {
         { status: 400 },
       );
     }
+    if (
+      effectiveIncludeCancelCallout &&
+      (!effectiveCancelCalloutEventId ||
+        !isValidUUID(effectiveCancelCalloutEventId))
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "A valid cancelCalloutEventId is required when includeCancelCallout is enabled",
+        },
+        { status: 400 },
+      );
+    }
 
     const auth = await requireCampaignSendPermission({
       audiences: body.audiences ?? parseAudiences(campaign.audiences),
@@ -325,6 +398,12 @@ export async function PATCH(req: Request, { params }: Params) {
           ? effectiveFeedbackEventId
           : null,
       includeFeedbackPrompt: effectiveIncludeFeedbackPrompt,
+      cancelCalloutEventId:
+        effectiveCancelCalloutEventId &&
+        isValidUUID(effectiveCancelCalloutEventId)
+          ? effectiveCancelCalloutEventId
+          : null,
+      includeCancelCallout: effectiveIncludeCancelCallout,
     });
     if (!auth.authorized) {
       return NextResponse.json({ error: auth.error }, { status: 401 });
@@ -347,6 +426,18 @@ export async function PATCH(req: Request, { params }: Params) {
     }
     if (body.includeFeedbackPrompt !== undefined) {
       updates.includeFeedbackPrompt = body.includeFeedbackPrompt;
+    }
+    if (body.cancelCalloutEventId !== undefined) {
+      updates.cancelCalloutEventId =
+        body.cancelCalloutEventId && isValidUUID(body.cancelCalloutEventId)
+          ? body.cancelCalloutEventId
+          : null;
+    }
+    if (body.includeCancelCallout !== undefined) {
+      updates.includeCancelCallout = body.includeCancelCallout;
+    }
+    if (body.cancelCalloutPosition !== undefined) {
+      updates.cancelCalloutPosition = body.cancelCalloutPosition;
     }
     if (body.footerType !== undefined) {
       if (!isValidFooterType(body.footerType)) {
@@ -393,6 +484,8 @@ export async function DELETE(_req: Request, { params }: Params) {
         includeHeroCard: true,
         feedbackEventId: true,
         includeFeedbackPrompt: true,
+        cancelCalloutEventId: true,
+        includeCancelCallout: true,
       },
     });
 
@@ -406,6 +499,8 @@ export async function DELETE(_req: Request, { params }: Params) {
       includeHeroCard: campaign.includeHeroCard,
       feedbackEventId: campaign.feedbackEventId,
       includeFeedbackPrompt: campaign.includeFeedbackPrompt,
+      cancelCalloutEventId: campaign.cancelCalloutEventId,
+      includeCancelCallout: campaign.includeCancelCallout,
     });
     if (!auth.authorized) {
       return NextResponse.json({ error: auth.error }, { status: 401 });

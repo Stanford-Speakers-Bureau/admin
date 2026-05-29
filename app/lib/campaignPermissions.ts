@@ -17,6 +17,8 @@ type CampaignScopeInput = {
   includeHeroCard?: boolean | null;
   feedbackEventId?: string | null;
   includeFeedbackPrompt?: boolean | null;
+  cancelCalloutEventId?: string | null;
+  includeCancelCallout?: boolean | null;
 };
 
 type StoredCampaignScopeInput = Omit<CampaignScopeInput, "audiences"> & {
@@ -42,6 +44,9 @@ function campaignScope(input: CampaignScopeInput) {
   }
   if (input.includeFeedbackPrompt && input.feedbackEventId) {
     eventIds.add(input.feedbackEventId);
+  }
+  if (input.includeCancelCallout && input.cancelCalloutEventId) {
+    eventIds.add(input.cancelCalloutEventId);
   }
 
   return { eventIds, hasGlobalAudience };

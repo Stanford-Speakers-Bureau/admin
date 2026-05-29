@@ -14,6 +14,7 @@ import {
   REMINDER_EMAIL_MIN_BATCH_DURATION_MS,
 } from "@/app/lib/constants";
 import { buildEventFeedbackLink } from "@/app/lib/feedback-links";
+import { buildCancellationLink } from "@/app/lib/cancellation-links";
 import {
   isValidEmail,
   isValidUUID,
@@ -348,10 +349,60 @@ export async function POST(req: Request, { params }: Params) {
       feedbackTicketRows.map((ticket) => [normalizeEmail(ticket.email), ticket]),
     );
 
+    // Cancel callout: the same signed cancel-ticket link used in transactional
+    // emails. Only recipients who hold a ticket to the chosen event get it, so
+    // the link is built per recipient from their ticket.
+    const cancelCalloutEvent = activeCampaign.includeCancelCallout
+      && activeCampaign.cancelCalloutEventId
+      ? await db.query.events.findFirst({
+          where: eq(events.id, activeCampaign.cancelCalloutEventId),
+          columns: {
+            id: true,
+            startTimeDate: true,
+            endTimeDate: true,
+          },
+        })
+      : null;
+    const cancelCalloutPosition =
+      activeCampaign.cancelCalloutPosition === "after" ? "after" : "before";
+
+    const cancelTicketRows = cancelCalloutEvent
+      ? await db.query.tickets.findMany({
+          where: and(
+            eq(tickets.eventId, cancelCalloutEvent.id),
+            normalizedTicketEmailIn(sendableEmails),
+          ),
+          columns: {
+            id: true,
+            email: true,
+          },
+        })
+      : [];
+    const cancelTicketByEmail = new Map(
+      cancelTicketRows.map((ticket) => [normalizeEmail(ticket.email), ticket]),
+    );
+
     const results = await Promise.allSettled(
       sendableEmails.map(async (email) => {
         const feedbackTicket = feedbackEvent
           ? feedbackTicketByEmail.get(email)
+          : null;
+        const cancelTicket = cancelCalloutEvent
+          ? cancelTicketByEmail.get(email)
+          : null;
+        const cancelCallout = cancelCalloutEvent && cancelTicket
+          ? {
+              url: await buildCancellationLink({
+                baseUrl,
+                email,
+                ticketId: cancelTicket.id,
+                eventStartTime:
+                  cancelCalloutEvent.startTimeDate?.toISOString() ?? null,
+                eventEndTime:
+                  cancelCalloutEvent.endTimeDate?.toISOString() ?? null,
+              }),
+              position: cancelCalloutPosition as "before" | "after",
+            }
           : null;
         const feedbackPrompt = feedbackEvent && feedbackTicket
           ? {
@@ -405,6 +456,7 @@ export async function POST(req: Request, { params }: Params) {
           eventId: activeCampaign.eventId ?? null,
           imgVersion: activeCampaign.event?.imgVersion ?? null,
           feedbackPrompt,
+          cancelCallout,
         });
       }),
     );

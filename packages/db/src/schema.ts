@@ -529,6 +529,19 @@ export const emailCampaigns = pgTable(
     includeFeedbackPrompt: boolean("include_feedback_prompt")
       .notNull()
       .default(false),
+    cancelCalloutEventId: uuid("cancel_callout_event_id").references(
+      () => events.id,
+      {
+        onDelete: "set null",
+        onUpdate: "cascade",
+      },
+    ),
+    includeCancelCallout: boolean("include_cancel_callout")
+      .notNull()
+      .default(false),
+    cancelCalloutPosition: text("cancel_callout_position")
+      .notNull()
+      .default("before"),
     sentAt: timestamp("sent_at", { withTimezone: true }),
     sentBy: text("sent_by"),
     recipientCount: bigint("recipient_count", { mode: "number" }),

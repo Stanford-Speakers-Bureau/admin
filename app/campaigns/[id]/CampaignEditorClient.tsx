@@ -175,6 +175,11 @@ export default function CampaignEditorClient({
   const [includeHeroCard, setIncludeHeroCard] = useState(false);
   const [feedbackEventId, setFeedbackEventId] = useState<string>("");
   const [includeFeedbackPrompt, setIncludeFeedbackPrompt] = useState(false);
+  const [cancelCalloutEventId, setCancelCalloutEventId] = useState<string>("");
+  const [includeCancelCallout, setIncludeCancelCallout] = useState(false);
+  const [cancelCalloutPosition, setCancelCalloutPosition] = useState<
+    "before" | "after"
+  >("before");
   const [footerType, setFooterType] = useState<FooterType>("event_unsubscribe");
   const [footerTypeTouched, setFooterTypeTouched] = useState(false);
 
@@ -230,6 +235,9 @@ export default function CampaignEditorClient({
         includeHeroCard: boolean;
         feedbackEventId: string | null;
         includeFeedbackPrompt: boolean;
+        cancelCalloutEventId?: string | null;
+        includeCancelCallout?: boolean;
+        cancelCalloutPosition?: string | null;
         footerType?: string | null;
         status: string;
         sentAt: string | null;
@@ -250,6 +258,11 @@ export default function CampaignEditorClient({
       setIncludeHeroCard(c.includeHeroCard);
       setFeedbackEventId(c.feedbackEventId ?? "");
       setIncludeFeedbackPrompt(c.includeFeedbackPrompt);
+      setCancelCalloutEventId(c.cancelCalloutEventId ?? "");
+      setIncludeCancelCallout(c.includeCancelCallout ?? false);
+      setCancelCalloutPosition(
+        c.cancelCalloutPosition === "after" ? "after" : "before",
+      );
       const savedFooter = (c.footerType ?? "event_unsubscribe") as FooterType;
       setFooterType(savedFooter);
       // Treat any saved campaign as "touched" so we don't overwrite the
@@ -394,6 +407,21 @@ export default function CampaignEditorClient({
         return null;
       }
     }
+    if (includeCancelCallout) {
+      const referencedEventIds = new Set(
+        segments.flatMap((segment) => segment.eventIds),
+      );
+      if (!cancelCalloutEventId) {
+        setError("Select an event for the cancel callout");
+        return null;
+      }
+      if (!referencedEventIds.has(cancelCalloutEventId)) {
+        setError(
+          "Cancel callout event must be one of the selected audience events",
+        );
+        return null;
+      }
+    }
 
     setSaving(true);
     setError(null);
@@ -407,6 +435,11 @@ export default function CampaignEditorClient({
         includeHeroCard,
         feedbackEventId: includeFeedbackPrompt ? feedbackEventId || null : null,
         includeFeedbackPrompt,
+        cancelCalloutEventId: includeCancelCallout
+          ? cancelCalloutEventId || null
+          : null,
+        includeCancelCallout,
+        cancelCalloutPosition,
         footerType,
       };
 
@@ -448,6 +481,9 @@ export default function CampaignEditorClient({
     includeHeroCard,
     feedbackEventId,
     includeFeedbackPrompt,
+    cancelCalloutEventId,
+    includeCancelCallout,
+    cancelCalloutPosition,
     footerType,
     savedId,
   ]);
@@ -988,6 +1024,67 @@ export default function CampaignEditorClient({
             </Card>
           )}
 
+          {/* Cancel callout */}
+          {allReferencedEventIds.length > 0 && (
+            <Card className="space-y-3">
+              <label className="flex items-center gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={includeCancelCallout}
+                  onChange={(e) => setIncludeCancelCallout(e.target.checked)}
+                  disabled={isLocked}
+                  className="size-5 shrink-0 rounded accent-rose-500 sm:size-4"
+                />
+                <span className="text-sm font-medium text-zinc-300">
+                  Include &ldquo;please cancel&rdquo; callout
+                </span>
+              </label>
+              <p className="text-xs text-zinc-500">
+                Adds the same signed cancel-ticket link used in ticket emails.
+                It only shows for recipients who hold a ticket to the selected
+                event.
+              </p>
+              {includeCancelCallout && (
+                <>
+                  <Select
+                    aria-label="Cancel callout event"
+                    value={cancelCalloutEventId}
+                    onChange={(e) => setCancelCalloutEventId(e.target.value)}
+                    disabled={isLocked}
+                    className="disabled:opacity-50"
+                  >
+                    <option value="">Select cancel event...</option>
+                    {allReferencedEventIds.map((eid) => {
+                      const ev = events.find((e) => e.id === eid);
+                      return (
+                        <option key={eid} value={eid}>
+                          {ev?.name || "Unnamed Event"}
+                        </option>
+                      );
+                    })}
+                  </Select>
+                  <div>
+                    <Label className="mb-1.5 block">Placement</Label>
+                    <Select
+                      aria-label="Cancel callout placement"
+                      value={cancelCalloutPosition}
+                      onChange={(e) =>
+                        setCancelCalloutPosition(
+                          e.target.value === "after" ? "after" : "before",
+                        )
+                      }
+                      disabled={isLocked}
+                      className="disabled:opacity-50"
+                    >
+                      <option value="before">Before email body</option>
+                      <option value="after">After email body</option>
+                    </Select>
+                  </div>
+                </>
+              )}
+            </Card>
+          )}
+
           {/* Footer type */}
           <Card className="space-y-3">
             <div className="flex items-baseline justify-between gap-2">
@@ -1179,11 +1276,11 @@ export default function CampaignEditorClient({
                   (() => {
                     const ev = events.find((e) => e.id === heroEventId);
                     if (!ev) return null;
-                    const publicBase =
-                      process.env.NEXT_PUBLIC_BASE_URL ||
-                      "https://stanfordspeakersbureau.com";
+                    // Route through the admin image endpoint, which mints the
+                    // signed token and redirects to the web image — without it,
+                    // unreleased ("mystery") events 404 in the preview.
                     const imageUrl = ev.imgVersion
-                      ? `${publicBase}/api/images/${ev.id}?v=${ev.imgVersion}`
+                      ? `/api/images/${ev.id}?v=${ev.imgVersion}`
                       : null;
                     const pillFmt: Intl.DateTimeFormatOptions = {
                       timeZone: "America/Los_Angeles",
@@ -1335,6 +1432,42 @@ export default function CampaignEditorClient({
                     );
                   })()}
                 <div className="px-5 py-8 mx-auto" style={{ maxWidth: 600 }}>
+                  {includeCancelCallout &&
+                    cancelCalloutEventId &&
+                    cancelCalloutPosition === "before" && (
+                      <div
+                        style={{
+                          marginBottom: 24,
+                          backgroundColor: "#18181b",
+                          border: "2px solid #A80D0C",
+                          borderRadius: 8,
+                          padding: "14px 20px",
+                          textAlign: "center",
+                        }}
+                      >
+                        <p
+                          style={{
+                            margin: 0,
+                            color: "#d4d4d8",
+                            fontSize: 14,
+                            fontWeight: 600,
+                            lineHeight: 1.5,
+                          }}
+                        >
+                          Can&rsquo;t make it?{" "}
+                          <span
+                            style={{
+                              color: "#A80D0C",
+                              textDecoration: "underline",
+                              fontWeight: 700,
+                            }}
+                          >
+                            Please cancel
+                          </span>{" "}
+                          so someone else can attend.
+                        </p>
+                      </div>
+                    )}
                   {body ? (
                     <div
                       className="prose prose-sm prose-invert prose-p:text-zinc-200 prose-p:leading-relaxed prose-a:text-red-400 prose-a:underline prose-strong:text-white prose-em:text-zinc-200 max-w-none"
@@ -1364,6 +1497,42 @@ export default function CampaignEditorClient({
                       Start typing to see a preview...
                     </p>
                   )}
+                  {includeCancelCallout &&
+                    cancelCalloutEventId &&
+                    cancelCalloutPosition === "after" && (
+                      <div
+                        style={{
+                          marginTop: 24,
+                          backgroundColor: "#18181b",
+                          border: "2px solid #A80D0C",
+                          borderRadius: 8,
+                          padding: "14px 20px",
+                          textAlign: "center",
+                        }}
+                      >
+                        <p
+                          style={{
+                            margin: 0,
+                            color: "#d4d4d8",
+                            fontSize: 14,
+                            fontWeight: 600,
+                            lineHeight: 1.5,
+                          }}
+                        >
+                          Can&rsquo;t make it?{" "}
+                          <span
+                            style={{
+                              color: "#A80D0C",
+                              textDecoration: "underline",
+                              fontWeight: 700,
+                            }}
+                          >
+                            Please cancel
+                          </span>{" "}
+                          so someone else can attend.
+                        </p>
+                      </div>
+                    )}
                   {includeFeedbackPrompt &&
                     feedbackEventId &&
                     (() => {

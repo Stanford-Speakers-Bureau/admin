@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireCampaignSendPermission } from "@/app/lib/campaignPermissions";
 import { and, db, eq, emailCampaigns, events, sql, tickets } from "@ssb/db";
 import { buildEventFeedbackLink } from "@/app/lib/feedback-links";
+import { buildCancellationLink } from "@/app/lib/cancellation-links";
 import { isValidUUID, normalizeEmail } from "@/app/lib/validation";
 import { sendCampaignEmail } from "@/app/lib/email";
 import { parseAudiences } from "@/app/lib/campaignAudience";
@@ -134,6 +135,49 @@ export async function POST(_req: Request, { params }: Params) {
           )
       : null;
 
+    const cancelCalloutEvent = campaign.cancelCalloutEventId
+      ? await db.query.events.findFirst({
+          where: eq(events.id, campaign.cancelCalloutEventId),
+          columns: {
+            id: true,
+            startTimeDate: true,
+            endTimeDate: true,
+          },
+        })
+      : null;
+    const cancelTicket = cancelCalloutEvent
+      ? await db.query.tickets.findFirst({
+          where: and(
+            eq(tickets.eventId, cancelCalloutEvent.id),
+            normalizedTicketEmailEquals(auth.email!),
+          ),
+          columns: {
+            id: true,
+          },
+        })
+      : null;
+    const cancelCalloutPosition =
+      campaign.cancelCalloutPosition === "after" ? "after" : "before";
+    const cancelCallout = campaign.includeCancelCallout && cancelCalloutEvent
+      ? {
+          // Build a real signed link when the tester holds a ticket; otherwise
+          // fall back to the cancel landing page so the layout is still
+          // previewable.
+          url: cancelTicket
+            ? await buildCancellationLink({
+                baseUrl,
+                email: auth.email!,
+                ticketId: cancelTicket.id,
+                eventStartTime:
+                  cancelCalloutEvent.startTimeDate?.toISOString() ?? null,
+                eventEndTime:
+                  cancelCalloutEvent.endTimeDate?.toISOString() ?? null,
+              })
+            : new URL("/cancel", baseUrl).toString(),
+          position: cancelCalloutPosition as "before" | "after",
+        }
+      : null;
+
     await sendCampaignEmail({
       email: auth.email!,
       subject: `[TEST] ${campaign.subject}`,
@@ -154,6 +198,7 @@ export async function POST(_req: Request, { params }: Params) {
       eventId: campaign.eventId ?? null,
       imgVersion: campaign.event?.imgVersion ?? null,
       feedbackPrompt,
+      cancelCallout,
     });
 
     return NextResponse.json({ success: true });

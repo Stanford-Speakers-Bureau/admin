@@ -59,6 +59,8 @@ export async function GET() {
         includeHeroCard: c.includeHeroCard,
         feedbackEventId: c.feedbackEventId,
         includeFeedbackPrompt: c.includeFeedbackPrompt,
+        cancelCalloutEventId: c.cancelCalloutEventId,
+        includeCancelCallout: c.includeCancelCallout,
       }),
     );
 
@@ -102,6 +104,9 @@ export async function POST(req: Request) {
       includeHeroCard?: boolean;
       feedbackEventId?: string | null;
       includeFeedbackPrompt?: boolean;
+      cancelCalloutEventId?: string | null;
+      includeCancelCallout?: boolean;
+      cancelCalloutPosition?: string;
       footerType?: string;
     };
     try {
@@ -118,6 +123,9 @@ export async function POST(req: Request) {
       includeHeroCard,
       feedbackEventId,
       includeFeedbackPrompt,
+      cancelCalloutEventId,
+      includeCancelCallout,
+      cancelCalloutPosition,
       footerType,
     } = body;
 
@@ -168,6 +176,35 @@ export async function POST(req: Request) {
       );
     }
     if (
+      includeCancelCallout !== undefined
+      && typeof includeCancelCallout !== "boolean"
+    ) {
+      return NextResponse.json(
+        { error: "includeCancelCallout must be a boolean when provided" },
+        { status: 400 },
+      );
+    }
+    if (
+      cancelCalloutPosition !== undefined
+      && cancelCalloutPosition !== "before"
+      && cancelCalloutPosition !== "after"
+    ) {
+      return NextResponse.json(
+        { error: "cancelCalloutPosition must be 'before' or 'after'" },
+        { status: 400 },
+      );
+    }
+    if (
+      cancelCalloutEventId !== undefined &&
+      cancelCalloutEventId !== null &&
+      typeof cancelCalloutEventId !== "string"
+    ) {
+      return NextResponse.json(
+        { error: "cancelCalloutEventId must be a string or null when provided" },
+        { status: 400 },
+      );
+    }
+    if (
       eventId !== undefined &&
       eventId !== null &&
       typeof eventId !== "string"
@@ -205,16 +242,34 @@ export async function POST(req: Request) {
         { status: 400 },
       );
     }
+    if (
+      includeCancelCallout
+      && (!cancelCalloutEventId || !isValidUUID(cancelCalloutEventId))
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "A valid cancelCalloutEventId is required when includeCancelCallout is enabled",
+        },
+        { status: 400 },
+      );
+    }
 
     const normalizedEventId = eventId && isValidUUID(eventId) ? eventId : null;
     const normalizedFeedbackEventId =
       feedbackEventId && isValidUUID(feedbackEventId) ? feedbackEventId : null;
+    const normalizedCancelCalloutEventId =
+      cancelCalloutEventId && isValidUUID(cancelCalloutEventId)
+        ? cancelCalloutEventId
+        : null;
     const auth = await requireCampaignSendPermission({
       audiences,
       eventId: normalizedEventId,
       includeHeroCard: includeHeroCard ?? false,
       feedbackEventId: normalizedFeedbackEventId,
       includeFeedbackPrompt: includeFeedbackPrompt ?? false,
+      cancelCalloutEventId: normalizedCancelCalloutEventId,
+      includeCancelCallout: includeCancelCallout ?? false,
     });
     if (!auth.authorized) {
       return NextResponse.json({ error: auth.error }, { status: 401 });
@@ -230,6 +285,10 @@ export async function POST(req: Request) {
         includeHeroCard: includeHeroCard ?? false,
         feedbackEventId: normalizedFeedbackEventId,
         includeFeedbackPrompt: includeFeedbackPrompt ?? false,
+        cancelCalloutEventId: normalizedCancelCalloutEventId,
+        includeCancelCallout: includeCancelCallout ?? false,
+        cancelCalloutPosition:
+          cancelCalloutPosition === "after" ? "after" : "before",
         footerType: resolvedFooterType,
         createdBy: auth.email!,
       })
