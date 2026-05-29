@@ -3002,7 +3002,6 @@ type StandbyLineEmailData = {
 
 async function generateStandbyLineEmailHTML(
   data: StandbyLineEmailData,
-  options?: { qrCid?: string },
 ): Promise<string> {
   const {
     name,
@@ -3014,7 +3013,6 @@ async function generateStandbyLineEmailHTML(
     expectedCapacity = "100-200",
     ticketId,
   } = data;
-  const qrImageSrc = options?.qrCid ? `cid:${options.qrCid}` : "";
 
   const formattedDate = formatFullDateTime(data.doorsOpenTime || eventStartTime);
 
@@ -3035,7 +3033,7 @@ async function generateStandbyLineEmailHTML(
     `Great news &mdash; you'll likely get into ${eventName} via the standby line!`,
   ));
   contentSections.push(buildParagraph(
-    `The line opens at ${standbyOpenTime} outside ${eventVenue || "the venue"}. We expect to let ${expectedCapacity} people in, so arrive early! No bags allowed.`,
+    `The standby line opens at ${standbyOpenTime} outside ${eventVenue || "the venue"}, so arrive early to claim your spot. Standby admission is first come, first served &mdash; we'll start admitting from the line closer to the event start time, and we expect to let ${expectedCapacity} people in. Admission is not guaranteed, and no bags are allowed.`,
   ));
 
   // Details card (name, event, date, location, STANDBY badge, ticket ID)
@@ -3057,20 +3055,12 @@ async function generateStandbyLineEmailHTML(
     ticketTypeBadge: ticketId ? { type: "STANDBY" } : undefined,
   }));
 
-  // If there's a ticket ID row (standby badge doesn't exist in buildDetailsCard's type logic,
-  // so we add ticket ID as a separate paragraph when ticketId is present)
-  // Actually buildDetailsCard handles custom badge types - STANDBY will render as standard style which is fine.
-
-  // QR section (conditional, blue border for standby)
-  if (qrImageSrc && ticketId) {
-    contentSections.push(`
-      <div class="qr-section" style="background-color: #18181b; padding: 24px; margin-bottom: 24px; text-align: center; border-radius: 8px; border: 2px solid #175dcd;">
-        ${gmailBlendStart}
-          <p style="margin: 0 0 16px 0; color: #f4f4f5; font-size: 16px; font-weight: 600;">Your Standby Ticket</p>
-          <p style="margin: 0 0 20px 0; color: #a1a1aa; font-size: 14px;">Show this QR code at the standby line to check in.</p>
-        ${gmailBlendEnd}
-        <img src="${qrImageSrc}" alt="Standby Ticket QR Code" class="qr-code-img" style="width: 300px; height: 300px; display: block; margin: 0 auto;" />
-      </div>`);
+  // No QR code: a standby ticket's QR isn't active until staff open admission
+  // at the venue. Let the recipient know where it will appear.
+  if (ticketId) {
+    contentSections.push(buildParagraph(
+      `Your QR code isn't active yet. It will appear on your ticket page once standby admission opens at the venue &mdash; just wait in the standby area until then.`,
+    ));
   }
 
   const bodyContent = `
@@ -3111,9 +3101,9 @@ Please come in-person for your ticket!
 
 Great news — you'll likely get into ${eventName} via the standby line!
 
-The line opens at ${standbyOpenTime} outside ${eventVenue || "the venue"}. We expect to let ${expectedCapacity} people in, so arrive early! No bags allowed.
+The standby line opens at ${standbyOpenTime} outside ${eventVenue || "the venue"}, so arrive early to claim your spot. Standby admission is first come, first served — we'll start admitting from the line closer to the event start time, and we expect to let ${expectedCapacity} people in. Admission is not guaranteed, and no bags are allowed.
 
-Event Details:
+${ticketId ? "Your QR code isn't active yet. It will appear on your ticket page once standby admission opens at the venue — just wait in the standby area until then.\n\n" : ""}Event Details:
 ${name ? `- Name: ${name}\n` : ""}- Event: ${eventName}
 - Date & Time: ${formattedDate}
 ${eventVenue ? `- Location: ${eventVenue}${eventVenueLink ? ` (${eventVenueLink})` : ""}` : ""}
@@ -3138,16 +3128,12 @@ export async function sendStandbyLineEmail(
   const subject = `Please come in-person for your ticket!`;
   const textContent = generateStandbyLineEmailText(data);
 
-  // Generate QR code if a ticket was issued
-  const qrCid = data.ticketId ? `standby-qr-${data.ticketId}@stanfordspeakersbureau` : undefined;
-  const qrBuffer = data.ticketId ? await generateQRCodePngBuffer(data.ticketId) : null;
-
-  const htmlContent = await generateStandbyLineEmailHTML(data, {
-    qrCid: qrBuffer ? qrCid : undefined,
-  });
+  // Standby tickets have no scannable QR until staff open admission at the
+  // venue, so this email never embeds one — the QR appears on the ticket page
+  // once standby admission opens.
+  const htmlContent = await generateStandbyLineEmailHTML(data);
 
   const altBoundary = `alt_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-  const relBoundary = `rel_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 
   const lines: string[] = [];
   lines.push(
@@ -3159,33 +3145,9 @@ export async function sendStandbyLineEmail(
     "",
     `--${altBoundary}`,
     ...buildUtf8MimeBodyPart("text/plain", textContent),
+    `--${altBoundary}`,
+    ...buildUtf8MimeBodyPart("text/html", htmlContent),
   );
-
-  if (qrBuffer && qrCid) {
-    const qrBase64 = wrapToMimeLines(qrBuffer.toString("base64"));
-    lines.push(
-      `--${altBoundary}`,
-      `Content-Type: multipart/related; boundary="${relBoundary}"`,
-      "",
-      `--${relBoundary}`,
-      ...buildUtf8MimeBodyPart("text/html", htmlContent),
-      `--${relBoundary}`,
-      `Content-Type: image/png; name="standby-qr.png"`,
-      `Content-Transfer-Encoding: base64`,
-      `Content-Disposition: inline; filename="standby-qr.png"`,
-      `Content-ID: <${qrCid}>`,
-      "",
-      qrBase64,
-      "",
-      `--${relBoundary}--`,
-      "",
-    );
-  } else {
-    lines.push(
-      `--${altBoundary}`,
-      ...buildUtf8MimeBodyPart("text/html", htmlContent),
-    );
-  }
 
   lines.push(`--${altBoundary}--`, "");
 
