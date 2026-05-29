@@ -402,6 +402,7 @@ export async function POST(req: Request, { params }: Params) {
                   cancelCalloutEvent.endTimeDate?.toISOString() ?? null,
               }),
               position: cancelCalloutPosition as "before" | "after",
+              text: activeCampaign.cancelCalloutText,
             }
           : null;
         const feedbackPrompt = feedbackEvent && feedbackTicket

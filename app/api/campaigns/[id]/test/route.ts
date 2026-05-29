@@ -175,6 +175,7 @@ export async function POST(_req: Request, { params }: Params) {
               })
             : new URL("/cancel", baseUrl).toString(),
           position: cancelCalloutPosition as "before" | "after",
+          text: campaign.cancelCalloutText,
         }
       : null;
 

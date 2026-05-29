@@ -1,18 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
+import { db, eq, events } from "@ssb/db";
 import { requireActionAnyScope } from "@/app/lib/permissions";
-import { buildEventImageToken } from "@/app/lib/image-links";
+import { getSignedImageUrl } from "@/app/lib/supabase";
 import { isValidUUID } from "@/app/lib/validation";
 
 type Params = { params: Promise<{ id: string }> };
 
 /**
- * Campaign-editor image preview. The web app serves event images at
- * `/api/images/{eventId}`, but unreleased ("mystery") events 404 unless the
- * request carries a signed token — which can only be minted server-side. The
- * live preview can't build that token in the browser, so it points its <img>
- * at this admin route, which mints the token and redirects to the real web
- * image. Gated on `campaigns.send` so it grants no more visibility than the
- * campaign editor (and the emails it produces) already do.
+ * Campaign-editor image preview. The web app serves event images at its own
+ * `/api/images/{eventId}`, but that depends on web being reachable and, for
+ * unreleased events, a signed token the browser can't mint. The live preview
+ * just needs to render the hero image, so this admin route signs the image
+ * straight from Supabase storage (the same bucket web reads) and redirects to
+ * it. Gated on `campaigns.send` so it grants no more visibility than the
+ * campaign editor already does.
  */
 export async function GET(request: NextRequest, { params }: Params) {
   const { id } = await params;
@@ -25,15 +26,24 @@ export async function GET(request: NextRequest, { params }: Params) {
     return new NextResponse(auth.error ?? "Not authorized", { status: 401 });
   }
 
-  const base =
-    process.env.NEXT_PUBLIC_BASE_URL || "https://stanfordspeakersbureau.com";
-  const requestUrl = new URL(request.url);
-  const target = new URL(`/api/images/${id}`, base);
-  target.searchParams.set("v", requestUrl.searchParams.get("v") || "1");
-  if (requestUrl.searchParams.get("variant") === "mobile") {
-    target.searchParams.set("variant", "mobile");
+  const event = await db.query.events.findFirst({
+    where: eq(events.id, id),
+    columns: { img: true, mobileImg: true },
+  });
+  if (!event) {
+    return new NextResponse("Not found", { status: 404 });
   }
-  target.searchParams.set("t", buildEventImageToken(id));
 
-  return NextResponse.redirect(target.toString());
+  const wantsMobile =
+    new URL(request.url).searchParams.get("variant") === "mobile";
+  const imgName = wantsMobile
+    ? event.mobileImg || event.img
+    : event.img || event.mobileImg;
+
+  const signedUrl = await getSignedImageUrl(imgName);
+  if (!signedUrl) {
+    return new NextResponse("Not found", { status: 404 });
+  }
+
+  return NextResponse.redirect(signedUrl);
 }

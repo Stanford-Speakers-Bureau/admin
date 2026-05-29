@@ -542,6 +542,9 @@ export const emailCampaigns = pgTable(
     cancelCalloutPosition: text("cancel_callout_position")
       .notNull()
       .default("before"),
+    cancelCalloutText: text("cancel_callout_text")
+      .notNull()
+      .default("Can't make it? [Please cancel] so someone else can attend."),
     sentAt: timestamp("sent_at", { withTimezone: true }),
     sentBy: text("sent_by"),
     recipientCount: bigint("recipient_count", { mode: "number" }),

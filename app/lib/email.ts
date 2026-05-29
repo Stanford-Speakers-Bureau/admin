@@ -1,6 +1,7 @@
 import QRCode from "qrcode";
 import { db, eq, roles } from "@ssb/db";
 import { buildCancellationLink } from "./cancellation-links";
+import { parseCancelCalloutText } from "./cancelCallout";
 import { IMPORTANT_NOTICE_ITEMS, PACIFIC_TIMEZONE } from "./constants";
 import { buildEventImageToken } from "./image-links";
 import {
@@ -3339,6 +3340,7 @@ export type CampaignEmailData = {
   cancelCallout?: {
     url: string;
     position: "before" | "after";
+    text?: string | null;
   } | null;
 };
 
@@ -3405,9 +3407,11 @@ function buildCampaignCancelCallout(
 ): string {
   const margin =
     callout.position === "before" ? "0 0 24px 0" : "24px 0 0 0";
+  const { prefix, label, suffix } = parseCancelCalloutText(callout.text);
+  const link = `<a href="${escapeHtml(callout.url)}" style="color: #A80D0C; text-decoration: underline; font-weight: 700;">${escapeHtml(label)}</a>`;
   return `
     <div style="margin: ${margin}; background-color: #18181b; border: 2px solid #A80D0C; border-radius: 8px; padding: 14px 20px; text-align: center;">
-      <p style="margin: 0; color: #d4d4d8; font-size: 14px; font-weight: 600; line-height: 1.5;">Can&rsquo;t make it? <a href="${escapeHtml(callout.url)}" style="color: #A80D0C; text-decoration: underline; font-weight: 700;">Please cancel</a> so someone else can attend.</p>
+      <p style="margin: 0; color: #d4d4d8; font-size: 14px; font-weight: 600; line-height: 1.5;">${escapeHtml(prefix)}${link}${escapeHtml(suffix)}</p>
     </div>`;
 }
 
@@ -3418,9 +3422,13 @@ function generateCampaignEmailText(data: CampaignEmailData): string {
     .replace(/<u>(.+?)<\/u>/g, "$1")
     .replace(/\[([^\]]+)\]\(([^)]+)\)/g, "$1 ($2)");
 
-  const cancelLine = data.cancelCallout
-    ? `Can't make it? Please cancel so someone else can attend.\nCancel: ${data.cancelCallout.url}`
-    : "";
+  let cancelLine = "";
+  if (data.cancelCallout) {
+    const { prefix, label, suffix } = parseCancelCalloutText(
+      data.cancelCallout.text,
+    );
+    cancelLine = `${prefix}${label}${suffix}\nCancel: ${data.cancelCallout.url}`;
+  }
   const cancelBefore =
     cancelLine && data.cancelCallout?.position === "before"
       ? `${cancelLine}\n\n`

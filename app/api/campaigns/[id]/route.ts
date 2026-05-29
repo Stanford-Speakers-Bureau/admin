@@ -11,6 +11,7 @@ import {
   resolveSegments,
   type AudienceSegment,
 } from "@/app/lib/campaignAudience";
+import { DEFAULT_CANCEL_CALLOUT_TEXT } from "@/app/lib/cancelCallout";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -125,6 +126,7 @@ export async function GET(_req: Request, { params }: Params) {
         includeCancelCallout: campaign.includeCancelCallout,
         cancelCalloutEventId: campaign.cancelCalloutEventId,
         cancelCalloutPosition: campaign.cancelCalloutPosition,
+        cancelCalloutText: campaign.cancelCalloutText,
         cancelCalloutEventName: cancelCalloutEvent?.name ?? null,
         footerType: campaign.footerType,
         feedbackEventName: feedbackEvent?.name ?? null,
@@ -200,6 +202,7 @@ export async function PATCH(req: Request, { params }: Params) {
       cancelCalloutEventId?: string | null;
       includeCancelCallout?: boolean;
       cancelCalloutPosition?: string;
+      cancelCalloutText?: string;
       footerType?: string;
     };
     try {
@@ -304,6 +307,16 @@ export async function PATCH(req: Request, { params }: Params) {
     ) {
       return NextResponse.json(
         { error: "cancelCalloutEventId must be a string or null when provided" },
+        { status: 400 },
+      );
+    }
+    if (
+      body.cancelCalloutText !== undefined &&
+      (typeof body.cancelCalloutText !== "string" ||
+        body.cancelCalloutText.length > 500)
+    ) {
+      return NextResponse.json(
+        { error: "cancelCalloutText must be a string of 500 characters or less" },
         { status: 400 },
       );
     }
@@ -438,6 +451,10 @@ export async function PATCH(req: Request, { params }: Params) {
     }
     if (body.cancelCalloutPosition !== undefined) {
       updates.cancelCalloutPosition = body.cancelCalloutPosition;
+    }
+    if (body.cancelCalloutText !== undefined) {
+      const trimmed = body.cancelCalloutText.trim();
+      updates.cancelCalloutText = trimmed || DEFAULT_CANCEL_CALLOUT_TEXT;
     }
     if (body.footerType !== undefined) {
       if (!isValidFooterType(body.footerType)) {

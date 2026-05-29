@@ -107,6 +107,7 @@ export async function POST(req: Request) {
       cancelCalloutEventId?: string | null;
       includeCancelCallout?: boolean;
       cancelCalloutPosition?: string;
+      cancelCalloutText?: string;
       footerType?: string;
     };
     try {
@@ -126,6 +127,7 @@ export async function POST(req: Request) {
       cancelCalloutEventId,
       includeCancelCallout,
       cancelCalloutPosition,
+      cancelCalloutText,
       footerType,
     } = body;
 
@@ -201,6 +203,15 @@ export async function POST(req: Request) {
     ) {
       return NextResponse.json(
         { error: "cancelCalloutEventId must be a string or null when provided" },
+        { status: 400 },
+      );
+    }
+    if (
+      cancelCalloutText !== undefined &&
+      (typeof cancelCalloutText !== "string" || cancelCalloutText.length > 500)
+    ) {
+      return NextResponse.json(
+        { error: "cancelCalloutText must be a string of 500 characters or less" },
         { status: 400 },
       );
     }
@@ -289,6 +300,10 @@ export async function POST(req: Request) {
         includeCancelCallout: includeCancelCallout ?? false,
         cancelCalloutPosition:
           cancelCalloutPosition === "after" ? "after" : "before",
+        ...(typeof cancelCalloutText === "string" &&
+        cancelCalloutText.trim()
+          ? { cancelCalloutText: cancelCalloutText.trim() }
+          : {}),
         footerType: resolvedFooterType,
         createdBy: auth.email!,
       })

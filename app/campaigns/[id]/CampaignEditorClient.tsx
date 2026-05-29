@@ -20,6 +20,10 @@ import {
 } from "@/app/lib/campaignAudienceConfig";
 import { Button, Card, Input, Label, Select, Alert } from "@/app/components/ui";
 import {
+  DEFAULT_CANCEL_CALLOUT_TEXT,
+  parseCancelCalloutText,
+} from "@/app/lib/cancelCallout";
+import {
   ArrowLeftIcon,
   PlusIcon,
   TrashIcon,
@@ -180,6 +184,9 @@ export default function CampaignEditorClient({
   const [cancelCalloutPosition, setCancelCalloutPosition] = useState<
     "before" | "after"
   >("before");
+  const [cancelCalloutText, setCancelCalloutText] = useState<string>(
+    DEFAULT_CANCEL_CALLOUT_TEXT,
+  );
   const [footerType, setFooterType] = useState<FooterType>("event_unsubscribe");
   const [footerTypeTouched, setFooterTypeTouched] = useState(false);
 
@@ -225,6 +232,8 @@ export default function CampaignEditorClient({
       .filter((id) => !allReferencedEventIds.includes(id)),
   ];
 
+  const cancelCalloutParsed = parseCancelCalloutText(cancelCalloutText);
+
   const applyCampaignState = useCallback(
     (data: {
       campaign: {
@@ -238,6 +247,7 @@ export default function CampaignEditorClient({
         cancelCalloutEventId?: string | null;
         includeCancelCallout?: boolean;
         cancelCalloutPosition?: string | null;
+        cancelCalloutText?: string | null;
         footerType?: string | null;
         status: string;
         sentAt: string | null;
@@ -262,6 +272,9 @@ export default function CampaignEditorClient({
       setIncludeCancelCallout(c.includeCancelCallout ?? false);
       setCancelCalloutPosition(
         c.cancelCalloutPosition === "after" ? "after" : "before",
+      );
+      setCancelCalloutText(
+        c.cancelCalloutText || DEFAULT_CANCEL_CALLOUT_TEXT,
       );
       const savedFooter = (c.footerType ?? "event_unsubscribe") as FooterType;
       setFooterType(savedFooter);
@@ -440,6 +453,8 @@ export default function CampaignEditorClient({
           : null,
         includeCancelCallout,
         cancelCalloutPosition,
+        cancelCalloutText:
+          cancelCalloutText.trim() || DEFAULT_CANCEL_CALLOUT_TEXT,
         footerType,
       };
 
@@ -484,6 +499,7 @@ export default function CampaignEditorClient({
     cancelCalloutEventId,
     includeCancelCallout,
     cancelCalloutPosition,
+    cancelCalloutText,
     footerType,
     savedId,
   ]);
@@ -1080,6 +1096,26 @@ export default function CampaignEditorClient({
                       <option value="after">After email body</option>
                     </Select>
                   </div>
+                  <div>
+                    <Label htmlFor="cancel-callout-text" className="mb-1.5 block">
+                      Callout text
+                    </Label>
+                    <Input
+                      id="cancel-callout-text"
+                      type="text"
+                      value={cancelCalloutText}
+                      onChange={(e) => setCancelCalloutText(e.target.value)}
+                      placeholder={DEFAULT_CANCEL_CALLOUT_TEXT}
+                      disabled={isLocked}
+                      maxLength={500}
+                      className="disabled:opacity-50 disabled:cursor-not-allowed"
+                    />
+                    <p className="mt-1.5 text-xs text-zinc-500">
+                      Wrap the clickable part in [square brackets] — that becomes
+                      the cancel link. If you omit brackets, the whole sentence
+                      links.
+                    </p>
+                  </div>
                 </>
               )}
             </Card>
@@ -1454,7 +1490,7 @@ export default function CampaignEditorClient({
                             lineHeight: 1.5,
                           }}
                         >
-                          Can&rsquo;t make it?{" "}
+                          {cancelCalloutParsed.prefix}
                           <span
                             style={{
                               color: "#A80D0C",
@@ -1462,9 +1498,9 @@ export default function CampaignEditorClient({
                               fontWeight: 700,
                             }}
                           >
-                            Please cancel
-                          </span>{" "}
-                          so someone else can attend.
+                            {cancelCalloutParsed.label}
+                          </span>
+                          {cancelCalloutParsed.suffix}
                         </p>
                       </div>
                     )}
@@ -1519,7 +1555,7 @@ export default function CampaignEditorClient({
                             lineHeight: 1.5,
                           }}
                         >
-                          Can&rsquo;t make it?{" "}
+                          {cancelCalloutParsed.prefix}
                           <span
                             style={{
                               color: "#A80D0C",
@@ -1527,9 +1563,9 @@ export default function CampaignEditorClient({
                               fontWeight: 700,
                             }}
                           >
-                            Please cancel
-                          </span>{" "}
-                          so someone else can attend.
+                            {cancelCalloutParsed.label}
+                          </span>
+                          {cancelCalloutParsed.suffix}
                         </p>
                       </div>
                     )}
