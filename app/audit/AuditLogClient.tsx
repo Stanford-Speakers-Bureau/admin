@@ -401,6 +401,12 @@ function getMassEmailLabel(metadata: Record<string, unknown> | null): string {
   const kind = metadata?.kind;
   const variant = metadata?.variant;
 
+  if (typeof metadata?.campaignId === "string") {
+    const subject =
+      typeof metadata?.subject === "string" ? metadata.subject.trim() : "";
+    return subject.length > 0 ? subject : "Campaign";
+  }
+
   if (type === "bulkSend") {
     if (kind === "announcement") return "Announcements";
     if (kind === "ticketsAvailableNow") return "Tickets available now";
@@ -452,7 +458,7 @@ function getDetailsSummary(log: AuditLogItem): string {
     return "Initial details captured";
   }
 
-  if (log.action === "email.send_mass") {
+  if (log.action === "email.send_mass" || log.action === "campaign.send") {
     const label = getMassEmailLabel(log.metadata);
     const sent = getMetadataNumber(log.metadata, "sent");
     const failed = getMetadataNumber(log.metadata, "failed");

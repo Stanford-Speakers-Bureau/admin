@@ -102,11 +102,19 @@ function toAuditLogEntry(log: AuditLogRow): AuditLogEntry {
   };
 }
 
+// Mass sends that fan out into multiple per-chunk audit rows sharing a batchId.
+// Classic bulk sends (email.send_mass) and campaign sends (campaign.send, logged
+// once per chunk) both get folded into a single grouped row keyed by batchId.
+const GROUPABLE_MASS_SEND_ACTIONS = new Set([
+  "email.send_mass",
+  "campaign.send",
+]);
+
 function getMassEmailBatchId(
   action: string,
   metadata: Record<string, unknown> | null,
 ): string | null {
-  if (action !== "email.send_mass") {
+  if (!GROUPABLE_MASS_SEND_ACTIONS.has(action)) {
     return null;
   }
 
