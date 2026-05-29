@@ -122,6 +122,19 @@ function formatAffiliationLabel(affiliation: TicketAffiliationKey): string {
   return affiliation.charAt(0).toUpperCase() + affiliation.slice(1);
 }
 
+// Parses the standard "Name" <email> format (e.g. from email clients), with or
+// without surrounding quotes around the name. Returns null if the input doesn't
+// match that shape so callers can fall back to treating it as plain text.
+function parseNameEmailPair(value: string): TicketRow | null {
+  const match = value.match(/^\s*(.*?)\s*<\s*([^<>\s]+@[^<>\s]+)\s*>\s*$/);
+  if (!match) {
+    return null;
+  }
+  const name = match[1].trim().replace(/^["']|["']$/g, "").trim();
+  const email = match[2].trim();
+  return { name, email };
+}
+
 function parseSpreadsheetTicketRows(clipboardText: string): TicketRow[] {
   const rows = clipboardText
     .replace(/\r\n?/g, "\n")
@@ -1694,14 +1707,22 @@ export default function TicketManagementClient({
                       value={row.name}
                       onPaste={(event) => handleSpreadsheetPaste(index, event)}
                       onChange={(e) => {
+                        const value = e.target.value;
+                        const parsed = parseNameEmailPair(value);
                         setNewTicketRows((prev) => {
                           const next = [...prev];
-                          next[index] = {
-                            ...next[index],
-                            name: e.target.value,
-                          };
+                          next[index] = parsed
+                            ? { ...next[index], ...parsed }
+                            : { ...next[index], name: value };
                           return next;
                         });
+                        if (parsed) {
+                          debouncedEmailLookup(
+                            index,
+                            parsed.email,
+                            newTicketEventId,
+                          );
+                        }
                       }}
                       placeholder="Attendee name"
                       className="sm:w-2/5 sm:text-sm"
@@ -1717,12 +1738,19 @@ export default function TicketManagementClient({
                         }
                         onChange={(e) => {
                           const value = e.target.value;
+                          const parsed = parseNameEmailPair(value);
                           setNewTicketRows((prev) => {
                             const next = [...prev];
-                            next[index] = { ...next[index], email: value };
+                            next[index] = parsed
+                              ? { ...next[index], ...parsed }
+                              : { ...next[index], email: value };
                             return next;
                           });
-                          debouncedEmailLookup(index, value, newTicketEventId);
+                          debouncedEmailLookup(
+                            index,
+                            parsed ? parsed.email : value,
+                            newTicketEventId,
+                          );
                         }}
                         placeholder="email@example.com"
                         className="pr-24 sm:text-sm"
