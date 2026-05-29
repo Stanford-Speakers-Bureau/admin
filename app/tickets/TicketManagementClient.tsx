@@ -333,6 +333,11 @@ export default function TicketManagementClient({
   const [editingNameValue, setEditingNameValue] = useState("");
   const [editingTitleId, setEditingTitleId] = useState<string | null>(null);
   const [editingTitleValue, setEditingTitleValue] = useState("");
+  // Per-row in-flight saves so titles mutate independently — saving one row
+  // never disables or closes the editor of another as you go down the list.
+  const [savingTitleIds, setSavingTitleIds] = useState<Set<string>>(
+    () => new Set(),
+  );
   // Titles are hidden by default (only a few guests have one). The toggle
   // reveals every title; revealedTitleIds reveals individual rows on demand.
   const [showTitles, setShowTitles] = useState(false);
@@ -908,13 +913,26 @@ export default function TicketManagementClient({
   async function handleUpdateTitle(id: string, newTitle: string) {
     const trimmed = newTitle.trim();
     const ticket = tickets.find((t) => t.id === id);
-    // Don't update if value hasn't changed
-    if ((ticket?.title || "") === trimmed) {
-      setEditingTitleId(null);
+    const previousTitle = ticket?.title ?? null;
+
+    // Close this row's editor right away (only if it's still the open one) so
+    // you can immediately move to the next row — the save runs in the
+    // background and won't disturb whatever you edit next.
+    setEditingTitleId((prev) => (prev === id ? null : prev));
+
+    // No change → nothing to save.
+    if ((previousTitle || "") === trimmed) {
       return;
     }
+    const nextTitle = trimmed || null;
 
-    setUpdatingTicketId(id);
+    // Optimistically reflect the new value and keep the row revealed, then
+    // track this save per-row so concurrent saves stay independent.
+    setTickets((prev) =>
+      prev.map((t) => (t.id === id ? { ...t, title: nextTitle } : t)),
+    );
+    setRevealedTitleIds((prev) => new Set(prev).add(id));
+    setSavingTitleIds((prev) => new Set(prev).add(id));
     try {
       const response = await fetch("/api/tickets", {
         method: "PATCH",
@@ -931,13 +949,19 @@ export default function TicketManagementClient({
       setTickets((prev) =>
         prev.map((t) => (t.id === id ? (data.ticket as Ticket) : t)),
       );
-      setSuccess("Title updated successfully!");
     } catch (err) {
       console.error("Error updating title:", err);
+      // Revert just this row's optimistic change.
+      setTickets((prev) =>
+        prev.map((t) => (t.id === id ? { ...t, title: previousTitle } : t)),
+      );
       setError(err instanceof Error ? err.message : "Failed to update title");
     } finally {
-      setUpdatingTicketId(null);
-      setEditingTitleId(null);
+      setSavingTitleIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
     }
   }
 
@@ -1475,7 +1499,7 @@ export default function TicketManagementClient({
             }
           }}
           autoFocus
-          disabled={updatingTicketId === ticket.id}
+          disabled={savingTitleIds.has(ticket.id)}
           className="w-full rounded-lg bg-white/5 px-2 py-1 text-base text-white ring-1 ring-inset ring-white/10 placeholder:text-zinc-500 focus:outline-2 focus:-outline-offset-1 focus:outline-rose-500 disabled:opacity-50 sm:text-sm"
           placeholder="Enter title"
         />
