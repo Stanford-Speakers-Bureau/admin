@@ -2991,6 +2991,7 @@ type StandbyLineEmailData = {
   eventStartTime: string | null;
   eventVenue?: string | null;
   eventVenueLink?: string | null;
+  eventRoute?: string | null; // event slug, for linking back to the event page
   standbyOpenTime?: string; // e.g., "7:30 PM"
   doorsOpenTime?: string | null;
   expectedCapacity?: string; // e.g., "100-200"
@@ -3009,12 +3010,15 @@ async function generateStandbyLineEmailHTML(
     eventStartTime,
     eventVenue,
     eventVenueLink,
+    eventRoute,
     standbyOpenTime = "7:30 PM",
     expectedCapacity = "100-200",
     ticketId,
   } = data;
 
   const formattedDate = formatFullDateTime(data.doorsOpenTime || eventStartTime);
+  const baseUrl = getBaseUrl();
+  const eventUrl = eventRoute ? `${baseUrl}/events/${eventRoute}` : null;
 
   const heroCard = buildHeroCard({
     eventName,
@@ -3053,13 +3057,19 @@ async function generateStandbyLineEmailHTML(
   contentSections.push(buildDetailsCard({
     rows: detailRows,
     ticketTypeBadge: ticketId ? { type: "STANDBY" } : undefined,
+    actionButtonHref: eventUrl,
+    actionButtonLabel: "View your ticket page",
   }));
 
   // No QR code: a standby ticket's QR isn't active until staff open admission
-  // at the venue. Let the recipient know where it will appear.
+  // at the venue. Let the recipient know where it will appear, linking back to
+  // the event page (where the ticket lives) when we have its route.
   if (ticketId) {
+    const ticketPageText = eventUrl
+      ? `<a href="${eventUrl}" target="_blank" rel="noopener noreferrer" style="color: #A80D0C; text-decoration: none; border-bottom: 1px solid #A80D0C;">your ticket page</a>`
+      : "your ticket page";
     contentSections.push(buildParagraph(
-      `Your QR code isn't active yet. It will appear on your ticket page once standby admission opens at the venue &mdash; just wait in the standby area until then.`,
+      `Your QR code isn't active yet. It will appear on ${ticketPageText} once standby admission opens at the venue &mdash; just wait in the standby area until then.`,
     ));
   }
 
@@ -3089,12 +3099,15 @@ function generateStandbyLineEmailText(data: StandbyLineEmailData): string {
     eventStartTime,
     eventVenue,
     eventVenueLink,
+    eventRoute,
     standbyOpenTime = "7:30 PM",
     expectedCapacity = "100-200",
     ticketId,
   } = data;
 
   const formattedDate = formatFullDateTime(data.doorsOpenTime || eventStartTime);
+  const baseUrl = getBaseUrl();
+  const eventUrl = eventRoute ? `${baseUrl}/events/${eventRoute}` : null;
 
   return `
 Please come in-person for your ticket!
@@ -3103,10 +3116,11 @@ Great news — you'll likely get into ${eventName} via the standby line!
 
 The standby line opens at ${standbyOpenTime} outside ${eventVenue || "the venue"}, so arrive early to claim your spot. Standby admission is first come, first served — we'll start admitting from the line closer to the event start time, and we expect to let ${expectedCapacity} people in. Admission is not guaranteed, and no bags are allowed.
 
-${ticketId ? "Your QR code isn't active yet. It will appear on your ticket page once standby admission opens at the venue — just wait in the standby area until then.\n\n" : ""}Event Details:
+${ticketId ? `Your QR code isn't active yet. It will appear on your ticket page once standby admission opens at the venue — just wait in the standby area until then.${eventUrl ? `\n\nView your ticket page: ${eventUrl}` : ""}\n\n` : ""}Event Details:
 ${name ? `- Name: ${name}\n` : ""}- Event: ${eventName}
 - Date & Time: ${formattedDate}
 ${eventVenue ? `- Location: ${eventVenue}${eventVenueLink ? ` (${eventVenueLink})` : ""}` : ""}
+${eventUrl ? `- Event Page: ${eventUrl}` : ""}
 ${ticketId ? `- Ticket Type: STANDBY\n- Ticket ID: ${ticketId}` : ""}
 
 Stanford Speakers Bureau

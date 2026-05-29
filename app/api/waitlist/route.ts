@@ -2,13 +2,17 @@ import { NextResponse } from "next/server";
 import { requirePermission } from "@/app/lib/permissions";
 import { isValidUUID } from "@/app/lib/validation";
 import { sendStandbyLineEmail, sendTicketEmail } from "@/app/lib/email";
-import { PACIFIC_TIMEZONE } from "@/app/lib/constants";
+import {
+  PACIFIC_TIMEZONE,
+  REMINDER_EMAIL_BATCH_SIZE,
+} from "@/app/lib/constants";
 import { removeWaitlistEntryForEmail } from "@/app/lib/waitlist";
 import {
   db,
   eq,
   and,
   sql,
+  inArray,
   waitlist,
   events,
   tickets,
@@ -16,6 +20,10 @@ import {
 } from "@ssb/db";
 import { pushWalletUpdate } from "@/app/lib/wallet-push";
 import { logAuditEvent } from "@/app/lib/audit";
+import {
+  logSendFailures,
+  partitionBySuppression,
+} from "@/app/lib/email-suppression";
 
 async function sendWithRetry(
   fn: () => Promise<void>,
@@ -218,73 +226,166 @@ export async function POST(req: Request) {
       return handleConvertStandby(body);
     }
 
-    const { eventId, waitlistOpenTime, expectedCapacity } = body;
-
-    if (!eventId) {
-      return NextResponse.json(
-        { error: "eventId is required" },
-        { status: 400 },
-      );
+    // Issuing standby tickets to the waitlist runs through the shared bulk-send
+    // system: the client chunks the waitlist and posts one chunk per request
+    // (each tagged with the same auditBatchId), mirroring sendDayOfReminders.
+    if (body?.action === "sendStandbyEmails") {
+      return handleSendStandbyEmails(body);
     }
 
-    if (!isValidUUID(eventId)) {
-      return NextResponse.json(
-        { error: "Invalid event ID format" },
-        { status: 400 },
-      );
-    }
+    return NextResponse.json(
+      { error: "Unknown or missing action" },
+      { status: 400 },
+    );
+  } catch (error) {
+    console.error("Admin waitlist POST error:", error);
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 },
+    );
+  }
+}
 
-    const auth = await requirePermission("tickets.edit", eventId);
-    if (!auth.authorized) {
-      return NextResponse.json({ error: auth.error }, { status: 401 });
-    }
+type SendStandbyBody = {
+  eventId?: unknown;
+  waitlistIds?: unknown;
+  auditBatchId?: unknown;
+  waitlistOpenTime?: unknown;
+  expectedCapacity?: unknown;
+};
 
-    // Fetch event details
-    const event = await db.query.events.findFirst({
-      where: eq(events.id, eventId),
-      columns: {
-        id: true,
-        name: true,
-        startTimeDate: true,
-        doorsOpen: true,
-        venue: true,
-        venueLink: true,
-      },
+/**
+ * Issue STANDBY tickets to one chunk of waitlist entries and email each holder.
+ *
+ * This is the per-chunk worker for the shared bulk-send flow (runChunkedSend on
+ * the client). It accepts a bounded list of waitlist row IDs, drops
+ * hard-suppressed addresses, skips anyone who already holds a ticket, and for
+ * the rest creates a STANDBY ticket, sends the standby-line email, and removes
+ * them from the waitlist. Returns the categorized counts the bulk-send progress
+ * UI expects ({ sent, failed, skippedHasTicket, suppressed }).
+ */
+async function handleSendStandbyEmails(body: SendStandbyBody) {
+  const eventId = typeof body.eventId === "string" ? body.eventId : null;
+
+  if (!eventId) {
+    return NextResponse.json({ error: "eventId is required" }, { status: 400 });
+  }
+  if (!isValidUUID(eventId)) {
+    return NextResponse.json(
+      { error: "Invalid event ID format" },
+      { status: 400 },
+    );
+  }
+
+  const auth = await requirePermission("tickets.edit", eventId);
+  if (!auth.authorized) {
+    return NextResponse.json({ error: auth.error }, { status: 401 });
+  }
+
+  const rawIds = Array.isArray(body.waitlistIds) ? body.waitlistIds : null;
+  if (!rawIds) {
+    return NextResponse.json(
+      { error: "waitlistIds must be an array of strings" },
+      { status: 400 },
+    );
+  }
+  const waitlistIds = [
+    ...new Set(
+      rawIds.filter(
+        (id): id is string => typeof id === "string" && id.trim().length > 0,
+      ),
+    ),
+  ];
+  if (waitlistIds.length === 0) {
+    return NextResponse.json(
+      { error: "waitlistIds must be a non-empty array of strings" },
+      { status: 400 },
+    );
+  }
+  if (waitlistIds.length > REMINDER_EMAIL_BATCH_SIZE) {
+    return NextResponse.json(
+      { error: `Maximum ${REMINDER_EMAIL_BATCH_SIZE} waitlistIds per request` },
+      { status: 400 },
+    );
+  }
+
+  const auditBatchId =
+    typeof body.auditBatchId === "string" && body.auditBatchId.trim().length > 0
+      ? body.auditBatchId.trim()
+      : null;
+  const waitlistOpenTime =
+    typeof body.waitlistOpenTime === "string" ? body.waitlistOpenTime : undefined;
+  const expectedCapacity =
+    typeof body.expectedCapacity === "string" ? body.expectedCapacity : undefined;
+
+  const event = await db.query.events.findFirst({
+    where: eq(events.id, eventId),
+    columns: {
+      id: true,
+      name: true,
+      route: true,
+      startTimeDate: true,
+      doorsOpen: true,
+      venue: true,
+      venueLink: true,
+    },
+  });
+
+  if (!event) {
+    return NextResponse.json({ error: "Event not found" }, { status: 404 });
+  }
+
+  // Only operate on the rows in this chunk that still exist on the waitlist —
+  // a concurrent run (or an earlier chunk's cleanup) may have already cleared
+  // some of them.
+  const entries = await db.query.waitlist.findMany({
+    where: and(
+      eq(waitlist.eventId, eventId),
+      inArray(waitlist.id, waitlistIds),
+    ),
+    columns: { id: true, email: true, name: true },
+  });
+
+  if (entries.length === 0) {
+    return NextResponse.json({
+      success: true,
+      sent: 0,
+      failed: 0,
+      skippedHasTicket: 0,
+      suppressed: 0,
+      total: 0,
     });
+  }
 
-    if (!event) {
-      return NextResponse.json({ error: "Event not found" }, { status: 404 });
-    }
+  // Hard-suppressed addresses (admin kill switch) are dropped entirely: we
+  // neither issue them a standby ticket nor email them, and they stay on the
+  // waitlist so the suppressed count stays visible to the admin.
+  const suppression = await partitionBySuppression(entries.map((e) => e.email));
+  const suppressedSet = new Set(
+    suppression.suppressed.map((e) => e.trim().toLowerCase()),
+  );
+  const sendable = entries.filter(
+    (e) => !suppressedSet.has(e.email.trim().toLowerCase()),
+  );
 
-    // Fetch all waitlist entries for this event
-    const waitlistEntries = await db.query.waitlist.findMany({
-      where: eq(waitlist.eventId, eventId),
-      columns: { id: true, email: true, name: true },
-    });
+  // Format doors open time from event, falling back to request body or default
+  const doorsOpenFormatted = event.doorsOpen
+    ? new Intl.DateTimeFormat("en-US", {
+        hour: "numeric",
+        minute: "2-digit",
+        hour12: true,
+        timeZone: PACIFIC_TIMEZONE,
+      }).format(new Date(event.doorsOpen))
+    : (waitlistOpenTime ?? "7:30 PM");
 
-    if (!waitlistEntries || waitlistEntries.length === 0) {
-      return NextResponse.json(
-        { error: "No waitlist entries found for this event" },
-        { status: 404 },
-      );
-    }
+  type Outcome = {
+    category: "sent" | "skippedHasTicket" | "failed";
+    email: string;
+    error?: unknown;
+  };
 
-    // Format doors open time from event, falling back to request body or default
-    const doorsOpenFormatted = event.doorsOpen
-      ? new Intl.DateTimeFormat("en-US", {
-          hour: "numeric",
-          minute: "2-digit",
-          hour12: true,
-          timeZone: PACIFIC_TIMEZONE,
-        }).format(new Date(event.doorsOpen))
-      : (waitlistOpenTime ?? "7:30 PM");
-
-    // Issue a STANDBY ticket to each person and send the email
-    let successCount = 0;
-    let errorCount = 0;
-    let skippedExistingCount = 0;
-    const errors: string[] = [];
-    for (const entry of waitlistEntries) {
+  const outcomes: Outcome[] = await Promise.all(
+    sendable.map(async (entry): Promise<Outcome> => {
       try {
         const existingTicket = await db.query.tickets.findFirst({
           where: and(
@@ -295,22 +396,27 @@ export async function POST(req: Request) {
         });
 
         if (existingTicket) {
-          skippedExistingCount++;
           try {
             await removeWaitlistEntryForEmail(eventId, entry.email);
           } catch (waitlistError) {
-            console.error("Waitlist cleanup after existing ticket failed:", waitlistError);
+            console.error(
+              "Waitlist cleanup after existing ticket failed:",
+              waitlistError,
+            );
           }
-          continue;
+          return { category: "skippedHasTicket", email: entry.email };
         }
 
         // Create STANDBY ticket
-        const [inserted] = await db.insert(tickets).values({
-          eventId,
-          email: entry.email,
-          name: entry.name ?? null,
-          type: "STANDBY",
-        }).returning({ id: tickets.id });
+        const [inserted] = await db
+          .insert(tickets)
+          .values({
+            eventId,
+            email: entry.email,
+            name: entry.name ?? null,
+            type: "STANDBY",
+          })
+          .returning({ id: tickets.id });
 
         await sendWithRetry(() =>
           sendStandbyLineEmail({
@@ -320,58 +426,73 @@ export async function POST(req: Request) {
             eventStartTime: event.startTimeDate?.toISOString() ?? null,
             eventVenue: event.venue,
             eventVenueLink: event.venueLink,
+            eventRoute: event.route,
             standbyOpenTime: doorsOpenFormatted,
             expectedCapacity: expectedCapacity || "100-200",
             ticketId: inserted.id,
-          })
+          }),
         );
 
         try {
           await removeWaitlistEntryForEmail(eventId, entry.email);
         } catch (waitlistError) {
-          console.error("Waitlist removal after standby issuance failed:", waitlistError);
+          console.error(
+            "Waitlist removal after standby issuance failed:",
+            waitlistError,
+          );
         }
-        successCount++;
+        return { category: "sent", email: entry.email };
       } catch (error) {
-        errorCount++;
-        const errorMessage =
-          error instanceof Error ? error.message : "Unknown error";
-        errors.push(`${entry.email}: ${errorMessage}`);
-        console.error(`Failed to issue standby ticket for ${entry.email}:`, error);
+        console.error(
+          `Failed to issue standby ticket for ${entry.email}:`,
+          error,
+        );
+        return { category: "failed", email: entry.email, error };
       }
-    }
+    }),
+  );
 
-    await logAuditEvent({
-      action: "waitlist.issue_standby",
-      actor: auth.email!,
-      eventId: eventId,
-      eventName: event.name ?? null,
-      metadata: {
-        totalEntries: waitlistEntries.length,
-        emailsSent: successCount,
-        errors: errorCount,
-        skipped: skippedExistingCount,
-      },
-    });
+  const sent = outcomes.filter((o) => o.category === "sent").length;
+  const skippedHasTicket = outcomes.filter(
+    (o) => o.category === "skippedHasTicket",
+  ).length;
+  const failures = outcomes.filter((o) => o.category === "failed");
+  const failed = failures.length;
+  const suppressed = entries.length - sendable.length;
 
-    return NextResponse.json(
-      {
-        success: true,
-        totalEntries: waitlistEntries.length,
-        emailsSent: successCount,
-        errors: errorCount,
-        skippedExistingTickets: skippedExistingCount,
-        errorDetails: errors.length > 0 ? errors : undefined,
-      },
-      { status: 200 },
-    );
-  } catch (error) {
-    console.error("Admin waitlist closed email error:", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 },
-    );
-  }
+  await logSendFailures({
+    failures: failures.map((f) => ({ email: f.email, error: f.error })),
+    actor: auth.email!,
+    source: "waitlist.issue_standby",
+    batchId: auditBatchId,
+    eventId,
+    eventName: event.name ?? null,
+  });
+
+  await logAuditEvent({
+    action: "email.send_mass",
+    actor: auth.email!,
+    eventId,
+    eventName: event.name ?? null,
+    metadata: {
+      type: "standbyLine",
+      sent,
+      failed,
+      skippedHasTicket,
+      suppressed,
+      total: entries.length,
+      ...(auditBatchId ? { batchId: auditBatchId } : {}),
+    },
+  });
+
+  return NextResponse.json({
+    success: true,
+    sent,
+    failed,
+    skippedHasTicket,
+    suppressed,
+    total: entries.length,
+  });
 }
 
 type ConvertStandbyBody = {

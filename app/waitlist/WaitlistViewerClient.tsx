@@ -1,8 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ConfirmationDialog } from "@/app/components/ConfirmationDialog";
-import { PACIFIC_TIMEZONE } from "@/app/lib/constants";
+import BulkSendProgress from "@/app/components/BulkSendProgress";
+import {
+  PACIFIC_TIMEZONE,
+  REMINDER_EMAIL_BATCH_SIZE,
+} from "@/app/lib/constants";
+import { BulkSendProgressState, runChunkedSend } from "@/app/lib/bulkSend";
 import { useEventContext } from "@/app/EventContext";
 import { useEventScopedFetch } from "@/app/lib/useEventScopedFetch";
 import {
@@ -82,6 +87,8 @@ export default function WaitlistViewerClient() {
   const [showStandbyConfirm, setShowStandbyConfirm] = useState(false);
   const [showDisableDialog, setShowDisableDialog] = useState(false);
   const [isSendingEmails, setIsSendingEmails] = useState(false);
+  const [bulkStandbyState, setBulkStandbyState] =
+    useState<BulkSendProgressState | null>(null);
   const [isTogglingStandby, setIsTogglingStandby] = useState(false);
   const [isConvertingStandby, setIsConvertingStandby] = useState(false);
   const [standbyOpenTime, setStandbyOpenTime] = useState("7:30 PM");
@@ -146,6 +153,11 @@ export default function WaitlistViewerClient() {
   const waitlist = data?.waitlist ?? [];
   const standbyTickets = data?.standbyTickets ?? [];
   const ticketsStillAvailable = data?.ticketsStillAvailable ?? false;
+
+  // Clear any lingering bulk-send progress when switching events.
+  useEffect(() => {
+    setBulkStandbyState(null);
+  }, [selectedEventId]);
 
   function handleRefresh() {
     refetch();
@@ -255,39 +267,57 @@ export default function WaitlistViewerClient() {
       return;
     }
 
+    if (waitlist.length === 0) {
+      setNotifyError("No waitlist entries found for this event");
+      return;
+    }
+
     setIsSendingEmails(true);
     setNotifyError(null);
     setNotifySuccess(null);
+    setShowSendDialog(false);
 
     try {
-      const response = await fetch("/api/waitlist", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
+      // Issue standby tickets through the shared bulk-send system: chunk the
+      // waitlist and post one chunk per request, tracking categorized progress.
+      const finalState = await runChunkedSend({
+        items: waitlist,
+        chunkSize: REMINDER_EMAIL_BATCH_SIZE,
+        label: "Sending standby emails",
+        onProgress: setBulkStandbyState,
+        sendChunk: async (chunk, context) => {
+          const response = await fetch("/api/waitlist", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              action: "sendStandbyEmails",
+              eventId: selectedEventId,
+              auditBatchId: context.batchId,
+              waitlistIds: chunk.map((entry) => entry.id),
+              waitlistOpenTime: standbyOpenTime,
+              expectedCapacity,
+            }),
+          });
+
+          const data = await response.json().catch(() => null);
+          if (!response.ok) {
+            throw new Error(data?.error || "Failed to send standby emails");
+          }
+          return data;
         },
-        body: JSON.stringify({
-          eventId: selectedEventId,
-          waitlistOpenTime: standbyOpenTime,
-          expectedCapacity,
-        }),
       });
 
-      if (!response.ok) {
-        let errorMessage = "Failed to send standby emails";
-        try {
-          const errorData = await response.json();
-          errorMessage = errorData.error || errorMessage;
-        } catch {
-          errorMessage = `HTTP ${response.status}: ${response.statusText}`;
-        }
-        throw new Error(errorMessage);
-      }
+      const detailParts: string[] = [];
+      if (finalState.failed > 0) detailParts.push(`${finalState.failed} failed`);
+      if (finalState.skippedHasTicket > 0)
+        detailParts.push(`${finalState.skippedHasTicket} already had a ticket`);
+      if (finalState.suppressed > 0)
+        detailParts.push(`${finalState.suppressed} suppressed`);
+      const detail = detailParts.length > 0 ? ` (${detailParts.join(", ")})` : "";
 
-      const data = await response.json();
       setNotifySuccess(
-        `Successfully sent ${data.emailsSent} email${data.emailsSent !== 1 ? "s" : ""} to waitlist entries${data.errors > 0 ? ` (${data.errors} failed)` : ""}`,
+        `Sent ${finalState.sent} standby email${finalState.sent !== 1 ? "s" : ""}${detail}.`,
       );
-      setShowSendDialog(false);
       refetch();
     } catch (err) {
       console.error("Error sending standby emails:", err);
@@ -361,6 +391,15 @@ export default function WaitlistViewerClient() {
         <Alert tone="error" className="mb-6">
           {notifyError}
         </Alert>
+      )}
+
+      {bulkStandbyState && (
+        <div className="mb-6">
+          <BulkSendProgress
+            state={bulkStandbyState}
+            onDismiss={() => setBulkStandbyState(null)}
+          />
+        </div>
       )}
 
       {isStandbyMode && ticketsStillAvailable && selectedEventId && (
