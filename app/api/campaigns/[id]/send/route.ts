@@ -16,6 +16,7 @@ import {
 import { buildEventFeedbackLink } from "@/app/lib/feedback-links";
 import { buildCancellationLink } from "@/app/lib/cancellation-links";
 import {
+  canonicalizeEmail,
   isValidEmail,
   isValidUUID,
   normalizeEmail,
@@ -37,15 +38,19 @@ const MAX_EMAILS_PER_REQUEST = REMINDER_EMAIL_BATCH_SIZE;
 
 type Params = { params: Promise<{ id: string }> };
 
-function normalizedTicketEmailIn(emails: string[]) {
-  const normalizedEmails = emails.map((email) => normalizeEmail(email)).filter(Boolean);
+// Match tickets by the *canonical* email so gmail dot/+suffix variants line up
+// with the canonicalized audience list. Raw `lower(trim())` matching would drop
+// ticket holders whose ticket email differs only by gmail dots/+suffix from the
+// canonicalized recipient (Stanford is intentionally excluded by canonicalize_email).
+function canonicalTicketEmailIn(emails: string[]) {
+  const canonicalEmails = emails.map((email) => canonicalizeEmail(email)).filter(Boolean);
 
-  if (normalizedEmails.length === 0) {
+  if (canonicalEmails.length === 0) {
     return sql<boolean>`false`;
   }
 
-  return sql<boolean>`lower(trim(${tickets.email})) in (${
-    sql.join(normalizedEmails.map((email) => sql`${email}`), sql`, `)
+  return sql<boolean>`public.canonicalize_email(${tickets.email}) in (${
+    sql.join(canonicalEmails.map((email) => sql`${email}`), sql`, `)
   })`;
 }
 
@@ -337,7 +342,7 @@ export async function POST(req: Request, { params }: Params) {
           where: and(
             eq(tickets.eventId, feedbackEvent.id),
             eq(tickets.scanned, true),
-            normalizedTicketEmailIn(sendableEmails),
+            canonicalTicketEmailIn(sendableEmails),
           ),
           columns: {
             id: true,
@@ -346,7 +351,7 @@ export async function POST(req: Request, { params }: Params) {
         })
       : [];
     const feedbackTicketByEmail = new Map(
-      feedbackTicketRows.map((ticket) => [normalizeEmail(ticket.email), ticket]),
+      feedbackTicketRows.map((ticket) => [canonicalizeEmail(ticket.email), ticket]),
     );
 
     // Cancel callout: the same signed cancel-ticket link used in transactional
@@ -370,7 +375,7 @@ export async function POST(req: Request, { params }: Params) {
       ? await db.query.tickets.findMany({
           where: and(
             eq(tickets.eventId, cancelCalloutEvent.id),
-            normalizedTicketEmailIn(sendableEmails),
+            canonicalTicketEmailIn(sendableEmails),
           ),
           columns: {
             id: true,
@@ -379,16 +384,17 @@ export async function POST(req: Request, { params }: Params) {
         })
       : [];
     const cancelTicketByEmail = new Map(
-      cancelTicketRows.map((ticket) => [normalizeEmail(ticket.email), ticket]),
+      cancelTicketRows.map((ticket) => [canonicalizeEmail(ticket.email), ticket]),
     );
 
     const results = await Promise.allSettled(
       sendableEmails.map(async (email) => {
+        const canonicalEmail = canonicalizeEmail(email);
         const feedbackTicket = feedbackEvent
-          ? feedbackTicketByEmail.get(email)
+          ? feedbackTicketByEmail.get(canonicalEmail)
           : null;
         const cancelTicket = cancelCalloutEvent
-          ? cancelTicketByEmail.get(email)
+          ? cancelTicketByEmail.get(canonicalEmail)
           : null;
         const cancelCallout = cancelCalloutEvent && cancelTicket
           ? {

@@ -3,14 +3,16 @@ import { requireCampaignSendPermission } from "@/app/lib/campaignPermissions";
 import { and, db, eq, emailCampaigns, events, sql, tickets } from "@ssb/db";
 import { buildEventFeedbackLink } from "@/app/lib/feedback-links";
 import { buildCancellationLink } from "@/app/lib/cancellation-links";
-import { isValidUUID, normalizeEmail } from "@/app/lib/validation";
+import { canonicalizeEmail, isValidUUID } from "@/app/lib/validation";
 import { sendCampaignEmail } from "@/app/lib/email";
 import { parseAudiences } from "@/app/lib/campaignAudience";
 
 type Params = { params: Promise<{ id: string }> };
 
-function normalizedTicketEmailEquals(email: string) {
-  return sql<boolean>`lower(trim(${tickets.email})) = ${normalizeEmail(email)}`;
+// Match by canonical email so gmail dot/+suffix variants align with the
+// canonicalized audience (mirrors canonicalTicketEmailIn in the send route).
+function canonicalTicketEmailEquals(email: string) {
+  return sql<boolean>`public.canonicalize_email(${tickets.email}) = ${canonicalizeEmail(email)}`;
 }
 
 function buildPreviewFeedbackPrompt(baseUrl: string, eventRoute: string, eventName: string | null) {
@@ -89,7 +91,7 @@ export async function POST(_req: Request, { params }: Params) {
       ? await db.query.tickets.findFirst({
           where: and(
             eq(tickets.eventId, feedbackEvent.id),
-            normalizedTicketEmailEquals(auth.email!),
+            canonicalTicketEmailEquals(auth.email!),
             eq(tickets.scanned, true),
           ),
           columns: {
@@ -149,7 +151,7 @@ export async function POST(_req: Request, { params }: Params) {
       ? await db.query.tickets.findFirst({
           where: and(
             eq(tickets.eventId, cancelCalloutEvent.id),
-            normalizedTicketEmailEquals(auth.email!),
+            canonicalTicketEmailEquals(auth.email!),
           ),
           columns: {
             id: true,

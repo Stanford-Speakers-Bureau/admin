@@ -162,6 +162,29 @@ async function resolveAudience(
       return rows.map((row) => row.email);
     }
 
+    // Recipients silently dropped from the feedback prompt by the gmail
+    // dot/+alias canonicalization bug: scanned attendees whose ticket email
+    // canonicalizes to something other than its raw lowercased form (i.e.
+    // gmail dots or a +suffix), and who still have no feedback on record.
+    // Stanford addresses never match because canonicalize_email leaves their
+    // dots intact. Use this to send the one-time correction email.
+    case "event_feedback_alias_missed": {
+      if (!eventId) return [];
+      const rows = await db
+        .select({ email: tickets.email })
+        .from(tickets)
+        .leftJoin(eventFeedback, eq(eventFeedback.ticketId, tickets.id))
+        .where(
+          and(
+            eq(tickets.eventId, eventId),
+            eq(tickets.scanned, true),
+            isNull(eventFeedback.id),
+            sql`public.canonicalize_email(${tickets.email}) <> lower(trim(${tickets.email}))`,
+          ),
+        );
+      return rows.map((row) => row.email);
+    }
+
     case "event_waitlist": {
       if (!eventId) return [];
       const rows = await db.query.waitlist.findMany({
