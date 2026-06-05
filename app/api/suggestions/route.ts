@@ -5,7 +5,7 @@ import { isValidUUID } from "@/app/lib/validation";
 import { db, eq, suggest, votes } from "@ssb/db";
 import { logAuditEvent } from "@/app/lib/audit";
 import { sendSuggestionApprovedEmail } from "@/app/lib/email";
-import { isValidEmail } from "@/app/lib/validation";
+import { isValidEmail, isValidUrl } from "@/app/lib/validation";
 
 export async function POST(req: Request) {
   try {
@@ -91,7 +91,7 @@ export async function PATCH(req: Request) {
     }
 
     const body = await req.json();
-    const { id, speaker, duplicate, spoke } = body;
+    const { id, speaker, duplicate, spoke, eventLink } = body;
 
     if (!id) {
       return NextResponse.json({ error: "Invalid request" }, { status: 400 });
@@ -105,21 +105,44 @@ export async function PATCH(req: Request) {
       );
     }
 
-    // Handle marking that the speaker came/spoke (acts as a hide on the public site)
+    // Handle marking that the speaker came/spoke (acts as a hide on the public
+    // site). When marking spoke, the suggestion's unique link redirects to the
+    // optional event link (or to /past-speakers when none is set).
     if (typeof spoke === "boolean") {
       const existing = await db.query.suggest.findFirst({
         where: eq(suggest.id, id),
         columns: { speaker: true },
       });
 
+      // Only carry an event link when marking spoke; clear it when unhiding.
+      let nextEventLink: string | null = null;
+      if (spoke) {
+        const trimmed =
+          typeof eventLink === "string" ? eventLink.trim() : "";
+        if (trimmed) {
+          if (!isValidUrl(trimmed)) {
+            return NextResponse.json(
+              { error: "Event link must be a valid http(s) URL" },
+              { status: 400 },
+            );
+          }
+          nextEventLink = trimmed;
+        }
+      }
+
       await db.update(suggest)
-        .set({ spoke })
+        .set({ spoke, eventLink: nextEventLink })
         .where(eq(suggest.id, id));
 
       await logAuditEvent({
         action: "suggestion.mark_spoke",
         actor: auth.email!,
-        metadata: { suggestionId: id, speaker: existing?.speaker, spoke },
+        metadata: {
+          suggestionId: id,
+          speaker: existing?.speaker,
+          spoke,
+          eventLink: nextEventLink,
+        },
       });
 
       const { suggestions } = await getAdminSuggestions();

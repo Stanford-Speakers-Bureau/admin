@@ -8,6 +8,7 @@ import {
   CheckIcon,
   ClockIcon,
   EyeIcon,
+  LinkIcon,
   PencilIcon,
   UserIcon,
   HandThumbUpIcon,
@@ -34,6 +35,8 @@ export type Suggestion = {
   reviewed: boolean;
   duplicate?: boolean;
   spoke?: boolean;
+  // Where the unique link redirects once the speaker has spoken (null = past speakers)
+  eventLink?: string | null;
   // List of voter emails for this suggestion (admin-only view)
   voters?: string[];
 };
@@ -67,6 +70,12 @@ export default function AdminSuggestClient({
   const [voteCount, setVoteCount] = useState<number>(0);
   const [isSavingVoteCount, setIsSavingVoteCount] = useState(false);
   const [voteEditError, setVoteEditError] = useState<string | null>(null);
+  const [spokeSuggestion, setSpokeSuggestion] = useState<Suggestion | null>(
+    null,
+  );
+  const [eventLinkInput, setEventLinkInput] = useState("");
+  const [isSavingSpoke, setIsSavingSpoke] = useState(false);
+  const [spokeError, setSpokeError] = useState<string | null>(null);
 
   async function handleAction(
     id: string,
@@ -211,14 +220,18 @@ export default function AdminSuggestClient({
     }
   }
 
-  async function handleToggleSpoke(id: string, spoke: boolean) {
+  async function handleToggleSpoke(
+    id: string,
+    spoke: boolean,
+    eventLink?: string,
+  ): Promise<boolean> {
     setProcessingIds((prev) => new Set(prev).add(id));
 
     try {
       const response = await fetch("/api/suggestions", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id, spoke }),
+        body: JSON.stringify({ id, spoke, eventLink }),
       });
 
       const data = await response.json();
@@ -228,20 +241,57 @@ export default function AdminSuggestClient({
           "Failed to update spoke status:",
           data.error || "Unknown error",
         );
-        return;
+        setSpokeError(data.error || "Failed to update. Please try again.");
+        return false;
       }
 
       if (Array.isArray(data.suggestions)) {
         setSuggestions(data.suggestions);
       }
+      return true;
     } catch (error) {
       console.error("Failed to toggle spoke:", error);
+      setSpokeError("Failed to update. Please try again.");
+      return false;
     } finally {
       setProcessingIds((prev) => {
         const next = new Set(prev);
         next.delete(id);
         return next;
       });
+    }
+  }
+
+  function startMarkSpoke(suggestion: Suggestion) {
+    setSpokeSuggestion(suggestion);
+    setEventLinkInput(suggestion.eventLink ?? "");
+    setSpokeError(null);
+  }
+
+  function closeMarkSpoke() {
+    setSpokeSuggestion(null);
+    setEventLinkInput("");
+    setIsSavingSpoke(false);
+    setSpokeError(null);
+  }
+
+  async function handleConfirmSpoke() {
+    if (!spokeSuggestion) return;
+
+    const trimmed = eventLinkInput.trim();
+    if (trimmed && !/^https?:\/\//i.test(trimmed)) {
+      setSpokeError("Event link must start with http:// or https://");
+      return;
+    }
+
+    setIsSavingSpoke(true);
+    setSpokeError(null);
+
+    const ok = await handleToggleSpoke(spokeSuggestion.id, true, trimmed);
+    if (ok) {
+      closeMarkSpoke();
+    } else {
+      setIsSavingSpoke(false);
     }
   }
 
@@ -534,6 +584,23 @@ export default function AdminSuggestClient({
                         )}
                       </span>
                     </div>
+                    {suggestion.spoke && (
+                      <div className="mt-2 flex items-center gap-1.5 text-sm text-zinc-400">
+                        <LinkIcon className="size-4 shrink-0" aria-hidden="true" />
+                        {suggestion.eventLink ? (
+                          <a
+                            href={suggestion.eventLink}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="truncate text-sky-300 hover:underline"
+                          >
+                            {suggestion.eventLink}
+                          </a>
+                        ) : (
+                          <span>Link redirects to past speakers</span>
+                        )}
+                      </div>
+                    )}
                     {/* Matching approved suggestions (for pending and rejected items) */}
                     {matchingApproved.length > 0 && (
                       <div className="mt-2 text-xs text-zinc-400">
@@ -652,10 +719,9 @@ export default function AdminSuggestClient({
                           <button
                             type="button"
                             onClick={() =>
-                              handleToggleSpoke(
-                                suggestion.id,
-                                !suggestion.spoke,
-                              )
+                              suggestion.spoke
+                                ? handleToggleSpoke(suggestion.id, false)
+                                : startMarkSpoke(suggestion)
                             }
                             disabled={processingIds.has(suggestion.id)}
                             className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 ${
@@ -673,6 +739,17 @@ export default function AdminSuggestClient({
                             )}
                             {suggestion.spoke ? "Unhide" : "Mark Spoke"}
                           </button>
+                          {suggestion.spoke && (
+                            <button
+                              type="button"
+                              onClick={() => startMarkSpoke(suggestion)}
+                              disabled={processingIds.has(suggestion.id)}
+                              className="flex items-center gap-2 px-3 py-2 bg-white/5 text-zinc-200 ring-1 ring-inset ring-white/10 rounded-lg text-sm font-medium hover:bg-white/10 transition-colors disabled:opacity-50"
+                            >
+                              <LinkIcon className="size-4 shrink-0" aria-hidden="true" />
+                              Edit link
+                            </button>
+                          )}
                           {isDuplicateOfApproved && (
                             <button
                               type="button"
@@ -968,6 +1045,83 @@ export default function AdminSuggestClient({
                   <CheckIcon className="size-4 shrink-0" aria-hidden="true" />
                 )}
                 Save changes
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {spokeSuggestion && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
+          <div className="w-full max-w-lg bg-zinc-900/60 border border-white/10 rounded-2xl p-6 shadow-2xl">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="text-xl font-semibold text-white">
+                  {spokeSuggestion.spoke
+                    ? `Event link for ${spokeSuggestion.speaker}`
+                    : `Mark ${spokeSuggestion.speaker} as spoke`}
+                </h3>
+                <p className="text-sm text-zinc-400">
+                  {spokeSuggestion.spoke
+                    ? "Update where this suggestion's unique link redirects."
+                    : "This hides the suggestion from the leaderboard and redirects its unique link."}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={closeMarkSpoke}
+                aria-label="Close"
+                className="text-zinc-500 hover:text-white transition-colors"
+              >
+                <XMarkIcon className="size-5 shrink-0" aria-hidden="true" />
+              </button>
+            </div>
+
+            <Label htmlFor="event-link" className="mb-2 block">
+              Event link (optional)
+            </Label>
+            <Input
+              id="event-link"
+              type="url"
+              value={eventLinkInput}
+              onChange={(e) => setEventLinkInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !isSavingSpoke) {
+                  handleConfirmSpoke();
+                }
+              }}
+              placeholder="https://example.com/event"
+              maxLength={2048}
+              disabled={isSavingSpoke}
+            />
+            <p className="mt-2 text-xs text-zinc-500">
+              The suggestion&rsquo;s unique link will redirect here. Leave blank
+              to redirect to the past speakers page instead.
+            </p>
+            {spokeError && (
+              <p className="mt-2 text-sm text-rose-400">{spokeError}</p>
+            )}
+
+            <div className="mt-6 flex items-center justify-end gap-3">
+              <Button
+                variant="ghost"
+                onClick={closeMarkSpoke}
+                disabled={isSavingSpoke}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="primary"
+                onClick={handleConfirmSpoke}
+                disabled={isSavingSpoke}
+                className="inline-flex items-center gap-2"
+              >
+                {isSavingSpoke ? (
+                  <div className="size-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <CheckIcon className="size-4 shrink-0" aria-hidden="true" />
+                )}
+                {spokeSuggestion.spoke ? "Save link" : "Mark Spoke"}
               </Button>
             </div>
           </div>

@@ -28,6 +28,7 @@ export async function getAdminSuggestions(): Promise<{
       reviewed: !!s.reviewed,
       duplicate: !!s.duplicate,
       spoke: !!s.spoke,
+      eventLink: s.eventLink ?? null,
       voters: [],
     }));
     try {
@@ -56,6 +57,7 @@ export async function getAdminSuggestions(): Promise<{
           reviewed: !!s.reviewed,
           duplicate: !!s.duplicate,
           spoke: !!s.spoke,
+          eventLink: s.eventLink ?? null,
           voters: votersBySpeaker[s.id] || [],
         }));
       }
