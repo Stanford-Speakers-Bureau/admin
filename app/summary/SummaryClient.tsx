@@ -41,7 +41,7 @@ type SummaryResponse = {
   eventDate: string | null;
   capacity: number;
   reserved: number;
-  releaseDate: string | null;
+  salesOpenAt: string | null;
   doorsOpen: string | null;
   startTime: string | null;
   standbyEnabled: boolean;
@@ -318,9 +318,9 @@ function SummaryContent({ eventId }: { eventId: string }) {
     () => toEpoch(data?.doorsOpen),
     [data?.doorsOpen],
   );
-  const releaseMs = useMemo(
-    () => toEpoch(data?.releaseDate),
-    [data?.releaseDate],
+  const salesOpenMs = useMemo(
+    () => toEpoch(data?.salesOpenAt),
+    [data?.salesOpenAt],
   );
 
   const salesChartData = useMemo(() => {
@@ -791,16 +791,58 @@ function SummaryContent({ eventId }: { eventId: string }) {
 
   // ── Chart: Show-up rate by purchase timing ──
 
-  const purchaseTimingChartData = useMemo(() => {
+  // Full data extent — independent of zoom, so the default-zoom anchor and the
+  // bucketing memo below don't form a dependency cycle.
+  const purchaseRange = useMemo<{
+    rangeStart: number;
+    rangeEnd: number;
+  } | null>(() => {
     if (ticketEpochs.length === 0) return null;
     const firstPurchase = ticketEpochs[0];
     const lastPurchase = ticketEpochs[ticketEpochs.length - 1];
-    // Include the release moment in the range so the "Sales open" marker and
-    // the default zoom anchor are visible even if the first sale came later.
-    const rangeStart = Math.min(firstPurchase, releaseMs ?? firstPurchase);
+    // Include sales-open in the extent so its marker and the default zoom
+    // anchor are visible even if the first sale came later.
+    const rangeStart = Math.min(firstPurchase, salesOpenMs ?? firstPurchase);
     const rangeEnd = Math.max(lastPurchase, rangeStart + MIN);
-    const intervalMs = pickInterval(Math.max(rangeEnd - rangeStart, MIN));
-    const alignedStart = Math.floor(rangeStart / intervalMs) * intervalMs;
+    return { rangeStart, rangeEnd };
+  }, [ticketEpochs, salesOpenMs]);
+
+  const defaultPurchaseZoomRange = useMemo<[number, number] | null>(() => {
+    if (!purchaseRange) return null;
+    // Default the visible window to begin at the ticketing date (sales open).
+    const start =
+      salesOpenMs != null
+        ? Math.min(
+            Math.max(salesOpenMs, purchaseRange.rangeStart),
+            purchaseRange.rangeEnd,
+          )
+        : purchaseRange.rangeStart;
+    return [start, purchaseRange.rangeEnd];
+  }, [purchaseRange, salesOpenMs]);
+
+  const effectivePurchaseZoomRange =
+    purchaseZoomRange ?? defaultPurchaseZoomRange;
+
+  // Bucket size follows the *visible* span, so zooming in refines buckets down
+  // to 15/5/1-min while the bars/line still span the full range for panning.
+  const purchaseTimingChartData = useMemo(() => {
+    if (!purchaseRange) return null;
+    const { rangeStart, rangeEnd } = purchaseRange;
+    const visStart = effectivePurchaseZoomRange
+      ? effectivePurchaseZoomRange[0]
+      : rangeStart;
+    const visEnd = effectivePurchaseZoomRange
+      ? effectivePurchaseZoomRange[1]
+      : rangeEnd;
+    const visibleSpan = Math.max(visEnd - visStart, MIN);
+    const intervalMs = pickInterval(visibleSpan);
+    // Bucket only a padded window around the visible range. This keeps the
+    // interval fine (down to 1 min) when zoomed in without producing buckets
+    // across an entire weeks-long sales window; the pad lets small pans stay
+    // smooth before the next zoom event re-buckets.
+    const winStart = Math.max(rangeStart, visStart - visibleSpan);
+    const winEnd = Math.min(rangeEnd, visEnd + visibleSpan);
+    const alignedStart = Math.floor(winStart / intervalMs) * intervalMs;
 
     const totalMap = new Map<number, number>();
     const scanMap = new Map<number, number>();
@@ -816,7 +858,7 @@ function SummaryContent({ eventId }: { eventId: string }) {
     const soldBars: [number, number][] = [];
     // [ts, rate%, scanned, total]
     const rateLine: [number, number, number, number][] = [];
-    for (let b = alignedStart; b <= rangeEnd; b += intervalMs) {
+    for (let b = alignedStart; b <= winEnd; b += intervalMs) {
       const total = totalMap.get(b) ?? 0;
       const scanned = scanMap.get(b) ?? 0;
       soldBars.push([b, total]);
@@ -833,30 +875,19 @@ function SummaryContent({ eventId }: { eventId: string }) {
       soldBars,
       rateLine,
     };
-  }, [ticketEpochs, scannedPurchaseEpochs, releaseMs]);
-
-  const defaultPurchaseZoomRange = useMemo<[number, number] | null>(() => {
-    if (!purchaseTimingChartData) return null;
-    // Default the visible window to begin at the ticketing date (sales open).
-    const start =
-      releaseMs != null
-        ? Math.min(
-            Math.max(releaseMs, purchaseTimingChartData.rangeStart),
-            purchaseTimingChartData.rangeEnd,
-          )
-        : purchaseTimingChartData.rangeStart;
-    return [start, purchaseTimingChartData.rangeEnd];
-  }, [purchaseTimingChartData, releaseMs]);
-
-  const effectivePurchaseZoomRange =
-    purchaseZoomRange ?? defaultPurchaseZoomRange;
+  }, [
+    purchaseRange,
+    effectivePurchaseZoomRange,
+    ticketEpochs,
+    scannedPurchaseEpochs,
+  ]);
 
   const onPurchaseDataZoom = useCallback(() => {
     clearTimeout(purchaseDebounceRef.current);
     purchaseDebounceRef.current = setTimeout(() => {
       const instance = purchaseChartRef.current?.getEchartsInstance();
-      const fullRange = purchaseTimingChartData
-        ? [purchaseTimingChartData.rangeStart, purchaseTimingChartData.rangeEnd]
+      const fullRange = purchaseRange
+        ? [purchaseRange.rangeStart, purchaseRange.rangeEnd]
         : null;
       if (!instance || !fullRange) return;
 
@@ -865,17 +896,27 @@ function SummaryContent({ eventId }: { eventId: string }) {
       const dz = opt.dataZoom?.[0];
       if (!dz) return;
 
+      let next: [number, number] | null = null;
       if (dz.startValue != null && dz.endValue != null) {
-        setPurchaseZoomRange([dz.startValue, dz.endValue]);
+        next = [dz.startValue, dz.endValue];
       } else if (dz.start != null && dz.end != null) {
         const span = fullRange[1] - fullRange[0];
-        setPurchaseZoomRange([
+        next = [
           fullRange[0] + (dz.start / 100) * span,
           fullRange[0] + (dz.end / 100) * span,
-        ]);
+        ];
       }
+      if (!next) return;
+      // Skip no-op updates (e.g. programmatic re-render) to avoid churn.
+      setPurchaseZoomRange((prev) =>
+        prev &&
+        Math.abs(prev[0] - next![0]) < 1 &&
+        Math.abs(prev[1] - next![1]) < 1
+          ? prev
+          : next,
+      );
     }, 120);
-  }, [purchaseTimingChartData]);
+  }, [purchaseRange]);
 
   const purchaseOnEvents = useMemo(
     () => ({ datazoom: onPurchaseDataZoom }),
@@ -893,9 +934,9 @@ function SummaryContent({ eventId }: { eventId: string }) {
       : {};
 
     const markerLines = [
-      releaseMs != null
+      salesOpenMs != null
         ? {
-            xAxis: releaseMs,
+            xAxis: salesOpenMs,
             label: {
               formatter: "Sales open",
               color: "#e4e4e7",
@@ -905,9 +946,9 @@ function SummaryContent({ eventId }: { eventId: string }) {
             lineStyle: { color: "#22d3ee", type: "dashed" as const },
           }
         : null,
-      releaseMs != null
+      salesOpenMs != null
         ? {
-            xAxis: releaseMs + DAY,
+            xAxis: salesOpenMs + DAY,
             label: {
               formatter: "+24h",
               color: "#e4e4e7",
@@ -989,6 +1030,10 @@ function SummaryContent({ eventId }: { eventId: string }) {
       grid: { top: 40, right: 56, bottom: 80, left: 56, containLabel: false },
       xAxis: {
         type: "time" as const,
+        // Pin to the full extent so the slider/zoom always span the whole sales
+        // window even though the series only buckets the visible window.
+        min: purchaseTimingChartData.rangeStart,
+        max: purchaseTimingChartData.rangeEnd,
         axisLabel: { color: "#71717a", fontSize: 10, hideOverlap: true },
         axisLine: { show: false },
         axisTick: { show: false },
@@ -1115,7 +1160,7 @@ function SummaryContent({ eventId }: { eventId: string }) {
   }, [
     purchaseTimingChartData,
     effectivePurchaseZoomRange,
-    releaseMs,
+    salesOpenMs,
     eventStartMs,
   ]);
 

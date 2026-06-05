@@ -39,6 +39,7 @@ export async function GET(
         columns: {
           name: true,
           capacity: true,
+          ticketingDate: true,
           releaseDate: true,
           startTimeDate: true,
           doorsOpen: true,
@@ -101,6 +102,10 @@ export async function GET(
     if (!event) {
       return NextResponse.json({ error: "Event not found" }, { status: 404 });
     }
+
+    // "Sales open" = ticketing_date, falling back to release_date — matches the
+    // gating logic in web/app/api/tickets/route.ts.
+    const salesOpenDate = event.ticketingDate ?? event.releaseDate ?? null;
 
     const totalTickets = ticketResults.length;
     const scannedTickets = ticketResults.filter((t) => t.scanned);
@@ -216,8 +221,8 @@ export async function GET(
     // released (sales open); fall back to the first ticket sold if unset.
     let earlyBirdFlake: { earlyFlakeRate: number; lateFlakeRate: number; earlyTotal: number; lateTotal: number } | null = null;
     if (ticketResults.length > 0 && event.startTimeDate) {
-      const launchTime = event.releaseDate
-        ? event.releaseDate.getTime()
+      const launchTime = salesOpenDate
+        ? salesOpenDate.getTime()
         : ticketResults[0].createdAt.getTime();
       const eventTime = event.startTimeDate.getTime();
       const earlyWindow = launchTime + 24 * 60 * 60_000;
@@ -322,7 +327,7 @@ export async function GET(
       eventDate: event.startTimeDate?.toISOString() ?? null,
       capacity: event.capacity ?? 0,
       reserved: event.reserved ?? 0,
-      releaseDate: event.releaseDate?.toISOString() ?? null,
+      salesOpenAt: salesOpenDate?.toISOString() ?? null,
       doorsOpen: event.doorsOpen?.toISOString() ?? null,
       startTime: event.startTimeDate?.toISOString() ?? null,
       standbyEnabled: event.standbyEnabled ?? false,

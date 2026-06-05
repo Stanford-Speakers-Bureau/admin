@@ -597,7 +597,7 @@ export default function AdminSuggestClient({
                             {suggestion.eventLink}
                           </a>
                         ) : (
-                          <span>Link redirects to past speakers</span>
+                          <span>Link redirects to their archive entry</span>
                         )}
                       </div>
                     )}
@@ -1095,8 +1095,9 @@ export default function AdminSuggestClient({
               disabled={isSavingSpoke}
             />
             <p className="mt-2 text-xs text-zinc-500">
-              The suggestion&rsquo;s unique link will redirect here. Leave blank
-              to redirect to the past speakers page instead.
+              Optional override. Leave blank to send the unique link to the
+              speaker&rsquo;s archive entry (matched by name), falling back to
+              the past speakers page.
             </p>
             {spokeError && (
               <p className="mt-2 text-sm text-rose-400">{spokeError}</p>
