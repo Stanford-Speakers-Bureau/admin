@@ -76,6 +76,24 @@ export default function AdminSuggestClient({
   const [eventLinkInput, setEventLinkInput] = useState("");
   const [isSavingSpoke, setIsSavingSpoke] = useState(false);
   const [spokeError, setSpokeError] = useState<string | null>(null);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  const baseUrl =
+    process.env.NEXT_PUBLIC_BASE_URL || "https://stanfordspeakersbureau.com";
+  const shareLinkFor = (id: string) => `${baseUrl}/suggest/${id}`;
+
+  async function copyShareLink(id: string) {
+    try {
+      await navigator.clipboard.writeText(shareLinkFor(id));
+      setCopiedId(id);
+      window.setTimeout(
+        () => setCopiedId((prev) => (prev === id ? null : prev)),
+        1500,
+      );
+    } catch (error) {
+      console.error("Failed to copy share link:", error);
+    }
+  }
 
   async function handleAction(
     id: string,
@@ -583,6 +601,26 @@ export default function AdminSuggestClient({
                           { timeZone: "America/Los_Angeles" },
                         )}
                       </span>
+                    </div>
+                    {/* Public share link — available for every suggestion */}
+                    <div className="mt-2 flex items-center gap-2 text-sm text-zinc-400">
+                      <LinkIcon className="size-4 shrink-0" aria-hidden="true" />
+                      <a
+                        href={shareLinkFor(suggestion.id)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        title={shareLinkFor(suggestion.id)}
+                        className="truncate text-zinc-300 hover:text-sky-300 hover:underline"
+                      >
+                        {shareLinkFor(suggestion.id).replace(/^https?:\/\//, "")}
+                      </a>
+                      <button
+                        type="button"
+                        onClick={() => copyShareLink(suggestion.id)}
+                        className="shrink-0 rounded-md px-2 py-1 text-xs text-zinc-400 hover:bg-white/5 hover:text-white transition-colors"
+                      >
+                        {copiedId === suggestion.id ? "Copied!" : "Copy"}
+                      </button>
                     </div>
                     {suggestion.spoke && (
                       <div className="mt-2 flex items-center gap-1.5 text-sm text-zinc-400">
