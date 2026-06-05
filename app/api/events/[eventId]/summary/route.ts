@@ -39,6 +39,7 @@ export async function GET(
         columns: {
           name: true,
           capacity: true,
+          releaseDate: true,
           startTimeDate: true,
           doorsOpen: true,
           standbyEnabled: true,
@@ -246,6 +247,66 @@ export async function GET(
       }
     }
 
+    // Show-up rate by purchase timing — bucket buyers by how long after launch
+    // (first ticket sold) they bought, then measure each bucket's attendance.
+    let purchaseTimingShowRate:
+      | {
+          buckets: {
+            label: string;
+            total: number;
+            scanned: number;
+            showRate: number;
+          }[];
+          windowMs: number;
+        }
+      | null = null;
+    if (ticketResults.length >= 2) {
+      const MIN_MS = 60_000;
+      const HOUR_MS = 60 * MIN_MS;
+      const DAY_MS = 24 * HOUR_MS;
+      // Anchor "launch" to when tickets were released; fall back to the first
+      // ticket sold if no release date is set. ticketResults is sorted asc.
+      const firstTicketMs = ticketResults[0].createdAt.getTime();
+      const launchMs = event.releaseDate
+        ? event.releaseDate.getTime()
+        : firstTicketMs;
+      const lastMs = ticketResults[ticketResults.length - 1].createdAt.getTime();
+      const windowMs = lastMs - launchMs;
+      if (windowMs > 0) {
+        const BUCKET_COUNT = Math.min(6, ticketResults.length);
+        const bucketSize = windowMs / BUCKET_COUNT;
+        const totals = new Array<number>(BUCKET_COUNT).fill(0);
+        const scans = new Array<number>(BUCKET_COUNT).fill(0);
+        for (const t of ticketResults) {
+          // Pre-release tickets (reserved/comped before release) fold into the
+          // first bucket via the >= 0 clamp.
+          const offset = Math.max(0, t.createdAt.getTime() - launchMs);
+          const idx = Math.min(
+            Math.floor(offset / bucketSize),
+            BUCKET_COUNT - 1,
+          );
+          totals[idx]++;
+          if (t.scanned) scans[idx]++;
+        }
+        const fmtOffset = (ms: number): string => {
+          if (ms <= 0) return "launch";
+          if (ms < HOUR_MS) return `${Math.max(1, Math.round(ms / MIN_MS))}m`;
+          if (ms < DAY_MS) return `${Math.round(ms / HOUR_MS)}h`;
+          const days = ms / DAY_MS;
+          return days >= 10
+            ? `${Math.round(days)}d`
+            : `${Math.round(days * 10) / 10}d`;
+        };
+        const buckets = totals.map((total, i) => ({
+          label: `${fmtOffset(i * bucketSize)}–${fmtOffset((i + 1) * bucketSize)}`,
+          total,
+          scanned: scans[i],
+          showRate: total > 0 ? (scans[i] / total) * 100 : 0,
+        }));
+        purchaseTimingShowRate = { buckets, windowMs };
+      }
+    }
+
     // Arrival distribution — even time buckets based on actual scan range
     let arrivalDistribution: { buckets: { label: string; count: number }[]; total: number } | null = null;
     if (scanTimestamps.length > 0) {
@@ -328,6 +389,7 @@ export async function GET(
       scannerLeaderboard,
       earlyBirdFlake,
       referralAttendance,
+      purchaseTimingShowRate,
       arrivalDistribution,
       feedbackStats,
     });

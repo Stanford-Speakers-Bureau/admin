@@ -67,6 +67,15 @@ type SummaryResponse = {
     referralTotal: number;
     organicTotal: number;
   } | null;
+  purchaseTimingShowRate: {
+    buckets: {
+      label: string;
+      total: number;
+      scanned: number;
+      showRate: number;
+    }[];
+    windowMs: number;
+  } | null;
   arrivalDistribution: {
     buckets: { label: string; count: number }[];
     total: number;
@@ -819,6 +828,7 @@ function SummaryContent({ eventId }: { eventId: string }) {
     scannerLeaderboard,
     earlyBirdFlake,
     referralAttendance,
+    purchaseTimingShowRate,
     arrivalDistribution,
     feedbackStats,
   } = data;
@@ -1186,6 +1196,118 @@ function SummaryContent({ eventId }: { eventId: string }) {
           />
         </Card>
       )}
+
+      {/* ── Show-up rate by purchase timing ── */}
+      {purchaseTimingShowRate &&
+        purchaseTimingShowRate.buckets.some((b) => b.total > 0) && (
+          <Card className="p-5">
+            <h3 className="text-sm font-semibold text-zinc-300 mb-1">
+              Show-up rate by purchase timing
+            </h3>
+            <p className="text-[10px] text-zinc-600 mb-4">
+              Attendance broken down by how long after sales opened each buyer
+              grabbed their ticket. Earlier buckets are closer to launch.
+            </p>
+            <ReactECharts
+              option={{
+                backgroundColor: "transparent",
+                animation: true,
+                animationDuration: 600,
+                animationEasing: "cubicOut",
+                grid: {
+                  top: 16,
+                  right: 16,
+                  bottom: 24,
+                  left: 16,
+                  containLabel: true,
+                },
+                xAxis: {
+                  type: "category",
+                  data: purchaseTimingShowRate.buckets.map((b) => b.label),
+                  axisLabel: { color: "#a1a1aa", fontSize: 11 },
+                  axisLine: { show: false },
+                  axisTick: { show: false },
+                },
+                yAxis: {
+                  type: "value",
+                  min: 0,
+                  max: 100,
+                  axisLabel: {
+                    color: "#71717a",
+                    fontSize: 10,
+                    formatter: "{value}%",
+                  },
+                  axisLine: { show: false },
+                  axisTick: { show: false },
+                  splitLine: {
+                    lineStyle: { color: "#27272a", type: "dashed" },
+                  },
+                },
+                tooltip: {
+                  trigger: "axis",
+                  backgroundColor: "#18181b",
+                  borderColor: "#3f3f46",
+                  borderWidth: 1,
+                  textStyle: { color: "#fafafa", fontSize: 12 },
+                  formatter: (params: { dataIndex: number }[]) => {
+                    const b =
+                      purchaseTimingShowRate.buckets[params[0].dataIndex];
+                    return `<b>${b.label} after launch</b><br/>${b.showRate.toFixed(0)}% showed up<br/>${b.scanned} / ${b.total} tickets`;
+                  },
+                },
+                series: [
+                  {
+                    type: "bar",
+                    barWidth: "60%",
+                    data: purchaseTimingShowRate.buckets.map((b) => {
+                      const color =
+                        b.total === 0
+                          ? "#3f3f46"
+                          : b.showRate >= 75
+                            ? "#10b981"
+                            : b.showRate >= 50
+                              ? "#3b82f6"
+                              : "#f59e0b";
+                      return {
+                        value: b.total === 0 ? 0 : b.showRate,
+                        itemStyle: {
+                          color: {
+                            type: "linear",
+                            x: 0,
+                            y: 0,
+                            x2: 0,
+                            y2: 1,
+                            colorStops: [
+                              { offset: 0, color },
+                              { offset: 1, color: color + "33" },
+                            ],
+                          },
+                          borderRadius: [8, 8, 0, 0],
+                        },
+                      };
+                    }),
+                    label: {
+                      show: true,
+                      position: "top",
+                      color: "#a1a1aa",
+                      fontSize: 11,
+                      fontWeight: "bold",
+                      formatter: (p: { dataIndex: number }) => {
+                        const b =
+                          purchaseTimingShowRate.buckets[p.dataIndex];
+                        return b.total === 0
+                          ? "—"
+                          : `${b.showRate.toFixed(0)}%`;
+                      },
+                    },
+                  },
+                ],
+              }}
+              style={{ height: 220 }}
+              opts={{ renderer: "canvas" }}
+            />
+          </Card>
+        )}
 
       {/* ── Insights row ── */}
       <div
