@@ -142,6 +142,12 @@ export async function GET(
       t.createdAt.toISOString(),
     );
 
+    // Purchase times of tickets that ended up scanning in — lets the client
+    // chart show-up rate as a function of when the ticket was bought.
+    const scannedPurchaseTimestamps = scannedTickets.map((t) =>
+      t.createdAt.toISOString(),
+    );
+
     // Compute average arrival offset from doors open
     let averageArrivalOffsetMs: number | null = null;
     if (event.doorsOpen && scanTimestamps.length > 0) {
@@ -206,12 +212,15 @@ export async function GET(
     }
     const scannerLeaderboard = [...scannerCounts.values()].sort((a, b) => b.count - a.count);
 
-    // Early-bird flake analysis
+    // Early-bird flake analysis. "Early" is anchored to when tickets were
+    // released (sales open); fall back to the first ticket sold if unset.
     let earlyBirdFlake: { earlyFlakeRate: number; lateFlakeRate: number; earlyTotal: number; lateTotal: number } | null = null;
     if (ticketResults.length > 0 && event.startTimeDate) {
-      const firstTicketTime = ticketResults[0].createdAt.getTime();
+      const launchTime = event.releaseDate
+        ? event.releaseDate.getTime()
+        : ticketResults[0].createdAt.getTime();
       const eventTime = event.startTimeDate.getTime();
-      const earlyWindow = firstTicketTime + 24 * 60 * 60_000;
+      const earlyWindow = launchTime + 24 * 60 * 60_000;
       const lateWindow = eventTime - 24 * 60 * 60_000;
 
       const earlyTickets = ticketResults.filter((t) => t.createdAt.getTime() <= earlyWindow);
@@ -244,66 +253,6 @@ export async function GET(
           referralTotal: refTickets.length,
           organicTotal: orgTickets.length,
         };
-      }
-    }
-
-    // Show-up rate by purchase timing — bucket buyers by how long after launch
-    // (first ticket sold) they bought, then measure each bucket's attendance.
-    let purchaseTimingShowRate:
-      | {
-          buckets: {
-            label: string;
-            total: number;
-            scanned: number;
-            showRate: number;
-          }[];
-          windowMs: number;
-        }
-      | null = null;
-    if (ticketResults.length >= 2) {
-      const MIN_MS = 60_000;
-      const HOUR_MS = 60 * MIN_MS;
-      const DAY_MS = 24 * HOUR_MS;
-      // Anchor "launch" to when tickets were released; fall back to the first
-      // ticket sold if no release date is set. ticketResults is sorted asc.
-      const firstTicketMs = ticketResults[0].createdAt.getTime();
-      const launchMs = event.releaseDate
-        ? event.releaseDate.getTime()
-        : firstTicketMs;
-      const lastMs = ticketResults[ticketResults.length - 1].createdAt.getTime();
-      const windowMs = lastMs - launchMs;
-      if (windowMs > 0) {
-        const BUCKET_COUNT = Math.min(6, ticketResults.length);
-        const bucketSize = windowMs / BUCKET_COUNT;
-        const totals = new Array<number>(BUCKET_COUNT).fill(0);
-        const scans = new Array<number>(BUCKET_COUNT).fill(0);
-        for (const t of ticketResults) {
-          // Pre-release tickets (reserved/comped before release) fold into the
-          // first bucket via the >= 0 clamp.
-          const offset = Math.max(0, t.createdAt.getTime() - launchMs);
-          const idx = Math.min(
-            Math.floor(offset / bucketSize),
-            BUCKET_COUNT - 1,
-          );
-          totals[idx]++;
-          if (t.scanned) scans[idx]++;
-        }
-        const fmtOffset = (ms: number): string => {
-          if (ms <= 0) return "launch";
-          if (ms < HOUR_MS) return `${Math.max(1, Math.round(ms / MIN_MS))}m`;
-          if (ms < DAY_MS) return `${Math.round(ms / HOUR_MS)}h`;
-          const days = ms / DAY_MS;
-          return days >= 10
-            ? `${Math.round(days)}d`
-            : `${Math.round(days * 10) / 10}d`;
-        };
-        const buckets = totals.map((total, i) => ({
-          label: `${fmtOffset(i * bucketSize)}–${fmtOffset((i + 1) * bucketSize)}`,
-          total,
-          scanned: scans[i],
-          showRate: total > 0 ? (scans[i] / total) * 100 : 0,
-        }));
-        purchaseTimingShowRate = { buckets, windowMs };
       }
     }
 
@@ -373,6 +322,7 @@ export async function GET(
       eventDate: event.startTimeDate?.toISOString() ?? null,
       capacity: event.capacity ?? 0,
       reserved: event.reserved ?? 0,
+      releaseDate: event.releaseDate?.toISOString() ?? null,
       doorsOpen: event.doorsOpen?.toISOString() ?? null,
       startTime: event.startTimeDate?.toISOString() ?? null,
       standbyEnabled: event.standbyEnabled ?? false,
@@ -383,13 +333,13 @@ export async function GET(
       byType,
       scanTimestamps,
       ticketTimestamps,
+      scannedPurchaseTimestamps,
       waitlistCount: waitlistResult[0]?.value ?? 0,
       averageArrivalOffsetMs,
       peakInterval,
       scannerLeaderboard,
       earlyBirdFlake,
       referralAttendance,
-      purchaseTimingShowRate,
       arrivalDistribution,
       feedbackStats,
     });

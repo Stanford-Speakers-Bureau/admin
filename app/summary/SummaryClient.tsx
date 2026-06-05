@@ -41,6 +41,7 @@ type SummaryResponse = {
   eventDate: string | null;
   capacity: number;
   reserved: number;
+  releaseDate: string | null;
   doorsOpen: string | null;
   startTime: string | null;
   standbyEnabled: boolean;
@@ -51,6 +52,7 @@ type SummaryResponse = {
   byType: Record<"STANDARD" | "VIP" | "EXTERNAL" | "STANDBY", TypeBreakdown>;
   scanTimestamps: string[];
   ticketTimestamps: string[];
+  scannedPurchaseTimestamps: string[];
   waitlistCount: number;
   averageArrivalOffsetMs: number | null;
   peakInterval: { start: string; end: string; count: number } | null;
@@ -66,15 +68,6 @@ type SummaryResponse = {
     organicShowRate: number;
     referralTotal: number;
     organicTotal: number;
-  } | null;
-  purchaseTimingShowRate: {
-    buckets: {
-      label: string;
-      total: number;
-      scanned: number;
-      showRate: number;
-    }[];
-    windowMs: number;
   } | null;
   arrivalDistribution: {
     buckets: { label: string; count: number }[];
@@ -247,6 +240,11 @@ function SummaryContent({ eventId }: { eventId: string }) {
   >(null);
   const checkinChartRef = useRef<ReactECharts>(null);
   const checkinDebounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const [purchaseZoomRange, setPurchaseZoomRange] = useState<
+    [number, number] | null
+  >(null);
+  const purchaseChartRef = useRef<ReactECharts>(null);
+  const purchaseDebounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   useEffect(() => {
     if (!eventId) return;
@@ -290,6 +288,7 @@ function SummaryContent({ eventId }: { eventId: string }) {
 
   useEffect(() => {
     setCheckinZoomRange(null);
+    setPurchaseZoomRange(null);
   }, [eventId]);
 
   // ── Chart: Sales vs Check-ins overlay ──
@@ -304,6 +303,13 @@ function SummaryContent({ eventId }: { eventId: string }) {
     return data.ticketTimestamps.map((t) => new Date(t).getTime());
   }, [data]);
 
+  const scannedPurchaseEpochs = useMemo(() => {
+    if (!data) return [];
+    return data.scannedPurchaseTimestamps
+      .map((t) => new Date(t).getTime())
+      .sort((a, b) => a - b);
+  }, [data]);
+
   const eventStartMs = useMemo(
     () => toEpoch(data?.startTime),
     [data?.startTime],
@@ -311,6 +317,10 @@ function SummaryContent({ eventId }: { eventId: string }) {
   const doorsOpenMs = useMemo(
     () => toEpoch(data?.doorsOpen),
     [data?.doorsOpen],
+  );
+  const releaseMs = useMemo(
+    () => toEpoch(data?.releaseDate),
+    [data?.releaseDate],
   );
 
   const salesChartData = useMemo(() => {
@@ -779,6 +789,336 @@ function SummaryContent({ eventId }: { eventId: string }) {
     visibleCheckinAverageRate,
   ]);
 
+  // ── Chart: Show-up rate by purchase timing ──
+
+  const purchaseTimingChartData = useMemo(() => {
+    if (ticketEpochs.length === 0) return null;
+    const firstPurchase = ticketEpochs[0];
+    const lastPurchase = ticketEpochs[ticketEpochs.length - 1];
+    // Include the release moment in the range so the "Sales open" marker and
+    // the default zoom anchor are visible even if the first sale came later.
+    const rangeStart = Math.min(firstPurchase, releaseMs ?? firstPurchase);
+    const rangeEnd = Math.max(lastPurchase, rangeStart + MIN);
+    const intervalMs = pickInterval(Math.max(rangeEnd - rangeStart, MIN));
+    const alignedStart = Math.floor(rangeStart / intervalMs) * intervalMs;
+
+    const totalMap = new Map<number, number>();
+    const scanMap = new Map<number, number>();
+    for (const e of ticketEpochs) {
+      const k = Math.floor(e / intervalMs) * intervalMs;
+      totalMap.set(k, (totalMap.get(k) ?? 0) + 1);
+    }
+    for (const e of scannedPurchaseEpochs) {
+      const k = Math.floor(e / intervalMs) * intervalMs;
+      scanMap.set(k, (scanMap.get(k) ?? 0) + 1);
+    }
+
+    const soldBars: [number, number][] = [];
+    // [ts, rate%, scanned, total]
+    const rateLine: [number, number, number, number][] = [];
+    for (let b = alignedStart; b <= rangeEnd; b += intervalMs) {
+      const total = totalMap.get(b) ?? 0;
+      const scanned = scanMap.get(b) ?? 0;
+      soldBars.push([b, total]);
+      if (total > 0) {
+        rateLine.push([b, (scanned / total) * 100, scanned, total]);
+      }
+    }
+
+    return {
+      intervalMs,
+      intervalLabel: intervalLabel(intervalMs),
+      rangeStart,
+      rangeEnd,
+      soldBars,
+      rateLine,
+    };
+  }, [ticketEpochs, scannedPurchaseEpochs, releaseMs]);
+
+  const defaultPurchaseZoomRange = useMemo<[number, number] | null>(() => {
+    if (!purchaseTimingChartData) return null;
+    // Default the visible window to begin at the ticketing date (sales open).
+    const start =
+      releaseMs != null
+        ? Math.min(
+            Math.max(releaseMs, purchaseTimingChartData.rangeStart),
+            purchaseTimingChartData.rangeEnd,
+          )
+        : purchaseTimingChartData.rangeStart;
+    return [start, purchaseTimingChartData.rangeEnd];
+  }, [purchaseTimingChartData, releaseMs]);
+
+  const effectivePurchaseZoomRange =
+    purchaseZoomRange ?? defaultPurchaseZoomRange;
+
+  const onPurchaseDataZoom = useCallback(() => {
+    clearTimeout(purchaseDebounceRef.current);
+    purchaseDebounceRef.current = setTimeout(() => {
+      const instance = purchaseChartRef.current?.getEchartsInstance();
+      const fullRange = purchaseTimingChartData
+        ? [purchaseTimingChartData.rangeStart, purchaseTimingChartData.rangeEnd]
+        : null;
+      if (!instance || !fullRange) return;
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const opt = instance.getOption() as any;
+      const dz = opt.dataZoom?.[0];
+      if (!dz) return;
+
+      if (dz.startValue != null && dz.endValue != null) {
+        setPurchaseZoomRange([dz.startValue, dz.endValue]);
+      } else if (dz.start != null && dz.end != null) {
+        const span = fullRange[1] - fullRange[0];
+        setPurchaseZoomRange([
+          fullRange[0] + (dz.start / 100) * span,
+          fullRange[0] + (dz.end / 100) * span,
+        ]);
+      }
+    }, 120);
+  }, [purchaseTimingChartData]);
+
+  const purchaseOnEvents = useMemo(
+    () => ({ datazoom: onPurchaseDataZoom }),
+    [onPurchaseDataZoom],
+  );
+
+  const purchaseChartOption = useMemo(() => {
+    if (!purchaseTimingChartData) return null;
+
+    const zoomProps = effectivePurchaseZoomRange
+      ? {
+          startValue: effectivePurchaseZoomRange[0],
+          endValue: effectivePurchaseZoomRange[1],
+        }
+      : {};
+
+    const markerLines = [
+      releaseMs != null
+        ? {
+            xAxis: releaseMs,
+            label: {
+              formatter: "Sales open",
+              color: "#e4e4e7",
+              fontSize: 10,
+              position: "insideEndTop",
+            },
+            lineStyle: { color: "#22d3ee", type: "dashed" as const },
+          }
+        : null,
+      releaseMs != null
+        ? {
+            xAxis: releaseMs + DAY,
+            label: {
+              formatter: "+24h",
+              color: "#e4e4e7",
+              fontSize: 10,
+              position: "insideEndBottom",
+            },
+            lineStyle: { color: "#52525b", type: "dashed" as const },
+          }
+        : null,
+      eventStartMs != null
+        ? {
+            xAxis: eventStartMs,
+            label: {
+              formatter: "Event",
+              color: "#e4e4e7",
+              fontSize: 10,
+              position: "insideEndTop",
+            },
+            lineStyle: { color: "#71717a", type: "dashed" as const },
+          }
+        : null,
+    ].filter(
+      (
+        value,
+      ): value is {
+        xAxis: number;
+        label: {
+          formatter: string;
+          color: string;
+          fontSize: number;
+          position: string;
+        };
+        lineStyle: { color: string; type: "dashed" };
+      } => value !== null,
+    );
+
+    return {
+      backgroundColor: "transparent",
+      animation: true,
+      tooltip: {
+        trigger: "axis" as const,
+        backgroundColor: "#18181b",
+        borderColor: "#3f3f46",
+        borderWidth: 1,
+        textStyle: { color: "#fafafa", fontSize: 12 },
+        axisPointer: {
+          type: "cross" as const,
+          crossStyle: { color: "#71717a" },
+        },
+        formatter: (
+          params: { axisValue: number; seriesName: string; value: number[] }[],
+        ) => {
+          if (!params.length) return "";
+          const header = formatTimestamp(
+            new Date(params[0].axisValue).toISOString(),
+          );
+          const rows = params.map((p) => {
+            if (p.seriesName === "Show-up rate") {
+              return `Show-up: <b>${(p.value[1] ?? 0).toFixed(0)}%</b> (${p.value[2] ?? 0}/${p.value[3] ?? 0})`;
+            }
+            return `Sold: <b>${p.value[1] ?? 0}</b>`;
+          });
+          return `<b>${header}</b><br/>${rows.join("<br/>")}`;
+        },
+      },
+      legend: {
+        data: [
+          "Show-up rate",
+          `Sold per ${purchaseTimingChartData.intervalLabel}`,
+        ],
+        textStyle: { color: "#a1a1aa", fontSize: 12 },
+        top: 0,
+        left: "center",
+        itemGap: 20,
+        icon: "roundRect",
+        itemWidth: 14,
+        itemHeight: 8,
+      },
+      grid: { top: 40, right: 56, bottom: 80, left: 56, containLabel: false },
+      xAxis: {
+        type: "time" as const,
+        axisLabel: { color: "#71717a", fontSize: 10, hideOverlap: true },
+        axisLine: { show: false },
+        axisTick: { show: false },
+        splitLine: { show: false },
+      },
+      yAxis: [
+        {
+          type: "value" as const,
+          name: "Show-up %",
+          min: 0,
+          max: 100,
+          nameTextStyle: {
+            color: "#71717a",
+            fontSize: 10,
+            padding: [0, 0, 0, -24],
+          },
+          axisLabel: {
+            color: "#71717a",
+            fontSize: 10,
+            formatter: "{value}%",
+          },
+          axisLine: { show: false },
+          axisTick: { show: false },
+          splitLine: {
+            lineStyle: { color: "#27272a", type: "dashed" as const },
+          },
+        },
+        {
+          type: "value" as const,
+          name: `Sold per ${purchaseTimingChartData.intervalLabel}`,
+          nameTextStyle: {
+            color: "#71717a",
+            fontSize: 10,
+            padding: [0, -24, 0, 0],
+          },
+          axisLabel: { color: "#71717a", fontSize: 10 },
+          axisLine: { show: false },
+          axisTick: { show: false },
+          splitLine: { show: false },
+          minInterval: 1,
+        },
+      ],
+      dataZoom: [
+        {
+          type: "inside" as const,
+          xAxisIndex: 0,
+          filterMode: "none" as const,
+          zoomOnMouseWheel: true,
+          moveOnMouseMove: true,
+          ...zoomProps,
+        },
+        {
+          type: "slider" as const,
+          xAxisIndex: 0,
+          filterMode: "none" as const,
+          height: 24,
+          bottom: 8,
+          borderColor: "#3f3f46",
+          backgroundColor: "#18181b",
+          fillerColor: "rgba(16,185,129,0.15)",
+          handleStyle: { color: "#10b981", borderColor: "#10b981" },
+          dataBackground: {
+            lineStyle: { color: "#3f3f46" },
+            areaStyle: { color: "#27272a" },
+          },
+          selectedDataBackground: {
+            lineStyle: { color: "#10b981" },
+            areaStyle: { color: "rgba(16,185,129,0.15)" },
+          },
+          textStyle: { color: "#71717a", fontSize: 10 },
+          moveHandleStyle: { color: "#3f3f46" },
+          ...zoomProps,
+        },
+      ],
+      series: [
+        {
+          name: `Sold per ${purchaseTimingChartData.intervalLabel}`,
+          type: "bar" as const,
+          yAxisIndex: 1,
+          data: purchaseTimingChartData.soldBars,
+          itemStyle: {
+            color: "rgba(59,130,246,0.28)",
+            borderRadius: [3, 3, 0, 0],
+          },
+          emphasis: { itemStyle: { color: "#60a5fa" } },
+          barMaxWidth: 28,
+          z: 1,
+        },
+        {
+          name: "Show-up rate",
+          type: "line" as const,
+          yAxisIndex: 0,
+          data: purchaseTimingChartData.rateLine,
+          smooth: true,
+          showSymbol: true,
+          symbolSize: 5,
+          connectNulls: true,
+          lineStyle: { width: 2, color: "#10b981" },
+          itemStyle: { color: "#10b981" },
+          areaStyle: {
+            color: {
+              type: "linear" as const,
+              x: 0,
+              y: 0,
+              x2: 0,
+              y2: 1,
+              colorStops: [
+                { offset: 0, color: "rgba(16,185,129,0.15)" },
+                { offset: 1, color: "rgba(16,185,129,0)" },
+              ],
+            },
+          },
+          markLine:
+            markerLines.length > 0
+              ? {
+                  symbol: "none",
+                  data: markerLines,
+                }
+              : undefined,
+          z: 2,
+        },
+      ],
+    };
+  }, [
+    purchaseTimingChartData,
+    effectivePurchaseZoomRange,
+    releaseMs,
+    eventStartMs,
+  ]);
+
   // ── Loading / Error states ──
 
   if (isLoading) {
@@ -828,7 +1168,6 @@ function SummaryContent({ eventId }: { eventId: string }) {
     scannerLeaderboard,
     earlyBirdFlake,
     referralAttendance,
-    purchaseTimingShowRate,
     arrivalDistribution,
     feedbackStats,
   } = data;
@@ -1198,116 +1537,24 @@ function SummaryContent({ eventId }: { eventId: string }) {
       )}
 
       {/* ── Show-up rate by purchase timing ── */}
-      {purchaseTimingShowRate &&
-        purchaseTimingShowRate.buckets.some((b) => b.total > 0) && (
-          <Card className="p-5">
-            <h3 className="text-sm font-semibold text-zinc-300 mb-1">
-              Show-up rate by purchase timing
-            </h3>
-            <p className="text-[10px] text-zinc-600 mb-4">
-              Attendance broken down by how long after sales opened each buyer
-              grabbed their ticket. Earlier buckets are closer to launch.
-            </p>
-            <ReactECharts
-              option={{
-                backgroundColor: "transparent",
-                animation: true,
-                animationDuration: 600,
-                animationEasing: "cubicOut",
-                grid: {
-                  top: 16,
-                  right: 16,
-                  bottom: 24,
-                  left: 16,
-                  containLabel: true,
-                },
-                xAxis: {
-                  type: "category",
-                  data: purchaseTimingShowRate.buckets.map((b) => b.label),
-                  axisLabel: { color: "#a1a1aa", fontSize: 11 },
-                  axisLine: { show: false },
-                  axisTick: { show: false },
-                },
-                yAxis: {
-                  type: "value",
-                  min: 0,
-                  max: 100,
-                  axisLabel: {
-                    color: "#71717a",
-                    fontSize: 10,
-                    formatter: "{value}%",
-                  },
-                  axisLine: { show: false },
-                  axisTick: { show: false },
-                  splitLine: {
-                    lineStyle: { color: "#27272a", type: "dashed" },
-                  },
-                },
-                tooltip: {
-                  trigger: "axis",
-                  backgroundColor: "#18181b",
-                  borderColor: "#3f3f46",
-                  borderWidth: 1,
-                  textStyle: { color: "#fafafa", fontSize: 12 },
-                  formatter: (params: { dataIndex: number }[]) => {
-                    const b =
-                      purchaseTimingShowRate.buckets[params[0].dataIndex];
-                    return `<b>${b.label} after launch</b><br/>${b.showRate.toFixed(0)}% showed up<br/>${b.scanned} / ${b.total} tickets`;
-                  },
-                },
-                series: [
-                  {
-                    type: "bar",
-                    barWidth: "60%",
-                    data: purchaseTimingShowRate.buckets.map((b) => {
-                      const color =
-                        b.total === 0
-                          ? "#3f3f46"
-                          : b.showRate >= 75
-                            ? "#10b981"
-                            : b.showRate >= 50
-                              ? "#3b82f6"
-                              : "#f59e0b";
-                      return {
-                        value: b.total === 0 ? 0 : b.showRate,
-                        itemStyle: {
-                          color: {
-                            type: "linear",
-                            x: 0,
-                            y: 0,
-                            x2: 0,
-                            y2: 1,
-                            colorStops: [
-                              { offset: 0, color },
-                              { offset: 1, color: color + "33" },
-                            ],
-                          },
-                          borderRadius: [8, 8, 0, 0],
-                        },
-                      };
-                    }),
-                    label: {
-                      show: true,
-                      position: "top",
-                      color: "#a1a1aa",
-                      fontSize: 11,
-                      fontWeight: "bold",
-                      formatter: (p: { dataIndex: number }) => {
-                        const b =
-                          purchaseTimingShowRate.buckets[p.dataIndex];
-                        return b.total === 0
-                          ? "—"
-                          : `${b.showRate.toFixed(0)}%`;
-                      },
-                    },
-                  },
-                ],
-              }}
-              style={{ height: 220 }}
-              opts={{ renderer: "canvas" }}
-            />
-          </Card>
-        )}
+      {purchaseChartOption && (
+        <Card className="p-5">
+          <h3 className="text-sm font-semibold text-zinc-300 mb-1">
+            Show-up rate by purchase timing
+          </h3>
+          <p className="text-[10px] text-zinc-600 mb-3">
+            Attendance rate grouped by when each buyer purchased. The window
+            defaults to sales open — scroll to zoom and drag to pan.
+          </p>
+          <ReactECharts
+            ref={purchaseChartRef}
+            option={purchaseChartOption}
+            style={{ height: 350 }}
+            opts={{ renderer: "canvas" }}
+            onEvents={purchaseOnEvents}
+          />
+        </Card>
+      )}
 
       {/* ── Insights row ── */}
       <div
