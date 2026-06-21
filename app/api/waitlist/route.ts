@@ -452,7 +452,10 @@ async function handleSendStandbyEmails(body: SendStandbyBody) {
     }),
   );
 
-  const sent = outcomes.filter((o) => o.category === "sent").length;
+  const sentEmails = outcomes
+    .filter((o) => o.category === "sent")
+    .map((o) => o.email);
+  const sent = sentEmails.length;
   const skippedHasTicket = outcomes.filter(
     (o) => o.category === "skippedHasTicket",
   ).length;
@@ -482,6 +485,7 @@ async function handleSendStandbyEmails(body: SendStandbyBody) {
       suppressed,
       total: entries.length,
       ...(auditBatchId ? { batchId: auditBatchId } : {}),
+      recipients: sentEmails,
     },
   });
 

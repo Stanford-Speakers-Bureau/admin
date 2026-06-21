@@ -114,11 +114,13 @@ export async function POST(req: Request) {
 
     let sent = 0;
     let failed = 0;
+    const sentEmails: string[] = [];
     const failures: Array<{ email: string; error: unknown }> = [];
     for (let i = 0; i < results.length; i++) {
       const result = results[i];
       if (result.status === "fulfilled") {
         sent++;
+        sentEmails.push(sendable[i]);
       } else {
         failed++;
         failures.push({ email: sendable[i], error: result.reason });
@@ -152,6 +154,7 @@ export async function POST(req: Request) {
         suppressed: suppressed.length,
         total: sent + failed + optedOut.length + suppressed.length,
         batchId,
+        recipients: sentEmails,
       },
     });
 

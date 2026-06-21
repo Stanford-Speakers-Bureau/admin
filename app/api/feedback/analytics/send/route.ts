@@ -202,9 +202,12 @@ export async function POST(req: Request) {
 
     let sent = 0;
     let failed = 0;
-    for (const result of results) {
+    const sentEmails: string[] = [];
+    for (let i = 0; i < results.length; i++) {
+      const result = results[i];
       if (result.status === "fulfilled") {
         sent += 1;
+        sentEmails.push(normalizeEmail(ticketsToEmail[i].email));
       } else {
         failed += 1;
         console.error("Feedback prompt send failed:", result.reason);
@@ -222,6 +225,7 @@ export async function POST(req: Request) {
         sent,
         failed,
         skipped,
+        recipients: sentEmails,
       },
     });
 

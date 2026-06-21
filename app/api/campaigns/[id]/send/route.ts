@@ -470,11 +470,13 @@ export async function POST(req: Request, { params }: Params) {
 
     let sent = 0;
     let failed = 0;
+    const sentEmails: string[] = [];
     const failures: Array<{ email: string; error: unknown }> = [];
     for (let i = 0; i < results.length; i++) {
       const result = results[i];
       if (result.status === "fulfilled") {
         sent++;
+        sentEmails.push(sendableEmails[i]);
       } else {
         failed++;
         failures.push({ email: sendableEmails[i], error: result.reason });
@@ -545,8 +547,9 @@ export async function POST(req: Request, { params }: Params) {
         footerType,
         filterMode,
         batchId: normalizedAuditBatchId,
-        chunkIndex,
-        chunkCount,
+        // The actual recipients delivered in this chunk. The audit view merges
+        // these across a batch's chunks into one recipient list.
+        recipients: sentEmails,
       },
     });
 

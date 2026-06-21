@@ -351,6 +351,12 @@ const METADATA_RENDERED_SEPARATELY = new Set([
   "initial",
   "changes",
   "changedFields",
+  // Recipient roster is rendered as its own list; chunk counters are internal
+  // plumbing we no longer surface.
+  "recipients",
+  "recipientCount",
+  "chunkIndex",
+  "chunkCount",
 ]);
 
 function getMetadataEntries(
@@ -469,7 +475,6 @@ function getDetailsSummary(log: AuditLogItem): string {
     );
     const skippedOptedOut = getMetadataNumber(log.metadata, "skippedOptedOut");
     const suppressed = getMetadataNumber(log.metadata, "suppressed");
-    const chunkCount = isAuditLogGroup(log) ? log.group_count : 1;
     const segments = [`${label}`, `${sent.toLocaleString()} sent`];
 
     if (failed > 0) {
@@ -490,9 +495,6 @@ function getDetailsSummary(log: AuditLogItem): string {
     // broken-out categories.
     if (skippedHasTicket === 0 && skippedOptedOut === 0 && skipped > 0) {
       segments.push(`${skipped.toLocaleString()} skipped`);
-    }
-    if (isAuditLogGroup(log)) {
-      segments.push(`${chunkCount.toLocaleString()} chunks`);
     }
 
     return segments.join(" • ");
@@ -682,6 +684,83 @@ function FailedRecipients({ failures }: { failures: AuditLogEntry[] }) {
           type="button"
           onClick={() => setShowAll(false)}
           className="mt-3 text-xs font-medium text-rose-300 underline-offset-2 hover:underline"
+        >
+          Show fewer
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+function getMetadataRecipients(
+  metadata: Record<string, unknown> | null,
+): string[] {
+  const value = metadata?.recipients;
+  if (!Array.isArray(value)) return [];
+  return value.filter(
+    (email): email is string => typeof email === "string" && email.length > 0,
+  );
+}
+
+function SentRecipients({ recipients }: { recipients: string[] }) {
+  const [showAll, setShowAll] = useState(false);
+  const visible = showAll ? recipients : recipients.slice(0, 25);
+
+  const downloadCsv = () => {
+    const csv = "email\n" + recipients.map((email) => `"${email}"`).join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `recipients-${recipients.length}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <div className="rounded-2xl bg-emerald-950/20 p-4 ring-1 ring-inset ring-emerald-500/30">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <div>
+          <p className="text-sm font-semibold text-emerald-200">
+            Recipients ({recipients.length.toLocaleString()})
+          </p>
+          <p className="text-xs text-emerald-300/70">
+            Everyone this email was successfully delivered to.
+          </p>
+        </div>
+        <Button
+          variant="secondary"
+          onClick={downloadCsv}
+          className="px-3 py-1.5 text-xs"
+        >
+          Download CSV
+        </Button>
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {visible.map((email) => (
+          <span
+            key={email}
+            className="rounded-md bg-emerald-500/10 px-2 py-0.5 text-xs text-emerald-100 ring-1 ring-inset ring-emerald-500/20 break-all"
+          >
+            {email}
+          </span>
+        ))}
+      </div>
+      {recipients.length > visible.length ? (
+        <button
+          type="button"
+          onClick={() => setShowAll(true)}
+          className="mt-3 text-xs font-medium text-emerald-300 underline-offset-2 hover:underline"
+        >
+          Show all {recipients.length.toLocaleString()} recipients
+        </button>
+      ) : showAll && recipients.length > 25 ? (
+        <button
+          type="button"
+          onClick={() => setShowAll(false)}
+          className="mt-3 text-xs font-medium text-emerald-300 underline-offset-2 hover:underline"
         >
           Show fewer
         </button>
@@ -908,6 +987,7 @@ function ExpandedDetails({ log }: { log: AuditLogItem }) {
   const suppressed = getMetadataNumber(log.metadata, "suppressed");
   const hasBrokenOutSkips = skippedHasTicket > 0 || skippedOptedOut > 0;
   const totalRecipients = getMetadataNumber(log.metadata, "total");
+  const recipients = getMetadataRecipients(log.metadata);
 
   return isAuditLogGroup(log) ? (
     <div className="space-y-4">
@@ -973,14 +1053,6 @@ function ExpandedDetails({ log }: { log: AuditLogItem }) {
             {totalRecipients.toLocaleString()}
           </p>
         </div>
-        <div className="rounded-lg border border-white/10 bg-zinc-900/60 p-3">
-          <p className="text-[11px] font-semibold tracking-wide text-zinc-500">
-            Chunks
-          </p>
-          <p className="mt-1 text-lg font-semibold tabular-nums text-white">
-            {log.group_count.toLocaleString()}
-          </p>
-        </div>
       </div>
 
       <div className="rounded-2xl border border-white/10 bg-zinc-950/60 p-4">
@@ -993,33 +1065,13 @@ function ExpandedDetails({ log }: { log: AuditLogItem }) {
         <MetadataDetails metadata={log.metadata} />
       </div>
 
+      {recipients.length > 0 ? (
+        <SentRecipients recipients={recipients} />
+      ) : null}
+
       {log.failures && log.failures.length > 0 ? (
         <FailedRecipients failures={log.failures} />
       ) : null}
-
-      <div className="space-y-3">
-        {log.entries.map((entry, index) => (
-          <div
-            key={entry.id}
-            className="rounded-2xl border border-white/10 bg-zinc-950/60 p-4"
-          >
-            <div className="mb-3 flex items-start justify-between gap-3">
-              <div>
-                <p className="text-sm font-medium text-white">
-                  Chunk {index + 1} of {log.entries.length}
-                </p>
-                <p className="text-xs text-zinc-500">
-                  {formatTimestamp(entry.created_at)}
-                </p>
-              </div>
-              <p className="text-xs text-zinc-500">
-                {getDetailsSummary(entry)}
-              </p>
-            </div>
-            <MetadataDetails metadata={entry.metadata} />
-          </div>
-        ))}
-      </div>
     </div>
   ) : (
     <div className="rounded-2xl border border-white/10 bg-zinc-950/60 p-4">
@@ -1037,6 +1089,11 @@ function ExpandedDetails({ log }: { log: AuditLogItem }) {
         </StatusPill>
       </div>
       <MetadataDetails metadata={log.metadata} />
+      {recipients.length > 0 ? (
+        <div className="mt-4">
+          <SentRecipients recipients={recipients} />
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -1457,12 +1514,19 @@ export default function AuditLogClient() {
                           {ACTION_LABELS[log.action] || log.action}
                         </span>
                         {isAuditLogGroup(log) ? (
-                          <span
-                            className="ml-2 text-[11px] tabular-nums text-zinc-500"
-                            title={`Grouped from ${log.group_count.toLocaleString()} chunks`}
-                          >
-                            ×{log.group_count.toLocaleString()}
-                          </span>
+                          (() => {
+                            const recipientCount =
+                              getMetadataRecipients(log.metadata).length ||
+                              getMetadataNumber(log.metadata, "sent");
+                            return recipientCount > 0 ? (
+                              <span
+                                className="ml-2 text-[11px] tabular-nums text-zinc-500"
+                                title={`${recipientCount.toLocaleString()} recipients`}
+                              >
+                                {recipientCount.toLocaleString()} recipients
+                              </span>
+                            ) : null;
+                          })()
                         ) : null}
                       </TD>
                       <TD

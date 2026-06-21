@@ -155,15 +155,28 @@ function getMetadataNumber(
   return 0;
 }
 
+function getMetadataRecipients(
+  metadata: Record<string, unknown> | null,
+): string[] {
+  const value = metadata?.recipients;
+  if (!Array.isArray(value)) return [];
+  return value.filter((email): email is string => typeof email === "string");
+}
+
 function summarizeMassEmailMetadata(
   batchId: string,
   entries: AuditLogEntry[],
 ): Record<string, unknown> | null {
+  // Merge each chunk's recipient list into one deduped roster for the batch.
+  const recipients = Array.from(
+    new Set(entries.flatMap((entry) => getMetadataRecipients(entry.metadata))),
+  );
   const primaryMetadata = entries.find((entry) => entry.metadata)?.metadata ?? null;
   if (!primaryMetadata) {
     return {
       batchId,
-      chunkCount: entries.length,
+      recipients,
+      recipientCount: recipients.length,
     };
   }
 
@@ -206,7 +219,8 @@ function summarizeMassEmailMetadata(
     skippedOptedOut,
     suppressed,
     total: explicitTotal > 0 ? explicitTotal : sent + failed + skipped + suppressed,
-    chunkCount: entries.length,
+    recipients,
+    recipientCount: recipients.length,
   };
 }
 

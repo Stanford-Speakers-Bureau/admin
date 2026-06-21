@@ -371,6 +371,7 @@ async function sendReminderBatch(options: {
   let sent = 0;
   let failed = 0;
   const errors: string[] = [];
+  const sentEmails: string[] = [];
   const failures: Array<{ email: string; error: unknown }> = [];
 
   for (const result of results) {
@@ -378,6 +379,7 @@ async function sendReminderBatch(options: {
       const emailResult = result.value;
       if (emailResult.success) {
         sent++;
+        sentEmails.push(emailResult.email);
       } else {
         failed++;
         const errorMessage = emailResult.error instanceof Error
@@ -400,7 +402,7 @@ async function sendReminderBatch(options: {
     }
   }
 
-  return { sent, failed, errors, failures };
+  return { sent, failed, errors, failures, sentEmails };
 }
 
 export async function GET(req: Request) {
@@ -1327,7 +1329,7 @@ export async function PATCH(req: Request) {
         (t) => !dayOfSuppressedSet.has(t.email.trim().toLowerCase()),
       );
 
-      const { sent, failed, errors, failures } = await sendReminderBatch({
+      const { sent, failed, errors, failures, sentEmails } = await sendReminderBatch({
         recipients: dayOfRecipients,
         batchSize: hasTicketIdFilter
           ? normalizedTicketIds.length
@@ -1375,6 +1377,7 @@ export async function PATCH(req: Request) {
           suppressed: dayOfSuppressed.suppressed.length,
           total: eventTickets.length,
           ...(normalizedAuditBatchId ? { batchId: normalizedAuditBatchId } : {}),
+          recipients: sentEmails,
         },
       });
 
@@ -1542,7 +1545,7 @@ export async function PATCH(req: Request) {
         (t) => !earlySuppressedSet.has(t.email.trim().toLowerCase()),
       );
 
-      const { sent, failed, errors, failures } = await sendReminderBatch({
+      const { sent, failed, errors, failures, sentEmails } = await sendReminderBatch({
         recipients: earlyRecipients,
         batchSize: hasTicketIdFilter
           ? normalizedTicketIds.length
@@ -1591,6 +1594,7 @@ export async function PATCH(req: Request) {
           suppressed: earlySuppressed.suppressed.length,
           total: eventTickets.length,
           ...(normalizedAuditBatchId ? { batchId: normalizedAuditBatchId } : {}),
+          recipients: sentEmails,
         },
       });
 

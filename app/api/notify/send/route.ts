@@ -208,10 +208,12 @@ export async function POST(req: Request) {
 
     let sent = 0;
     let failed = 0;
+    const sentEmails: string[] = [];
     for (const result of results) {
       if (result.status === "fulfilled") {
         if (result.value.success) {
           sent++;
+          sentEmails.push(result.value.email);
         } else {
           failed++;
           console.error(`Failed to send notify email to ${result.value.email}:`, result.value.error);
@@ -226,7 +228,7 @@ export async function POST(req: Request) {
       actor: auth.email!,
       eventId: eventId,
       eventName: event.name ?? null,
-      metadata: { type: "notifySend", variant, sent, failed, skipped },
+      metadata: { type: "notifySend", variant, sent, failed, skipped, recipients: sentEmails },
     });
 
     return NextResponse.json({ sent, failed, skipped });
