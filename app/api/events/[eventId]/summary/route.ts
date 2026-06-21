@@ -3,6 +3,7 @@ import { requirePermission } from "@/app/lib/permissions";
 import { isValidUUID } from "@/app/lib/validation";
 import {
   and,
+  canceledTickets,
   count,
   db,
   desc,
@@ -33,7 +34,7 @@ export async function GET(
       return NextResponse.json({ error: auth.error }, { status: 401 });
     }
 
-    const [event, ticketResults, waitlistResult, feedbackAggregateRows, recentFeedbackComments] = await Promise.all([
+    const [event, ticketResults, canceledTicketResults, waitlistResult, feedbackAggregateRows, recentFeedbackComments] = await Promise.all([
       db.query.events.findFirst({
         where: eq(events.id, eventId),
         columns: {
@@ -60,6 +61,14 @@ export async function GET(
           referral: true,
         },
         orderBy: (t, { asc }) => [asc(t.createdAt)],
+      }),
+      db.query.canceledTickets.findMany({
+        where: eq(canceledTickets.eventId, eventId),
+        columns: {
+          createdAt: true,
+          canceledAt: true,
+        },
+        orderBy: (c, { asc }) => [asc(c.createdAt)],
       }),
       db
         .select({ value: count() })
@@ -151,6 +160,19 @@ export async function GET(
     // chart show-up rate as a function of when the ticket was bought.
     const scannedPurchaseTimestamps = scannedTickets.map((t) =>
       t.createdAt.toISOString(),
+    );
+
+    // Canceled tickets, kept in a separate archive (the live row is hard-deleted
+    // on cancel). `purchase` is the original buy time — the same x-axis the
+    // purchase-timing chart buckets by — so the client can fold cancellations
+    // into the show-up-rate denominator. `canceledAt` lets it optionally treat a
+    // cancellation "as of" a chosen time (e.g. launch day), since people often
+    // don't cancel until weeks later. Parallel arrays, same order.
+    const canceledPurchaseTimestamps = canceledTicketResults.map((c) =>
+      c.createdAt.toISOString(),
+    );
+    const canceledAtTimestamps = canceledTicketResults.map((c) =>
+      c.canceledAt.toISOString(),
     );
 
     // Compute average arrival offset from doors open
@@ -339,6 +361,8 @@ export async function GET(
       scanTimestamps,
       ticketTimestamps,
       scannedPurchaseTimestamps,
+      canceledPurchaseTimestamps,
+      canceledAtTimestamps,
       waitlistCount: waitlistResult[0]?.value ?? 0,
       averageArrivalOffsetMs,
       peakInterval,

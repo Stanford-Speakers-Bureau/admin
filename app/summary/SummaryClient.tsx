@@ -53,6 +53,12 @@ type SummaryResponse = {
   scanTimestamps: string[];
   ticketTimestamps: string[];
   scannedPurchaseTimestamps: string[];
+  // Canceled tickets are hard-deleted from `tickets`, so these come from the
+  // canceled_tickets archive. `purchase` = original buy time (chart x-axis),
+  // `canceledAt` = when it was canceled. Parallel arrays, same order. Optional so
+  // an older API response (mid-deploy) degrades to the pre-cancellation chart.
+  canceledPurchaseTimestamps?: string[];
+  canceledAtTimestamps?: string[];
   waitlistCount: number;
   averageArrivalOffsetMs: number | null;
   peakInterval: { start: string; end: string; count: number } | null;
@@ -243,6 +249,17 @@ function SummaryContent({ eventId }: { eventId: string }) {
   const [purchaseZoomRange, setPurchaseZoomRange] = useState<
     [number, number] | null
   >(null);
+  // How the purchase-timing chart treats canceled tickets:
+  //   separate  — count them in the denominator, plot canceled % and no-show %
+  //               as their own lines (default).
+  //   as-noshow — count them in the denominator, fold them into one combined
+  //               "no-show + canceled" line. This is the accurate launch-day
+  //               read: "of everyone who bought at time T, what % showed up",
+  //               since late cancellations are still no-shows.
+  //   exclude   — drop them entirely (the original, live-tickets-only chart).
+  const [canceledMode, setCanceledMode] = useState<
+    "separate" | "as-noshow" | "exclude"
+  >("separate");
   const purchaseChartRef = useRef<ReactECharts>(null);
   const purchaseDebounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
@@ -306,6 +323,14 @@ function SummaryContent({ eventId }: { eventId: string }) {
   const scannedPurchaseEpochs = useMemo(() => {
     if (!data) return [];
     return data.scannedPurchaseTimestamps
+      .map((t) => new Date(t).getTime())
+      .sort((a, b) => a - b);
+  }, [data]);
+
+  // Purchase times of canceled tickets (from the canceled_tickets archive).
+  const canceledPurchaseEpochs = useMemo(() => {
+    if (!data?.canceledPurchaseTimestamps) return [];
+    return data.canceledPurchaseTimestamps
       .map((t) => new Date(t).getTime())
       .sort((a, b) => a - b);
   }, [data]);
@@ -798,14 +823,25 @@ function SummaryContent({ eventId }: { eventId: string }) {
     rangeEnd: number;
   } | null>(() => {
     if (ticketEpochs.length === 0) return null;
-    const firstPurchase = ticketEpochs[0];
-    const lastPurchase = ticketEpochs[ticketEpochs.length - 1];
+    // Canceled purchases can fall before the first / after the last live sale,
+    // so fold them into the extent or their buckets would render off-axis.
+    const firstCanceled = canceledPurchaseEpochs[0];
+    const lastCanceled =
+      canceledPurchaseEpochs[canceledPurchaseEpochs.length - 1];
+    const firstPurchase = Math.min(
+      ticketEpochs[0],
+      firstCanceled ?? ticketEpochs[0],
+    );
+    const lastPurchase = Math.max(
+      ticketEpochs[ticketEpochs.length - 1],
+      lastCanceled ?? ticketEpochs[ticketEpochs.length - 1],
+    );
     // Include sales-open in the extent so its marker and the default zoom
     // anchor are visible even if the first sale came later.
     const rangeStart = Math.min(firstPurchase, salesOpenMs ?? firstPurchase);
     const rangeEnd = Math.max(lastPurchase, rangeStart + MIN);
     return { rangeStart, rangeEnd };
-  }, [ticketEpochs, salesOpenMs]);
+  }, [ticketEpochs, canceledPurchaseEpochs, salesOpenMs]);
 
   const defaultPurchaseZoomRange = useMemo<[number, number] | null>(() => {
     if (!purchaseRange) return null;
@@ -844,26 +880,51 @@ function SummaryContent({ eventId }: { eventId: string }) {
     const winEnd = Math.min(rangeEnd, visEnd + visibleSpan);
     const alignedStart = Math.floor(winStart / intervalMs) * intervalMs;
 
-    const totalMap = new Map<number, number>();
+    const liveMap = new Map<number, number>();
     const scanMap = new Map<number, number>();
+    const canceledMap = new Map<number, number>();
     for (const e of ticketEpochs) {
       const k = Math.floor(e / intervalMs) * intervalMs;
-      totalMap.set(k, (totalMap.get(k) ?? 0) + 1);
+      liveMap.set(k, (liveMap.get(k) ?? 0) + 1);
     }
     for (const e of scannedPurchaseEpochs) {
       const k = Math.floor(e / intervalMs) * intervalMs;
       scanMap.set(k, (scanMap.get(k) ?? 0) + 1);
     }
+    // In "exclude" mode canceled tickets don't exist as far as the chart is
+    // concerned, so skip them entirely (denominator stays live-only).
+    if (canceledMode !== "exclude") {
+      for (const e of canceledPurchaseEpochs) {
+        const k = Math.floor(e / intervalMs) * intervalMs;
+        canceledMap.set(k, (canceledMap.get(k) ?? 0) + 1);
+      }
+    }
 
+    // Bars show how many tickets were *bought* in each bucket — the same
+    // population the rate is a fraction of (so live-only in "exclude", else
+    // live + canceled).
     const soldBars: [number, number][] = [];
-    // [ts, rate%, scanned, total]
-    const rateLine: [number, number, number, number][] = [];
+    // Each line point is [ts, pct, count, denom] so the tooltip can show n/total.
+    const rateLine: [number, number, number, number][] = []; // show-up
+    const canceledLine: [number, number, number, number][] = []; // separate mode
+    const noShowLine: [number, number, number, number][] = []; // separate mode
+    const missLine: [number, number, number, number][] = []; // as-noshow mode
     for (let b = alignedStart; b <= winEnd; b += intervalMs) {
-      const total = totalMap.get(b) ?? 0;
+      const live = liveMap.get(b) ?? 0;
       const scanned = scanMap.get(b) ?? 0;
-      soldBars.push([b, total]);
-      if (total > 0) {
-        rateLine.push([b, (scanned / total) * 100, scanned, total]);
+      const canceled = canceledMap.get(b) ?? 0;
+      const denom = live + canceled;
+      soldBars.push([b, denom]);
+      if (denom > 0) {
+        const liveNoShow = Math.max(live - scanned, 0);
+        rateLine.push([b, (scanned / denom) * 100, scanned, denom]);
+        if (canceledMode === "separate") {
+          canceledLine.push([b, (canceled / denom) * 100, canceled, denom]);
+          noShowLine.push([b, (liveNoShow / denom) * 100, liveNoShow, denom]);
+        } else if (canceledMode === "as-noshow") {
+          const miss = liveNoShow + canceled;
+          missLine.push([b, (miss / denom) * 100, miss, denom]);
+        }
       }
     }
 
@@ -872,14 +933,20 @@ function SummaryContent({ eventId }: { eventId: string }) {
       intervalLabel: intervalLabel(intervalMs),
       rangeStart,
       rangeEnd,
+      mode: canceledMode,
       soldBars,
       rateLine,
+      canceledLine: canceledMode === "separate" ? canceledLine : null,
+      noShowLine: canceledMode === "separate" ? noShowLine : null,
+      missLine: canceledMode === "as-noshow" ? missLine : null,
     };
   }, [
     purchaseRange,
     effectivePurchaseZoomRange,
     ticketEpochs,
     scannedPurchaseEpochs,
+    canceledPurchaseEpochs,
+    canceledMode,
   ]);
 
   const onPurchaseDataZoom = useCallback(() => {
@@ -925,6 +992,59 @@ function SummaryContent({ eventId }: { eventId: string }) {
 
   const purchaseChartOption = useMemo(() => {
     if (!purchaseTimingChartData) return null;
+
+    const soldName = `Sold per ${purchaseTimingChartData.intervalLabel}`;
+
+    // A plain percent line (no area / markers) for the canceled / no-show series.
+    const lineSeries = (
+      name: string,
+      color: string,
+      lineData: [number, number, number, number][],
+    ) => ({
+      name,
+      type: "line" as const,
+      yAxisIndex: 0,
+      data: lineData,
+      smooth: true,
+      showSymbol: true,
+      symbolSize: 5,
+      connectNulls: true,
+      lineStyle: { width: 2, color },
+      itemStyle: { color },
+      z: 3,
+    });
+
+    const extraLineSeries = [
+      ...(purchaseTimingChartData.canceledLine
+        ? [
+            lineSeries(
+              "Canceled rate",
+              "#f59e0b",
+              purchaseTimingChartData.canceledLine,
+            ),
+            lineSeries(
+              "No-show rate",
+              "#f43f5e",
+              purchaseTimingChartData.noShowLine ?? [],
+            ),
+          ]
+        : []),
+      ...(purchaseTimingChartData.missLine
+        ? [
+            lineSeries(
+              "No-show + canceled",
+              "#f43f5e",
+              purchaseTimingChartData.missLine,
+            ),
+          ]
+        : []),
+    ];
+
+    const legendData = [
+      "Show-up rate",
+      ...extraLineSeries.map((s) => s.name),
+      soldName,
+    ];
 
     const zoomProps = effectivePurchaseZoomRange
       ? {
@@ -1006,19 +1126,17 @@ function SummaryContent({ eventId }: { eventId: string }) {
             new Date(params[0].axisValue).toISOString(),
           );
           const rows = params.map((p) => {
-            if (p.seriesName === "Show-up rate") {
-              return `Show-up: <b>${(p.value[1] ?? 0).toFixed(0)}%</b> (${p.value[2] ?? 0}/${p.value[3] ?? 0})`;
+            if (p.seriesName === soldName) {
+              return `Sold: <b>${p.value[1] ?? 0}</b>`;
             }
-            return `Sold: <b>${p.value[1] ?? 0}</b>`;
+            // Every rate line carries [ts, pct, count, denom].
+            return `${p.seriesName}: <b>${(p.value[1] ?? 0).toFixed(0)}%</b> (${p.value[2] ?? 0}/${p.value[3] ?? 0})`;
           });
           return `<b>${header}</b><br/>${rows.join("<br/>")}`;
         },
       },
       legend: {
-        data: [
-          "Show-up rate",
-          `Sold per ${purchaseTimingChartData.intervalLabel}`,
-        ],
+        data: legendData,
         textStyle: { color: "#a1a1aa", fontSize: 12 },
         top: 0,
         left: "center",
@@ -1155,6 +1273,7 @@ function SummaryContent({ eventId }: { eventId: string }) {
               : undefined,
           z: 2,
         },
+        ...extraLineSeries,
       ],
     };
   }, [
@@ -1584,12 +1703,43 @@ function SummaryContent({ eventId }: { eventId: string }) {
       {/* ── Show-up rate by purchase timing ── */}
       {purchaseChartOption && (
         <Card className="p-5">
-          <h3 className="text-sm font-semibold text-zinc-300 mb-1">
-            Show-up rate by purchase timing
-          </h3>
+          <div className="flex items-start justify-between gap-3 mb-1">
+            <h3 className="text-sm font-semibold text-zinc-300">
+              Show-up rate by purchase timing
+            </h3>
+            {canceledPurchaseEpochs.length > 0 && (
+              <div className="inline-flex shrink-0 rounded-lg border border-zinc-800 bg-zinc-900/60 p-0.5">
+                {(
+                  [
+                    ["separate", "Separate"],
+                    ["as-noshow", "As no-shows"],
+                    ["exclude", "Exclude"],
+                  ] as const
+                ).map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setCanceledMode(value)}
+                    className={`rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                      canceledMode === value
+                        ? "bg-zinc-700 text-zinc-100"
+                        : "text-zinc-500 hover:text-zinc-300"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
           <p className="text-[10px] text-zinc-600 mb-3">
-            Attendance rate grouped by when each buyer purchased. The window
-            defaults to sales open — scroll to zoom and drag to pan.
+            {canceledPurchaseEpochs.length === 0
+              ? "Attendance rate grouped by when each buyer purchased. The window defaults to sales open — scroll to zoom and drag to pan."
+              : canceledMode === "separate"
+                ? "Grouped by purchase time; canceled tickets are in the denominator, with canceled % and no-show % plotted apart."
+                : canceledMode === "as-noshow"
+                  ? "Grouped by purchase time; cancellations folded into no-shows — the true “what % actually showed up” read, since people often cancel weeks later."
+                  : "Grouped by purchase time; canceled tickets excluded entirely (live tickets only — the original view)."}
           </p>
           <ReactECharts
             ref={purchaseChartRef}
