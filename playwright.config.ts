@@ -3,6 +3,12 @@ import { defineConfig, devices } from "@playwright/test";
 import {
   LOCAL_TEST_DATABASE_URL,
   TEST_SESSION_SECRET,
+  TEST_SUPABASE_URL,
+  TEST_SUPABASE_KEY,
+  TEST_APPLE_WALLET_SECRET,
+  TEST_SAML_SP_ENTITY_ID,
+  TEST_SAML_SP_PRIVATE_KEY,
+  TEST_SAML_SP_PUBLIC_CERT,
 } from "./tests/helpers/env";
 
 process.env.DATABASE_URL = LOCAL_TEST_DATABASE_URL;
@@ -46,6 +52,12 @@ export default defineConfig({
       AWS_REGION: "us-west-2",
       NEXT_PUBLIC_BASE_URL: "http://localhost:3101",
       NEXT_PUBLIC_ROOT_URL: "http://localhost:3101",
+      SUPABASE_URL: TEST_SUPABASE_URL,
+      SUPABASE_KEY: TEST_SUPABASE_KEY,
+      APPLE_WALLET_SECRET: TEST_APPLE_WALLET_SECRET,
+      SAML_SP_ENTITY_ID: TEST_SAML_SP_ENTITY_ID,
+      SP_PRIVATE_KEY: TEST_SAML_SP_PRIVATE_KEY,
+      SP_PUBLIC_CERT: TEST_SAML_SP_PUBLIC_CERT,
     },
   },
   projects: [
