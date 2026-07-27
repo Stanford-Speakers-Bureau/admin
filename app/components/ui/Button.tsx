@@ -4,7 +4,7 @@ export type ButtonVariant = "primary" | "secondary" | "ghost";
 
 const VARIANTS: Record<ButtonVariant, string> = {
   primary:
-    "rounded-lg bg-rose-500 px-3 py-2 text-sm font-semibold text-white hover:bg-rose-400 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose-500 disabled:opacity-50",
+    "rounded-lg bg-rose-700 px-3 py-2 text-sm font-semibold text-white hover:bg-rose-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose-500 disabled:opacity-50",
   secondary:
     "rounded-lg bg-white/5 px-3 py-2 text-sm font-medium text-zinc-200 ring-1 ring-inset ring-white/10 hover:bg-white/10",
   ghost:

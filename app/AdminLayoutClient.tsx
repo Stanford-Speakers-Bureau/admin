@@ -280,6 +280,7 @@ export default function AdminLayoutClient({
               Event
             </label>
             <select
+              aria-label="Selected event"
               value={displayedEventId}
               onChange={(e) => handleEventChange(e.target.value)}
               className="w-full px-3 py-2 bg-white/5 rounded-lg text-white text-sm ring-1 ring-inset ring-white/10 focus:outline-none focus:ring-rose-500/50"
@@ -304,6 +305,7 @@ export default function AdminLayoutClient({
                   Event
                 </p>
                 <select
+                  aria-label="Selected event"
                   value={displayedEventId}
                   onChange={(e) => handleEventChange(e.target.value)}
                   className="w-full px-2 py-1.5 bg-white/5 ring-1 ring-inset ring-white/10 rounded text-white text-sm focus:outline-none"
@@ -339,6 +341,7 @@ export default function AdminLayoutClient({
         <div className="flex items-center gap-2 px-3 py-2">
           <CalendarIcon className="size-4 shrink-0 text-zinc-500" aria-hidden="true" />
           <select
+            aria-label="Selected event"
             value={displayedEventId}
             onChange={(e) => handleEventChange(e.target.value)}
             className="flex-1 min-w-0 bg-white/5 ring-1 ring-inset ring-white/10 rounded-md px-2 py-1.5 text-white text-sm focus:outline-none focus:ring-rose-500/50 truncate"
@@ -390,7 +393,7 @@ export default function AdminLayoutClient({
       {/* Global Live Event Indicator */}
       {hasLiveEvent && (
         <div className="fixed top-12 md:top-0 left-0 right-0 md:left-16 lg:left-64 z-[100] flex justify-center pointer-events-none">
-          <div className="bg-red-500 px-4 py-1 rounded-b-md flex items-center gap-2">
+          <div className="bg-red-700 px-4 py-1 rounded-b-md flex items-center gap-2">
             <SignalIcon className="size-4 shrink-0 text-white" aria-hidden="true" />
             <p className="text-white text-sm font-bold">EVENT LIVE</p>
           </div>
