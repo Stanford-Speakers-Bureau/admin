@@ -12,6 +12,12 @@ import {
 } from "@/app/lib/utils";
 import ReactECharts from "echarts-for-react";
 import { Card, EmptyState, PageHeader } from "@/app/components/ui";
+import {
+  buildDefaultPurchaseZoomRange,
+  buildPurchaseRange,
+  buildPurchaseTimingChartData,
+  type CanceledTicketMode,
+} from "./purchase-timing";
 
 // ── Types ────────────────────────────────────────────────────────────────
 
@@ -257,9 +263,8 @@ function SummaryContent({ eventId }: { eventId: string }) {
   //               read: "of everyone who bought at time T, what % showed up",
   //               since late cancellations are still no-shows.
   //   exclude   — drop them entirely (the original, live-tickets-only chart).
-  const [canceledMode, setCanceledMode] = useState<
-    "separate" | "as-noshow" | "exclude"
-  >("separate");
+  const [canceledMode, setCanceledMode] =
+    useState<CanceledTicketMode>("separate");
   const purchaseChartRef = useRef<ReactECharts>(null);
   const purchaseDebounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
@@ -816,138 +821,43 @@ function SummaryContent({ eventId }: { eventId: string }) {
 
   // ── Chart: Show-up rate by purchase timing ──
 
-  // Full data extent — independent of zoom, so the default-zoom anchor and the
-  // bucketing memo below don't form a dependency cycle.
-  const purchaseRange = useMemo<{
-    rangeStart: number;
-    rangeEnd: number;
-  } | null>(() => {
-    if (ticketEpochs.length === 0) return null;
-    // Canceled purchases can fall before the first / after the last live sale,
-    // so fold them into the extent or their buckets would render off-axis.
-    const firstCanceled = canceledPurchaseEpochs[0];
-    const lastCanceled =
-      canceledPurchaseEpochs[canceledPurchaseEpochs.length - 1];
-    const firstPurchase = Math.min(
-      ticketEpochs[0],
-      firstCanceled ?? ticketEpochs[0],
-    );
-    const lastPurchase = Math.max(
-      ticketEpochs[ticketEpochs.length - 1],
-      lastCanceled ?? ticketEpochs[ticketEpochs.length - 1],
-    );
-    // Include sales-open in the extent so its marker and the default zoom
-    // anchor are visible even if the first sale came later.
-    const rangeStart = Math.min(firstPurchase, salesOpenMs ?? firstPurchase);
-    const rangeEnd = Math.max(lastPurchase, rangeStart + MIN);
-    return { rangeStart, rangeEnd };
-  }, [ticketEpochs, canceledPurchaseEpochs, salesOpenMs]);
+  const purchaseRange = useMemo(
+    () =>
+      buildPurchaseRange({
+        ticketEpochs,
+        canceledPurchaseEpochs,
+        salesOpenMs,
+      }),
+    [ticketEpochs, canceledPurchaseEpochs, salesOpenMs],
+  );
 
-  const defaultPurchaseZoomRange = useMemo<[number, number] | null>(() => {
-    if (!purchaseRange) return null;
-    // Default the visible window to begin at the ticketing date (sales open).
-    const start =
-      salesOpenMs != null
-        ? Math.min(
-            Math.max(salesOpenMs, purchaseRange.rangeStart),
-            purchaseRange.rangeEnd,
-          )
-        : purchaseRange.rangeStart;
-    return [start, purchaseRange.rangeEnd];
-  }, [purchaseRange, salesOpenMs]);
+  const defaultPurchaseZoomRange = useMemo(
+    () => buildDefaultPurchaseZoomRange({ purchaseRange, salesOpenMs }),
+    [purchaseRange, salesOpenMs],
+  );
 
   const effectivePurchaseZoomRange =
     purchaseZoomRange ?? defaultPurchaseZoomRange;
 
-  // Bucket size follows the *visible* span, so zooming in refines buckets down
-  // to 15/5/1-min while the bars/line still span the full range for panning.
-  const purchaseTimingChartData = useMemo(() => {
-    if (!purchaseRange) return null;
-    const { rangeStart, rangeEnd } = purchaseRange;
-    const visStart = effectivePurchaseZoomRange
-      ? effectivePurchaseZoomRange[0]
-      : rangeStart;
-    const visEnd = effectivePurchaseZoomRange
-      ? effectivePurchaseZoomRange[1]
-      : rangeEnd;
-    const visibleSpan = Math.max(visEnd - visStart, MIN);
-    const intervalMs = pickInterval(visibleSpan);
-    // Bucket only a padded window around the visible range. This keeps the
-    // interval fine (down to 1 min) when zoomed in without producing buckets
-    // across an entire weeks-long sales window; the pad lets small pans stay
-    // smooth before the next zoom event re-buckets.
-    const winStart = Math.max(rangeStart, visStart - visibleSpan);
-    const winEnd = Math.min(rangeEnd, visEnd + visibleSpan);
-    const alignedStart = Math.floor(winStart / intervalMs) * intervalMs;
-
-    const liveMap = new Map<number, number>();
-    const scanMap = new Map<number, number>();
-    const canceledMap = new Map<number, number>();
-    for (const e of ticketEpochs) {
-      const k = Math.floor(e / intervalMs) * intervalMs;
-      liveMap.set(k, (liveMap.get(k) ?? 0) + 1);
-    }
-    for (const e of scannedPurchaseEpochs) {
-      const k = Math.floor(e / intervalMs) * intervalMs;
-      scanMap.set(k, (scanMap.get(k) ?? 0) + 1);
-    }
-    // In "exclude" mode canceled tickets don't exist as far as the chart is
-    // concerned, so skip them entirely (denominator stays live-only).
-    if (canceledMode !== "exclude") {
-      for (const e of canceledPurchaseEpochs) {
-        const k = Math.floor(e / intervalMs) * intervalMs;
-        canceledMap.set(k, (canceledMap.get(k) ?? 0) + 1);
-      }
-    }
-
-    // Bars show how many tickets were *bought* in each bucket — the same
-    // population the rate is a fraction of (so live-only in "exclude", else
-    // live + canceled).
-    const soldBars: [number, number][] = [];
-    // Each line point is [ts, pct, count, denom] so the tooltip can show n/total.
-    const rateLine: [number, number, number, number][] = []; // show-up
-    const canceledLine: [number, number, number, number][] = []; // separate mode
-    const noShowLine: [number, number, number, number][] = []; // separate mode
-    const missLine: [number, number, number, number][] = []; // as-noshow mode
-    for (let b = alignedStart; b <= winEnd; b += intervalMs) {
-      const live = liveMap.get(b) ?? 0;
-      const scanned = scanMap.get(b) ?? 0;
-      const canceled = canceledMap.get(b) ?? 0;
-      const denom = live + canceled;
-      soldBars.push([b, denom]);
-      if (denom > 0) {
-        const liveNoShow = Math.max(live - scanned, 0);
-        rateLine.push([b, (scanned / denom) * 100, scanned, denom]);
-        if (canceledMode === "separate") {
-          canceledLine.push([b, (canceled / denom) * 100, canceled, denom]);
-          noShowLine.push([b, (liveNoShow / denom) * 100, liveNoShow, denom]);
-        } else if (canceledMode === "as-noshow") {
-          const miss = liveNoShow + canceled;
-          missLine.push([b, (miss / denom) * 100, miss, denom]);
-        }
-      }
-    }
-
-    return {
-      intervalMs,
-      intervalLabel: intervalLabel(intervalMs),
-      rangeStart,
-      rangeEnd,
-      mode: canceledMode,
-      soldBars,
-      rateLine,
-      canceledLine: canceledMode === "separate" ? canceledLine : null,
-      noShowLine: canceledMode === "separate" ? noShowLine : null,
-      missLine: canceledMode === "as-noshow" ? missLine : null,
-    };
-  }, [
-    purchaseRange,
-    effectivePurchaseZoomRange,
-    ticketEpochs,
-    scannedPurchaseEpochs,
-    canceledPurchaseEpochs,
-    canceledMode,
-  ]);
+  const purchaseTimingChartData = useMemo(
+    () =>
+      buildPurchaseTimingChartData({
+        purchaseRange,
+        effectivePurchaseZoomRange,
+        ticketEpochs,
+        scannedPurchaseEpochs,
+        canceledPurchaseEpochs,
+        canceledMode,
+      }),
+    [
+      purchaseRange,
+      effectivePurchaseZoomRange,
+      ticketEpochs,
+      scannedPurchaseEpochs,
+      canceledPurchaseEpochs,
+      canceledMode,
+    ],
+  );
 
   const onPurchaseDataZoom = useCallback(() => {
     clearTimeout(purchaseDebounceRef.current);
@@ -1300,7 +1210,10 @@ function SummaryContent({ eventId }: { eventId: string }) {
     return (
       <div className="flex-1 flex items-center justify-center py-20">
         <div className="text-center">
-          <InformationCircleIcon className="size-4 shrink-0 text-rose-400 mx-auto mb-2 w-10 h-10" aria-hidden="true" />
+          <InformationCircleIcon
+            className="size-4 shrink-0 text-rose-400 mx-auto mb-2 w-10 h-10"
+            aria-hidden="true"
+          />
           <p className="text-rose-400 text-sm">{error}</p>
         </div>
       </div>
@@ -1311,7 +1224,10 @@ function SummaryContent({ eventId }: { eventId: string }) {
     return (
       <div className="flex-1 flex items-center justify-center py-20">
         <div className="text-center">
-          <CheckCircleIcon className="size-4 shrink-0 text-zinc-600 mx-auto mb-2 w-10 h-10" aria-hidden="true" />
+          <CheckCircleIcon
+            className="size-4 shrink-0 text-zinc-600 mx-auto mb-2 w-10 h-10"
+            aria-hidden="true"
+          />
           <p className="text-zinc-400 text-sm">No ticket data for this event</p>
         </div>
       </div>
