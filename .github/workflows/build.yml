@@ -16,6 +16,8 @@ jobs:
   ci:
     name: CI
     runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
     steps:
       - uses: actions/checkout@v4
@@ -44,7 +46,12 @@ jobs:
       - name: Tests
         run: bun test
 
+      - name: Skip build when DATABASE_URL is not configured
+        if: env.DATABASE_URL == ''
+        run: echo "Skipping build because DATABASE_URL is required by prerendered data routes."
+
       - name: Build
+        if: env.DATABASE_URL != ''
         run: bun run build
 
   integration:
