@@ -219,7 +219,6 @@ bun test                    # unit + email snapshots; integration self-skips
 bun run test:integration    # real Postgres and RBAC contracts
 bun run test:e2e            # Chromium smoke tests on :3101
 bun run test:a11y           # axe WCAG A/AA checks
-bun run test:visual         # committed screenshot comparisons
 ```
 
 The test preload and Playwright server use deterministic fake credentials and
