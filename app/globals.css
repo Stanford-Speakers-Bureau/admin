@@ -27,6 +27,15 @@ body {
   font-family: var(--font-inter), sans-serif;
 }
 
+/* Zinc 500/600 are below WCAG AA for normal-size text on the dashboard's
+   zinc-900 surfaces. Keep decorative SVGs muted while lifting readable text. */
+@layer utilities {
+  :where(p, span, label, dt, dd, div).text-zinc-500,
+  :where(p, span, label, dt, dd, div).text-zinc-600 {
+    color: var(--color-zinc-400);
+  }
+}
+
 /* Hide scrollbar for mobile nav */
 .scrollbar-hide {
   -ms-overflow-style: none;

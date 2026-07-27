@@ -114,22 +114,22 @@ function EventFacts({
   return (
     <>
       <div>
-        <dt className="text-xs uppercase tracking-wide text-zinc-500">When</dt>
-        <dd className="mt-1 text-white">
+        <p className="text-xs uppercase tracking-wide text-zinc-500">When</p>
+        <p className="mt-1 text-white">
           {e.startTimeDate
             ? `${dateFmt.format(e.startTimeDate)}, ${timeFmt.format(e.startTimeDate)}`
             : "Not scheduled"}
-        </dd>
+        </p>
         {e.doorsOpen && (
-          <dd className="text-sm text-zinc-500">
+          <p className="text-sm text-zinc-500">
             Doors {timeFmt.format(e.doorsOpen)}
-          </dd>
+          </p>
         )}
       </div>
 
       <div>
-        <dt className="text-xs uppercase tracking-wide text-zinc-500">Where</dt>
-        <dd className="mt-1 text-white">
+        <p className="text-xs uppercase tracking-wide text-zinc-500">Where</p>
+        <p className="mt-1 text-white">
           {e.venueLink && e.venue ? (
             <a
               href={e.venueLink}
@@ -142,17 +142,17 @@ function EventFacts({
           ) : (
             (e.venue ?? "TBD")
           )}
-        </dd>
+        </p>
       </div>
 
       {caps.ticketsOrAudience && (
         <div>
-          <dt className="text-xs uppercase tracking-wide text-zinc-500">
+          <p className="text-xs uppercase tracking-wide text-zinc-500">
             Tickets
-          </dt>
-          <dd className="mt-1 text-white tabular-nums">
+          </p>
+          <p className="mt-1 text-white tabular-nums">
             {sold.toLocaleString()} / {e.capacity.toLocaleString()}
-          </dd>
+          </p>
           <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-zinc-800">
             <div
               className="h-full rounded-full bg-emerald-500 w-(--fill)"
@@ -160,21 +160,21 @@ function EventFacts({
             />
           </div>
           {e.standbyEnabled && (
-            <dd className="mt-1 text-sm text-zinc-500 tabular-nums">
+            <p className="mt-1 text-sm text-zinc-500 tabular-nums">
               {e.standbyTicketsSold.toLocaleString()} standby
-            </dd>
+            </p>
           )}
         </div>
       )}
 
       {caps.scan && (
         <div>
-          <dt className="text-xs uppercase tracking-wide text-zinc-500">
+          <p className="text-xs uppercase tracking-wide text-zinc-500">
             Checked in
-          </dt>
-          <dd className="mt-1 text-white tabular-nums">
+          </p>
+          <p className="mt-1 text-white tabular-nums">
             {e.scanned.toLocaleString()} / {sold.toLocaleString()}
-          </dd>
+          </p>
         </div>
       )}
     </>
@@ -427,14 +427,14 @@ export default async function AdminDashboard() {
               {upcoming.tagline && (
                 <p className="mt-1 text-zinc-400">{upcoming.tagline}</p>
               )}
-              <dl className="mt-6 grid grid-cols-2 gap-4">
+              <div className="mt-6 grid grid-cols-2 gap-4">
                 <EventFacts
                   e={upcoming}
                   sold={sold}
                   fillPct={fillPct}
                   caps={caps}
                 />
-              </dl>
+              </div>
               <div className="mt-6 flex flex-wrap gap-2">
                 <EventActions e={upcoming} caps={caps} />
               </div>
@@ -479,10 +479,7 @@ export default async function AdminDashboard() {
               <p className="mb-3 truncate text-sm text-zinc-400">
                 Quick actions
               </p>
-              <div
-                role="list"
-                className="grid grid-cols-1 gap-2 sm:grid-cols-2"
-              >
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 {quickActions.map((action) => (
                   <Link
                     key={action.title}
