@@ -210,6 +210,22 @@ bulk sends are issued synchronously from API routes (see `app/lib/bulkSend.ts`).
 
 ## Scripts
 
+### Testing
+
+```bash
+supabase db start
+supabase db reset
+bun test                    # unit + email snapshots; integration self-skips
+bun run test:integration    # real Postgres and RBAC contracts
+bun run test:e2e            # Chromium smoke tests on :3101
+bun run test:a11y           # axe WCAG A/AA checks
+bun run test:visual         # committed screenshot comparisons
+```
+
+The test preload and Playwright server use deterministic fake credentials and
+the local Supabase URL. Database factories reject non-local hosts unless an
+explicit `I_KNOW_THIS_DB=<host>` override is supplied.
+
 ```bash
 bun dev              # next dev on :3001
 bun run build        # next build (TypeScript / lint check)

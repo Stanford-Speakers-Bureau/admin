@@ -14,7 +14,16 @@
     "seed": "bun run seed.ts",
     "u": "bunx npm-check-updates -u && bun install",
     "lint": "eslint",
-    "prettier": "prettier --write ."
+    "prettier": "prettier --write .",
+    "test": "bun test",
+    "test:unit": "bun test app packages",
+    "test:integration": "TEST_INTEGRATION=1 DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres bun test tests/integration",
+    "test:e2e": "bunx playwright test --project=chromium",
+    "test:a11y": "bunx playwright test --project=a11y",
+    "test:visual": "VISUAL=1 bunx playwright test --project=visual",
+    "test:visual:update": "bun tools/update-visual-baselines.ts",
+    "test:e2e:ui": "bunx playwright test --ui",
+    "test:all": "bun run test && bun run test:integration && bun run test:e2e"
   },
   "dependencies": {
     "@aws-sdk/client-sesv2": "^3.953.0",
@@ -41,10 +50,13 @@
     "wrangler": "^4.55.0"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.10.2",
+    "@playwright/test": "^1.55.1",
     "@snaplet/copycat": "^6.0.0",
     "@snaplet/seed": "^0.98.0",
     "@tailwindcss/postcss": "^4",
     "@tailwindcss/typography": "^0.5.19",
+    "@types/bun": "^1.3.14",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
