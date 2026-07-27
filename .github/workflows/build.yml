@@ -117,12 +117,7 @@ jobs:
       - name: Browser tests
         run: bunx playwright test --project=chromium --workers=1
 
-      # a11y asserts the accessible dashboard theme (lifted text contrast, html
-      # lang, select aria-labels). Until that fix lands on the default branch it
-      # intentionally fails on the current markup, so it runs for visibility but
-      # does not block. Remove continue-on-error once the fix lands.
       - name: Accessibility tests
-        continue-on-error: true
         run: bunx playwright test --project=a11y --workers=1
 
       - name: Upload browser test report
