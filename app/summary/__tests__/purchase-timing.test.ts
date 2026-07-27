@@ -148,7 +148,7 @@ describe("buildPurchaseTimingChartData", () => {
     expect(data?.missLine).toBeNull();
   });
 
-  test("composition accumulates later buyers into the running split", () => {
+  test("each bucket reflects only the tickets bought during that interval", () => {
     const data = buildPurchaseTimingChartData({
       purchaseRange: { rangeStart: T0, rangeEnd: T0 + 20 * DAY },
       effectivePurchaseZoomRange: [T0, T0 + 20 * DAY],
@@ -160,21 +160,22 @@ describe("buildPurchaseTimingChartData", () => {
     });
 
     expect(data?.intervalMs).toBe(DAY);
-    // Day 0: only the early buyer exists so far, and they never scanned in.
+    // Day 0 bucket: only the early buyer, who never checked in — 100% no-show.
     expect(pointFor(data?.rateLine ?? [], T0)).toEqual([T0, 0, 0, 1]);
     expect(pointFor(data?.noShowLine ?? [], T0)).toEqual([T0, 100, 1, 1]);
-    // By day 10 the reliable late buyer is folded in: the running split is 50/50.
+    // Day 10 bucket: only the later buyer, who checked in — 100% show-up. Each
+    // bucket stands alone; day 0's flaker does not bleed into day 10.
     expect(pointFor(data?.rateLine ?? [], T0 + 10 * DAY)).toEqual([
       T0 + 10 * DAY,
-      50,
+      100,
       1,
-      2,
+      1,
     ]);
     expect(pointFor(data?.noShowLine ?? [], T0 + 10 * DAY)).toEqual([
       T0 + 10 * DAY,
-      50,
+      0,
+      0,
       1,
-      2,
     ]);
   });
 

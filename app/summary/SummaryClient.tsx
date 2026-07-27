@@ -1639,12 +1639,12 @@ function SummaryContent({ eventId }: { eventId: string }) {
           </div>
           <p className="text-[10px] text-zinc-600 mb-3">
             {canceledPurchaseEpochs.length === 0
-              ? "Running composition of sales by purchase time: of everyone who'd bought by each point, the share who showed up vs no-showed. Left edge = launch-window buyers, right edge = the final split. Scroll to zoom, drag to pan."
+              ? "Of the tickets bought in each interval, the share who showed up vs no-showed. Zoom in for finer intervals; the window defaults to sales open — scroll to zoom, drag to pan."
               : canceledMode === "separate"
-                ? "Running composition of all sales up to each purchase time — showed up vs no-showed vs canceled, stacked to 100%. Left edge shows how launch-window buyers turned out; right edge is the event’s final split."
+                ? "Of the tickets bought in each interval, the share who showed up vs no-showed vs canceled — stacked to 100%. Compare the launch window against later buyers."
                 : canceledMode === "as-noshow"
-                  ? "Running composition up to each purchase time — showed up vs missed (no-show + canceled), stacked to 100%. The honest “what % actually showed up”, since people often cancel weeks later."
-                  : "Running composition up to each purchase time with canceled tickets excluded — showed up vs no-showed among live tickets only."}
+                  ? "Of the tickets bought in each interval, the share who showed up vs missed (no-show + canceled), stacked to 100%. The honest “what % actually showed up”, since people often cancel weeks later."
+                  : "Of the tickets bought in each interval, showed up vs no-showed among live tickets only (canceled excluded)."}
           </p>
           <ReactECharts
             ref={purchaseChartRef}
