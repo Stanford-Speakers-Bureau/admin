@@ -6,6 +6,8 @@ import {
 } from "../purchase-timing";
 
 const MIN = 60_000;
+const HOUR = 60 * MIN;
+const DAY = 24 * HOUR;
 const T0 = Date.parse("2026-01-01T00:00:00.000Z");
 const ONE_OF_THREE_PERCENT = (1 / 3) * 100;
 const TWO_OF_THREE_PERCENT = (2 / 3) * 100;
@@ -140,9 +142,40 @@ describe("buildPurchaseTimingChartData", () => {
 
     expect(barFor(data?.soldBars ?? [], T0)).toEqual([T0, 2]);
     expect(pointFor(data?.rateLine ?? [], T0)).toEqual([T0, 50, 1, 2]);
+    // Two bands (show-up + no-show) over the live-only denominator, no canceled.
+    expect(pointFor(data?.noShowLine ?? [], T0)).toEqual([T0, 50, 1, 2]);
     expect(data?.canceledLine).toBeNull();
-    expect(data?.noShowLine).toBeNull();
     expect(data?.missLine).toBeNull();
+  });
+
+  test("composition accumulates later buyers into the running split", () => {
+    const data = buildPurchaseTimingChartData({
+      purchaseRange: { rangeStart: T0, rangeEnd: T0 + 20 * DAY },
+      effectivePurchaseZoomRange: [T0, T0 + 20 * DAY],
+      // One early buyer who flakes, one later buyer (day 10) who shows up.
+      ticketEpochs: [T0 + HOUR, T0 + 10 * DAY + HOUR],
+      scannedPurchaseEpochs: [T0 + 10 * DAY + HOUR],
+      canceledPurchaseEpochs: [],
+      canceledMode: "separate",
+    });
+
+    expect(data?.intervalMs).toBe(DAY);
+    // Day 0: only the early buyer exists so far, and they never scanned in.
+    expect(pointFor(data?.rateLine ?? [], T0)).toEqual([T0, 0, 0, 1]);
+    expect(pointFor(data?.noShowLine ?? [], T0)).toEqual([T0, 100, 1, 1]);
+    // By day 10 the reliable late buyer is folded in: the running split is 50/50.
+    expect(pointFor(data?.rateLine ?? [], T0 + 10 * DAY)).toEqual([
+      T0 + 10 * DAY,
+      50,
+      1,
+      2,
+    ]);
+    expect(pointFor(data?.noShowLine ?? [], T0 + 10 * DAY)).toEqual([
+      T0 + 10 * DAY,
+      50,
+      1,
+      2,
+    ]);
   });
 
   test("caps live no-show counts at zero when scans exceed live purchases", () => {

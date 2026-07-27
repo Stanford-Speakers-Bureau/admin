@@ -120,50 +120,80 @@ export function buildPurchaseTimingChartData(input: {
   const winEnd = Math.min(rangeEnd, visEnd + visibleSpan);
   const alignedStart = Math.floor(winStart / intervalMs) * intervalMs;
 
-  const liveMap = new Map<number, number>();
-  const scanMap = new Map<number, number>();
-  const canceledMap = new Map<number, number>();
-  for (const e of sortEpochs(input.ticketEpochs)) {
-    const k = Math.floor(e / intervalMs) * intervalMs;
-    liveMap.set(k, (liveMap.get(k) ?? 0) + 1);
-  }
-  for (const e of sortEpochs(input.scannedPurchaseEpochs)) {
-    const k = Math.floor(e / intervalMs) * intervalMs;
-    scanMap.set(k, (scanMap.get(k) ?? 0) + 1);
-  }
+  const liveEpochs = sortEpochs(input.ticketEpochs);
+  const scannedEpochs = sortEpochs(input.scannedPurchaseEpochs);
   // In "exclude" mode canceled tickets don't exist as far as the chart is
-  // concerned, so skip them entirely (denominator stays live-only).
-  if (canceledMode !== "exclude") {
-    for (const e of sortEpochs(input.canceledPurchaseEpochs)) {
-      const k = Math.floor(e / intervalMs) * intervalMs;
-      canceledMap.set(k, (canceledMap.get(k) ?? 0) + 1);
-    }
+  // concerned, so drop them from the population entirely.
+  const canceledEpochs =
+    canceledMode === "exclude" ? [] : sortEpochs(input.canceledPurchaseEpochs);
+
+  // Bars show how many tickets were *bought* in each bucket (marginal volume):
+  // live-only in "exclude" mode, live + canceled otherwise. This is the only
+  // per-bucket quantity — it gives the eye a sense of where the sales actually
+  // happened behind the composition bands.
+  const soldMap = new Map<number, number>();
+  for (const e of liveEpochs) {
+    const k = Math.floor(e / intervalMs) * intervalMs;
+    soldMap.set(k, (soldMap.get(k) ?? 0) + 1);
+  }
+  for (const e of canceledEpochs) {
+    const k = Math.floor(e / intervalMs) * intervalMs;
+    soldMap.set(k, (soldMap.get(k) ?? 0) + 1);
   }
 
-  // Bars show how many tickets were *bought* in each bucket: live-only in
-  // "exclude" mode, live + canceled otherwise.
   const soldBars: [number, number][] = [];
   // Each line point is [ts, pct, count, denom] so the tooltip can show n/total.
-  const rateLine: RatePoint[] = []; // show-up
-  const canceledLine: RatePoint[] = []; // separate mode
-  const noShowLine: RatePoint[] = []; // separate mode
-  const missLine: RatePoint[] = []; // as-noshow mode
+  // The composition is CUMULATIVE: at each bucket it reflects every ticket
+  // bought up to that point, not just the ones in that bucket. A per-bucket
+  // rate is pure noise once buckets get small — a bucket holding one ticket is
+  // always 0% or 100% — so the raw view zig-zags between the extremes and says
+  // nothing. The running total is smooth, reads as a distribution, and its
+  // right edge is the event's final show-up / no-show / cancel split. The left
+  // edge answers the actual question: how launch-window buyers turned out.
+  const rateLine: RatePoint[] = []; // show-up (bottom band)
+  const noShowLine: RatePoint[] = []; // no-show band (separate + exclude)
+  const canceledLine: RatePoint[] = []; // canceled band (separate)
+  const missLine: RatePoint[] = []; // no-show + canceled (as-noshow)
+
+  let liveSeen = 0;
+  let scannedSeen = 0;
+  let canceledSeen = 0;
   for (let b = alignedStart; b <= winEnd; b += intervalMs) {
-    const live = liveMap.get(b) ?? 0;
-    const scanned = scanMap.get(b) ?? 0;
-    const canceled = canceledMap.get(b) ?? 0;
-    const denom = live + canceled;
-    soldBars.push([b, denom]);
-    if (denom > 0) {
-      const liveNoShow = Math.max(live - scanned, 0);
-      rateLine.push([b, (scanned / denom) * 100, scanned, denom]);
-      if (canceledMode === "separate") {
-        canceledLine.push([b, (canceled / denom) * 100, canceled, denom]);
-        noShowLine.push([b, (liveNoShow / denom) * 100, liveNoShow, denom]);
-      } else if (canceledMode === "as-noshow") {
-        const miss = liveNoShow + canceled;
-        missLine.push([b, (miss / denom) * 100, miss, denom]);
-      }
+    // Everything bought through the end of this bucket. Epochs are sorted, so a
+    // single forward pointer per series keeps the whole loop O(n).
+    const cutoff = b + intervalMs;
+    while (liveSeen < liveEpochs.length && liveEpochs[liveSeen] < cutoff)
+      liveSeen++;
+    while (
+      scannedSeen < scannedEpochs.length &&
+      scannedEpochs[scannedSeen] < cutoff
+    )
+      scannedSeen++;
+    while (
+      canceledSeen < canceledEpochs.length &&
+      canceledEpochs[canceledSeen] < cutoff
+    )
+      canceledSeen++;
+
+    soldBars.push([b, soldMap.get(b) ?? 0]);
+
+    // Denominator: live + canceled (canceledSeen is 0 in "exclude" mode).
+    const denom = liveSeen + canceledSeen;
+    if (denom === 0) continue;
+
+    // Scanned tickets are always a subset of live ones, so no-show can't go
+    // negative; the guard only matters for degenerate synthetic inputs.
+    const noShow = Math.max(liveSeen - scannedSeen, 0);
+    rateLine.push([b, (scannedSeen / denom) * 100, scannedSeen, denom]);
+    if (canceledMode === "as-noshow") {
+      const miss = noShow + canceledSeen;
+      missLine.push([b, (miss / denom) * 100, miss, denom]);
+    } else if (canceledMode === "separate") {
+      noShowLine.push([b, (noShow / denom) * 100, noShow, denom]);
+      canceledLine.push([b, (canceledSeen / denom) * 100, canceledSeen, denom]);
+    } else {
+      // exclude: denom is live-only, two bands (show-up + no-show).
+      noShowLine.push([b, (noShow / denom) * 100, noShow, denom]);
     }
   }
 
@@ -176,7 +206,7 @@ export function buildPurchaseTimingChartData(input: {
     soldBars,
     rateLine,
     canceledLine: canceledMode === "separate" ? canceledLine : null,
-    noShowLine: canceledMode === "separate" ? noShowLine : null,
+    noShowLine: canceledMode === "as-noshow" ? null : noShowLine,
     missLine: canceledMode === "as-noshow" ? missLine : null,
   };
 }

@@ -819,7 +819,7 @@ function SummaryContent({ eventId }: { eventId: string }) {
     visibleCheckinAverageRate,
   ]);
 
-  // ── Chart: Show-up rate by purchase timing ──
+  // ── Chart: Sales outcome by purchase timing ──
 
   const purchaseRange = useMemo(
     () =>
@@ -905,57 +905,6 @@ function SummaryContent({ eventId }: { eventId: string }) {
 
     const soldName = `Sold per ${purchaseTimingChartData.intervalLabel}`;
 
-    // A plain percent line (no area / markers) for the canceled / no-show series.
-    const lineSeries = (
-      name: string,
-      color: string,
-      lineData: [number, number, number, number][],
-    ) => ({
-      name,
-      type: "line" as const,
-      yAxisIndex: 0,
-      data: lineData,
-      smooth: true,
-      showSymbol: true,
-      symbolSize: 5,
-      connectNulls: true,
-      lineStyle: { width: 2, color },
-      itemStyle: { color },
-      z: 3,
-    });
-
-    const extraLineSeries = [
-      ...(purchaseTimingChartData.canceledLine
-        ? [
-            lineSeries(
-              "Canceled rate",
-              "#f59e0b",
-              purchaseTimingChartData.canceledLine,
-            ),
-            lineSeries(
-              "No-show rate",
-              "#f43f5e",
-              purchaseTimingChartData.noShowLine ?? [],
-            ),
-          ]
-        : []),
-      ...(purchaseTimingChartData.missLine
-        ? [
-            lineSeries(
-              "No-show + canceled",
-              "#f43f5e",
-              purchaseTimingChartData.missLine,
-            ),
-          ]
-        : []),
-    ];
-
-    const legendData = [
-      "Show-up rate",
-      ...extraLineSeries.map((s) => s.name),
-      soldName,
-    ];
-
     const zoomProps = effectivePurchaseZoomRange
       ? {
           startValue: effectivePurchaseZoomRange[0],
@@ -1015,6 +964,79 @@ function SummaryContent({ eventId }: { eventId: string }) {
       } => value !== null,
     );
 
+    const markLine =
+      markerLines.length > 0
+        ? { symbol: "none" as const, data: markerLines }
+        : undefined;
+
+    // Cumulative composition drawn as a 100% stacked area: the bands sum to the
+    // full height at every x, so their relative thickness *is* the split.
+    const band = (
+      name: string,
+      color: string,
+      fill: string,
+      lineData: [number, number, number, number][],
+      extra: Record<string, unknown> = {},
+    ) => ({
+      name,
+      type: "line" as const,
+      yAxisIndex: 0,
+      data: lineData,
+      stack: "composition",
+      smooth: false,
+      showSymbol: false,
+      connectNulls: true,
+      lineStyle: { width: 1, color },
+      areaStyle: { color: fill },
+      itemStyle: { color },
+      emphasis: { focus: "series" as const },
+      z: 2,
+      ...extra,
+    });
+
+    const compositionBands = [
+      // Show-up sits on the bottom of the stack; the marker lines ride on it.
+      band(
+        "Showed up",
+        "#10b981",
+        "rgba(16,185,129,0.55)",
+        purchaseTimingChartData.rateLine,
+        markLine ? { markLine } : {},
+      ),
+      ...(purchaseTimingChartData.noShowLine
+        ? [
+            band(
+              "No-show",
+              "#f43f5e",
+              "rgba(244,63,94,0.5)",
+              purchaseTimingChartData.noShowLine,
+            ),
+          ]
+        : []),
+      ...(purchaseTimingChartData.canceledLine
+        ? [
+            band(
+              "Canceled",
+              "#f59e0b",
+              "rgba(245,158,11,0.5)",
+              purchaseTimingChartData.canceledLine,
+            ),
+          ]
+        : []),
+      ...(purchaseTimingChartData.missLine
+        ? [
+            band(
+              "Missed (no-show + canceled)",
+              "#f43f5e",
+              "rgba(244,63,94,0.5)",
+              purchaseTimingChartData.missLine,
+            ),
+          ]
+        : []),
+    ];
+
+    const legendData = [...compositionBands.map((s) => s.name), soldName];
+
     return {
       backgroundColor: "transparent",
       animation: true,
@@ -1070,7 +1092,7 @@ function SummaryContent({ eventId }: { eventId: string }) {
       yAxis: [
         {
           type: "value" as const,
-          name: "Show-up %",
+          name: "Share of sales",
           min: 0,
           max: 100,
           nameTextStyle: {
@@ -1150,40 +1172,7 @@ function SummaryContent({ eventId }: { eventId: string }) {
           barMaxWidth: 28,
           z: 1,
         },
-        {
-          name: "Show-up rate",
-          type: "line" as const,
-          yAxisIndex: 0,
-          data: purchaseTimingChartData.rateLine,
-          smooth: true,
-          showSymbol: true,
-          symbolSize: 5,
-          connectNulls: true,
-          lineStyle: { width: 2, color: "#10b981" },
-          itemStyle: { color: "#10b981" },
-          areaStyle: {
-            color: {
-              type: "linear" as const,
-              x: 0,
-              y: 0,
-              x2: 0,
-              y2: 1,
-              colorStops: [
-                { offset: 0, color: "rgba(16,185,129,0.15)" },
-                { offset: 1, color: "rgba(16,185,129,0)" },
-              ],
-            },
-          },
-          markLine:
-            markerLines.length > 0
-              ? {
-                  symbol: "none",
-                  data: markerLines,
-                }
-              : undefined,
-          z: 2,
-        },
-        ...extraLineSeries,
+        ...compositionBands,
       ],
     };
   }, [
@@ -1616,12 +1605,12 @@ function SummaryContent({ eventId }: { eventId: string }) {
         </Card>
       )}
 
-      {/* ── Show-up rate by purchase timing ── */}
+      {/* ── Sales outcome by purchase timing ── */}
       {purchaseChartOption && (
         <Card className="p-5">
           <div className="flex items-start justify-between gap-3 mb-1">
             <h3 className="text-sm font-semibold text-zinc-300">
-              Show-up rate by purchase timing
+              Sales outcome by purchase timing
             </h3>
             {canceledPurchaseEpochs.length > 0 && (
               <div className="inline-flex shrink-0 rounded-lg border border-zinc-800 bg-zinc-900/60 p-0.5">
@@ -1650,12 +1639,12 @@ function SummaryContent({ eventId }: { eventId: string }) {
           </div>
           <p className="text-[10px] text-zinc-600 mb-3">
             {canceledPurchaseEpochs.length === 0
-              ? "Attendance rate grouped by when each buyer purchased. The window defaults to sales open — scroll to zoom and drag to pan."
+              ? "Running composition of sales by purchase time: of everyone who'd bought by each point, the share who showed up vs no-showed. Left edge = launch-window buyers, right edge = the final split. Scroll to zoom, drag to pan."
               : canceledMode === "separate"
-                ? "Grouped by purchase time; canceled tickets are in the denominator, with canceled % and no-show % plotted apart."
+                ? "Running composition of all sales up to each purchase time — showed up vs no-showed vs canceled, stacked to 100%. Left edge shows how launch-window buyers turned out; right edge is the event’s final split."
                 : canceledMode === "as-noshow"
-                  ? "Grouped by purchase time; cancellations folded into no-shows — the true “what % actually showed up” read, since people often cancel weeks later."
-                  : "Grouped by purchase time; canceled tickets excluded entirely (live tickets only — the original view)."}
+                  ? "Running composition up to each purchase time — showed up vs missed (no-show + canceled), stacked to 100%. The honest “what % actually showed up”, since people often cancel weeks later."
+                  : "Running composition up to each purchase time with canceled tickets excluded — showed up vs no-showed among live tickets only."}
           </p>
           <ReactECharts
             ref={purchaseChartRef}
