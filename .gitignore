@@ -55,3 +55,4 @@ supabase/.temp/
 
 # local AI tooling
 .claude/settings.local.json
+supabase/.branches/
