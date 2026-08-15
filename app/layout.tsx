@@ -281,7 +281,7 @@ export default async function AdminLayout({ children }: AdminLayoutProps) {
     if (!user?.email) {
       const loginUrl = `/api/auth/login?redirect_to=${encodeURIComponent("/")}`;
       return (
-        <html>
+        <html lang="en">
           <body
             className={`${inter.variable} ${hedvigLettersSerif.variable} antialiased`}
           >
@@ -309,7 +309,7 @@ export default async function AdminLayout({ children }: AdminLayoutProps) {
 
     // User is authenticated but not an admin
     return (
-      <html>
+      <html lang="en">
         <body
           className={`${inter.variable} ${hedvigLettersSerif.variable} antialiased`}
         >
@@ -354,7 +354,7 @@ export default async function AdminLayout({ children }: AdminLayoutProps) {
   const defaultEventId = getNextEventId(visibleEvents);
 
   return (
-    <html>
+    <html lang="en">
       <body
         className={`${inter.variable} ${hedvigLettersSerif.variable} antialiased`}
       >
