@@ -1,4 +1,6 @@
-import { afterAll, afterEach, describe, expect, mock, test } from "bun:test";
+import { afterAll, afterEach, describe, expect, test } from "bun:test";
+
+import { mockModule } from "@/tests/helpers/scoped-module-mock";
 
 import { captureSesFetch } from "../helpers/ses-capture";
 import {
@@ -22,20 +24,20 @@ class TestNextResponse extends Response {
   }
 }
 
-mock.module("next/server", () => ({
+await mockModule("next/server", () => ({
   NextRequest: Request,
   NextResponse: TestNextResponse,
   after: (callback: () => unknown) => Promise.resolve(callback()),
 }));
 
-mock.module("@/app/lib/auth", () => ({
+await mockModule("@/app/lib/auth", () => ({
   getSessionUser: async () => ({ email: actor }),
   normalizeEmail: (email: string) => email.trim().toLowerCase(),
   getFeeWaiverEmailSetForEmails: async () => new Set<string>(),
   hasFeeWaiverForEmail: async () => false,
 }));
 
-mock.module("@/app/lib/permissions", () => ({
+await mockModule("@/app/lib/permissions", () => ({
   requirePermission: async () => ({ authorized: true, email: actor }),
   requireAnyPermission: async () => ({ authorized: true, email: actor }),
 }));

@@ -1,11 +1,13 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 
+import { mockModule } from "@/tests/helpers/scoped-module-mock";
+
 import {
   captureSesFetch,
   summarizeMime,
 } from "../../../tests/helpers/ses-capture";
 
-mock.module("@ssb/db", () => ({
+await mockModule("@ssb/db", () => ({
   db: { query: { roles: { findFirst: async () => null } } },
   eq: () => undefined,
   roles: { email: {} },

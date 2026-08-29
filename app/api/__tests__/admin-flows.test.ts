@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 
+import { mockModule } from "@/tests/helpers/scoped-module-mock";
+
 type SessionUser = {
   email: string;
 };
@@ -359,7 +361,7 @@ const db = {
   transaction: mock(async (callback: (tx: unknown) => unknown) => callback(db)),
 };
 
-mock.module("next/server", () => ({
+await mockModule("next/server", () => ({
   NextResponse: {
     json(body: unknown, init?: ResponseInit) {
       return Response.json(body, init);
@@ -368,7 +370,7 @@ mock.module("next/server", () => ({
   connection: async () => {},
 }));
 
-mock.module("@ssb/db", () => ({
+await mockModule("@ssb/db", () => ({
   ...tables,
   db,
   eq: (column: unknown, value: unknown) => ({ op: "eq", column, value }),
@@ -390,14 +392,14 @@ mock.module("@ssb/db", () => ({
   }),
 }));
 
-mock.module("@/app/lib/auth", () => ({
+await mockModule("@/app/lib/auth", () => ({
   getSessionUser: mock(async () => state.user),
   normalizeEmail: (email: string) => email.trim().toLowerCase(),
   getFeeWaiverEmailSetForEmails: mock(async () => new Set<string>()),
   hasFeeWaiverForEmail: mock(async () => false),
 }));
 
-mock.module("@/app/lib/permissions", () => ({
+await mockModule("@/app/lib/permissions", () => ({
   requirePermission: mock(async (action: string, eventId?: string | null) => {
     state.permissionCalls.push({ action, eventId });
     return currentPermission();
@@ -415,7 +417,7 @@ mock.module("@/app/lib/permissions", () => ({
   canUseActionForEvent: mock(() => true),
 }));
 
-mock.module("@/app/lib/supabase", () => ({
+await mockModule("@/app/lib/supabase", () => ({
   getAvailablePublicTickets: mock(async () => ({
     vipCount: 0,
     reserved: 10,
@@ -436,7 +438,7 @@ mock.module("@/app/lib/supabase", () => ({
   }),
 }));
 
-mock.module("@/app/lib/ticketingRoles", () => ({
+await mockModule("@/app/lib/ticketingRoles", () => ({
   isTicketingRole: (value: string) =>
     ["student", "staff", "faculty", "alumni", "grad", "undergrad"].includes(
       value,
@@ -445,7 +447,7 @@ mock.module("@/app/lib/ticketingRoles", () => ({
     values.length > 0 ? values : ["student"],
 }));
 
-mock.module("@/app/lib/validation", () => ({
+await mockModule("@/app/lib/validation", () => ({
   hasUnsafeHeaderChars: (value: string) => /[\r\n]/.test(value),
   isValidAddress: (value: string | null) => !value || value.length <= 500,
   isValidAppleWalletImageExtension: (name: string) => name.endsWith(".png"),
@@ -485,26 +487,26 @@ mock.module("@/app/lib/validation", () => ({
       .test(id),
 }));
 
-mock.module("@/app/lib/audit", () => ({
+await mockModule("@/app/lib/audit", () => ({
   logAuditEvent: mock(async (event: unknown) => {
     state.auditEvents.push(event);
   }),
 }));
 
-mock.module("@/app/lib/wallet-push", () => ({
+await mockModule("@/app/lib/wallet-push", () => ({
   pushWalletUpdate: mock(async (...args: unknown[]) => {
     state.walletPushes.push(args);
   }),
 }));
 
-mock.module("@/app/lib/waitlist", () => ({
+await mockModule("@/app/lib/waitlist", () => ({
   pullFromWaitlist: mock(async (...args: unknown[]) => {
     state.auditEvents.push({ action: "waitlist.pull.mock", args });
   }),
   removeWaitlistEntryForEmail: mock(async () => {}),
 }));
 
-mock.module("@/app/lib/mailing-list", () => ({
+await mockModule("@/app/lib/mailing-list", () => ({
   filterUnsubscribedHierarchical: mock(async (emails: string[]) =>
     state.unsubscribedResult ?? { kept: emails, skipped: [] }
   ),
@@ -513,7 +515,7 @@ mock.module("@/app/lib/mailing-list", () => ({
   }),
 }));
 
-mock.module("@/app/lib/email-suppression", () => ({
+await mockModule("@/app/lib/email-suppression", () => ({
   logSendFailures: mock(async (payload: unknown) => {
     state.sendFailures.push(payload);
   }),
@@ -528,7 +530,7 @@ function recordEmail(type: string) {
   });
 }
 
-mock.module("@/app/lib/email", () => ({
+await mockModule("@/app/lib/email", () => ({
   sendCancellationEmail: recordEmail("cancellation"),
   sendClaimTicketEmail: recordEmail("claimTicket"),
   sendDayOfReminderEmail: recordEmail("dayOfReminder"),
@@ -542,15 +544,15 @@ mock.module("@/app/lib/email", () => ({
   sendTicketsAvailableNowEmail: recordEmail("ticketsAvailableNow"),
 }));
 
-mock.module("@/app/suggest/data", () => ({
+await mockModule("@/app/suggest/data", () => ({
   getAdminSuggestions: mock(async () => ({ suggestions: state.adminSuggestions })),
 }));
 
-mock.module("@/app/event-questions/data", () => ({
+await mockModule("@/app/event-questions/data", () => ({
   getAdminEventQuestions: mock(async () => ({ questions: state.adminQuestions })),
 }));
 
-mock.module("@/app/lib/affiliation", () => ({
+await mockModule("@/app/lib/affiliation", () => ({
   getHighestAffiliation: mock(() => "student"),
 }));
 
